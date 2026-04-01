@@ -47,40 +47,8 @@ int main() {
     stdio_init_all();
     sleep_ms(4000);
 
-    printf("SNIFFER LOGICO - MENU\n");
-    printf("1 -> Mostrar todas las tramas\n");
-    printf("2 -> Filtrar TYPE = 0x01\n");
-    printf("3 -> Filtrar TYPE = 0x02\n");
-    printf("4 -> Filtrar TYPE = 0x03\n");
-    printf("\nIngrese opcion y presione ENTER:\n");
-
-    int option = getchar_timeout_us(0);
-    while (option == PICO_ERROR_TIMEOUT || option == '\n' || option == '\r') {
-        option = getchar_timeout_us(100000);
-    }
-
-    int filter_mode = 0;
-    uint8_t filter_type = 0x00;
-
-    if (option == '1') {
-        filter_mode = 0;
-        printf("Modo seleccionado: mostrar todas las tramas\n\n");
-    } else if (option == '2') {
-        filter_mode = 1;
-        filter_type = 0x01;
-        printf("Modo seleccionado: filtrar TYPE 0x01 (%s)\n\n", type_to_name(filter_type));
-    } else if (option == '3') {
-        filter_mode = 1;
-        filter_type = 0x02;
-        printf("Modo seleccionado: filtrar TYPE 0x02 (%s)\n\n", type_to_name(filter_type));
-    } else if (option == '4') {
-        filter_mode = 1;
-        filter_type = 0x03;
-        printf("Modo seleccionado: filtrar TYPE 0x03 (%s)\n\n", type_to_name(filter_type));
-    } else {
-        printf("Opcion invalida. Se mostraran todas las tramas.\n\n");
-        filter_mode = 0;
-    }
+    printf("SNIFFER LOGICO - MODO AUTOMATICO\r\n");
+    printf("Imprimiendo todas las tramas validas\r\n\r\n");
 
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_slave(SPI_PORT, true);
@@ -111,14 +79,12 @@ int main() {
         if (checksum != expected) valid = 0;
 
         if (!valid) {
-            printf("TRAMA INVALIDA -> %02X %02X %02X %02X\n",
+            printf("TRAMA INVALIDA -> %02X %02X %02X %02X\r\n",
                    rx[0], rx[1], rx[2], rx[3]);
             continue;
         }
 
-        if (filter_mode == 0 || type == filter_type) {
-            printf("MATCH -> TYPE: 0x%02X (%s) | DATA: 0x%02X | FRAME: %02X %02X %02X %02X\n",
-                   type, type_to_name(type), data, rx[0], rx[1], rx[2], rx[3]);
-        }
+        printf("MATCH -> TYPE: 0x%02X (%s) | DATA: 0x%02X | FRAME: %02X %02X %02X %02X\r\n",
+               type, type_to_name(type), data, rx[0], rx[1], rx[2], rx[3]);
     }
 }
