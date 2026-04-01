@@ -1,78 +1,83 @@
 #include <stdio.h>
+#include <stdint.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
 
 #define SPI_PORT spi0
 
-// Pines SPI0 en Pico 2 W
 #define PIN_MISO 16
 #define PIN_CS   17
 #define PIN_SCK  18
 #define PIN_MOSI 19
 
-int main() {
-    // Inicializa USB serial
-    stdio_init_all();
+#define SYNC_BYTE 0xAA
+#define TYPE_BYTE 0x01
 
-    // Espera unos segundos para que el puerto serial aparezca en la PC
+static uint8_t calc_checksum(uint8_t sync, uint8_t type, uint8_t data) {
+    return sync ^ type ^ data;
+}
+
+// Recibe un byte en una transaccion SPI separada
+static uint8_t receive_one_byte(void) {
+    uint8_t dato = 0;
+
+    while (gpio_get(PIN_CS) == 1) {
+        tight_loop_contents();
+    }
+
+    spi_read_blocking(SPI_PORT, 0x00, &dato, 1);
+
+    while (gpio_get(PIN_CS) == 0) {
+        tight_loop_contents();
+    }
+
+    sleep_ms(1);
+    return dato;
+}
+
+int main() {
+    stdio_init_all();
     sleep_ms(3000);
 
-    printf("SLAVE - SPI bidireccional con logica de respuesta\n");
-    printf("Regla: A->1, B->2, C->3\n\n");
+    printf("SLAVE - Mini trama SPI unidireccional byte a byte\n");
+    printf("Esperando tramas...\n\n");
 
-    // Inicializa SPI en modo slave
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_slave(SPI_PORT, true);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
-    // Configura funciones SPI en los pines
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
     gpio_set_function(PIN_CS,   GPIO_FUNC_SPI);
     gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
 
-    uint8_t rx = 0;   // byte recibido del master
-    uint8_t tx = 0;   // byte a responder
+    uint8_t rx[4];
 
     while (true) {
+        rx[0] = receive_one_byte();
+        rx[1] = receive_one_byte();
+        rx[2] = receive_one_byte();
+        rx[3] = receive_one_byte();
 
-        // Espera a que el master active CS
-        while (gpio_get(PIN_CS) == 1) {
-            tight_loop_contents();
-        }
+        uint8_t sync = rx[0];
+        uint8_t type = rx[1];
+        uint8_t data = rx[2];
+        uint8_t checksum = rx[3];
 
-        // El slave prepara una respuesta por defecto.
-        // Durante la transferencia, recibe el byte del master y
-        // simultaneamente devuelve este byte 'tx'.
-        //
-        // Como queremos que la respuesta corresponda al mensaje actual,
-        // usamos una estrategia simple:
-        // - dejamos un valor inicial
-        // - leemos el mensaje
-        // - en la proxima iteracion responderemos segun lo recibido
-        //
-        // Para este punto del proyecto, esto igual es valido porque
-        // permite verificar la logica de interpretacion.
-        spi_write_read_blocking(SPI_PORT, &tx, &rx, 1);
+        uint8_t expected = calc_checksum(sync, type, data);
 
-        // Espera a que termine la transaccion
-        while (gpio_get(PIN_CS) == 0) {
-            tight_loop_contents();
-        }
+        printf("RX -> %02X %02X %02X %02X | ",
+               sync, type, data, checksum);
 
-        // Decide la respuesta para la proxima transferencia
-        if (rx == 'A') {
-            tx = '1';
-        } else if (rx == 'B') {
-            tx = '2';
-        } else if (rx == 'C') {
-            tx = '3';
+        if (sync != SYNC_BYTE) {
+            printf("ERROR: SYNC invalido\n");
+        } else if (type != TYPE_BYTE) {
+            printf("ERROR: TYPE invalido\n");
+        } else if (checksum != expected) {
+            printf("ERROR: CHECKSUM invalido (esperado %02X)\n", expected);
         } else {
-            tx = '?';
+            printf("OK | DATA = 0x%02X\n", data);
         }
-
-        // Muestra lo recibido y lo que respondera en la siguiente transaccion
-        printf("RX: %c | Proxima respuesta: %c\n", rx, tx);
     }
 }
