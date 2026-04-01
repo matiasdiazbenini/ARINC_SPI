@@ -87,12 +87,17 @@
 
   <script>
     const consoleDiv = document.getElementById("console");
-    const evtSource = new EventSource("/stream");
 
-    evtSource.onmessage = function(event) {
-      consoleDiv.textContent = event.data;
-      consoleDiv.scrollTop = consoleDiv.scrollHeight;
-    };
+    async function refreshConsole() {
+      try {
+        const r = await fetch("/lines");
+        const data = await r.json();
+        consoleDiv.textContent = data.text;
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
+      } catch (err) {
+        consoleDiv.textContent += "\n[ERROR] No se pudo actualizar la consola";
+      }
+    }
 
     async function startCapture() {
       const form = new FormData();
@@ -119,19 +124,11 @@
     }
 
     async function refreshPorts() {
-      const r = await fetch("/ports");
-      const data = await r.json();
-
-      const sel = document.getElementById("port");
-      sel.innerHTML = "";
-
-      for (const p of data.ports) {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        sel.appendChild(opt);
-      }
+      location.reload();
     }
+
+    setInterval(refreshConsole, 500);
+    refreshConsole();
   </script>
 </body>
 </html>
