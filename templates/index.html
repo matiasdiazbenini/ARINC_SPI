@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard Sniffer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    h1 {
+      margin-bottom: 8px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      max-width: 1000px;
+    }
+    input, select, button {
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+    }
+    #console {
+      background: #0b1020;
+      color: #d1fae5;
+      padding: 14px;
+      border-radius: 8px;
+      min-height: 420px;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+    }
+    .small {
+      color: #6b7280;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Dashboard Sniffer</h1>
+  <div class="small">Lee el puerto serie de la Pico y muestra los datos en tiempo real.</div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="row">
+      <label>Puerto:
+        <select id="port">
+          {% for p in ports %}
+            <option value="{{ p }}" {% if p == selected_port %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>Baudrate:
+        <input id="baudrate" type="number" value="{{ baudrate }}">
+      </label>
+
+      <label>Filtro de texto:
+        <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TYPE: 0x02">
+      </label>
+    </div>
+
+    <div class="row">
+      <button onclick="startCapture()">Iniciar</button>
+      <button onclick="stopCapture()">Detener</button>
+      <button onclick="clearConsole()">Limpiar consola</button>
+      <button onclick="refreshPorts()">Actualizar puertos</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div id="console"></div>
+  </div>
+
+  <script>
+    const consoleDiv = document.getElementById("console");
+    const evtSource = new EventSource("/stream");
+
+    evtSource.onmessage = function(event) {
+      consoleDiv.textContent = event.data;
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    };
+
+    async function startCapture() {
+      const form = new FormData();
+      form.append("port", document.getElementById("port").value);
+      form.append("baudrate", document.getElementById("baudrate").value);
+      form.append("filter_text", document.getElementById("filter_text").value);
+
+      const r = await fetch("/start", {
+        method: "POST",
+        body: form
+      });
+      const data = await r.json();
+      alert(data.msg);
+    }
+
+    async function stopCapture() {
+      const r = await fetch("/stop", { method: "POST" });
+      const data = await r.json();
+      alert(data.msg);
+    }
+
+    async function clearConsole() {
+      await fetch("/clear", { method: "POST" });
+    }
+
+    async function refreshPorts() {
+      const r = await fetch("/ports");
+      const data = await r.json();
+
+      const sel = document.getElementById("port");
+      sel.innerHTML = "";
+
+      for (const p of data.ports) {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      }
+    }
+  </script>
+</body>
+</html>
