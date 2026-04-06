@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
+#include "mil1553_protocol.h"
 
 #define SPI_PORT spi0
 
@@ -11,11 +12,13 @@
 #define PIN_SCK  18
 #define PIN_MOSI 19
 
-#define SYNC_BYTE 0xAA
-
-static uint8_t calc_checksum(uint8_t sync, uint8_t type, uint8_t data) {
-    return sync ^ type ^ data;
-}
+typedef struct {
+    uint8_t rt_address;
+    uint8_t subaddress;
+    uint8_t word_count;
+    bool transmit;
+    bool available;
+} mil1553_message_context_t;
 
 static uint8_t receive_one_byte(void) {
     uint8_t dato = 0;
@@ -34,21 +37,142 @@ static uint8_t receive_one_byte(void) {
     return dato;
 }
 
-static const char* type_to_name(uint8_t type) {
-    switch (type) {
-        case 0x01: return "TEMPERATURA";
-        case 0x02: return "VELOCIDAD";
-        case 0x03: return "PRESION";
-        default:   return "DESCONOCIDO";
+static const char *channel_name(uint8_t subaddress) {
+    switch (subaddress) {
+        case 1:
+            return "TEMPERATURA";
+        case 2:
+            return "VELOCIDAD";
+        case 3:
+            return "PRESION";
+        default:
+            return "CANAL_DESCONOCIDO";
     }
+}
+
+static void print_hex_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE]) {
+    for (size_t i = 0; i < MIL1553_SPI_FRAME_SIZE; i++) {
+        printf("%02X", frame[i]);
+
+        if (i + 1 < MIL1553_SPI_FRAME_SIZE) {
+            printf(" ");
+        }
+    }
+}
+
+static void print_invalid_reason(const uint8_t frame[MIL1553_SPI_FRAME_SIZE]) {
+    uint16_t word = ((uint16_t)frame[2] << 8) | frame[3];
+    uint8_t expected_parity = mil1553_calc_odd_parity(word);
+    uint8_t expected_checksum = mil1553_calc_transport_checksum(frame, MIL1553_SPI_FRAME_SIZE - 1);
+
+    printf("TRAMA INVALIDA -> FRAME: ");
+    print_hex_frame(frame);
+    printf(" | ERRORES:");
+
+    if (frame[0] != MIL1553_SPI_SYNC_BYTE) {
+        printf(" SYNC");
+    }
+
+    if (frame[4] != expected_parity) {
+        printf(" PARITY");
+    }
+
+    if (frame[6] != expected_checksum) {
+        printf(" CHECKSUM");
+    }
+
+    printf("\r\n");
+}
+
+static void print_command_word(uint16_t word, mil1553_message_context_t *context) {
+    mil1553_command_fields_t decoded;
+    mil1553_decode_command_word(word, &decoded);
+
+    if (context) {
+        context->rt_address = decoded.rt_address;
+        context->subaddress = decoded.subaddress;
+        context->word_count = decoded.word_count;
+        context->transmit = decoded.transmit;
+        context->available = true;
+    }
+
+    printf("MATCH -> TYPE: 0x%02X (%s) | RT: %u | T/R: %s | SUBADDR: %u (%s) | WC: %u",
+           MIL1553_WORD_COMMAND,
+           mil1553_word_type_name(MIL1553_WORD_COMMAND),
+           decoded.rt_address,
+           decoded.transmit ? "TX" : "RX",
+           decoded.subaddress,
+           channel_name(decoded.subaddress),
+           decoded.word_count);
+}
+
+static void print_data_word(uint16_t word, const mil1553_message_context_t *context) {
+    printf("MATCH -> TYPE: 0x%02X (%s) | DATA_WORD: 0x%04X | DEC: %u",
+           MIL1553_WORD_DATA,
+           mil1553_word_type_name(MIL1553_WORD_DATA),
+           word,
+           word);
+
+    if (context && context->available) {
+        printf(" | RT: %u | SUBADDR: %u (%s) | T/R: %s",
+               context->rt_address,
+               context->subaddress,
+               channel_name(context->subaddress),
+               context->transmit ? "TX" : "RX");
+    }
+}
+
+static void print_status_word(uint16_t word) {
+    mil1553_status_fields_t decoded;
+    mil1553_decode_status_word(word, &decoded);
+
+    printf("MATCH -> TYPE: 0x%02X (%s) | RT: %u | ME:%u SR:%u BUSY:%u TF:%u",
+           MIL1553_WORD_STATUS,
+           mil1553_word_type_name(MIL1553_WORD_STATUS),
+           decoded.rt_address,
+           decoded.message_error,
+           decoded.service_request,
+           decoded.busy,
+           decoded.terminal_flag);
+}
+
+static void print_valid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
+                              mil1553_message_context_t *context) {
+    mil1553_word_type_t type = (mil1553_word_type_t)frame[1];
+    uint16_t word = ((uint16_t)frame[2] << 8) | frame[3];
+
+    switch (type) {
+        case MIL1553_WORD_COMMAND:
+            print_command_word(word, context);
+            break;
+        case MIL1553_WORD_DATA:
+            print_data_word(word, context);
+            break;
+        case MIL1553_WORD_STATUS:
+            print_status_word(word);
+            break;
+        default:
+            printf("MATCH -> TYPE: 0x%02X (%s) | WORD: 0x%04X",
+                   frame[1],
+                   mil1553_word_type_name(type),
+                   word);
+            break;
+    }
+
+    printf(" | PARITY: %u | SEQ: %u | FRAME: ",
+           frame[4],
+           frame[5]);
+    print_hex_frame(frame);
+    printf("\r\n");
 }
 
 int main() {
     stdio_init_all();
     sleep_ms(4000);
 
-    printf("SNIFFER LOGICO - MODO AUTOMATICO\r\n");
-    printf("Imprimiendo todas las tramas validas\r\n\r\n");
+    printf("SNIFFER LOGICO MIL-STD-1553 SOBRE SPI\r\n");
+    printf("Trama SPI: [SYNC][TYPE][WORD_MSB][WORD_LSB][PARITY][SEQ][CHECKSUM]\r\n");
+    printf("Imprimiendo todas las palabras validas\r\n\r\n");
 
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_slave(SPI_PORT, true);
@@ -59,32 +183,19 @@ int main() {
     gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
 
-    uint8_t rx[4];
+    uint8_t rx[MIL1553_SPI_FRAME_SIZE];
+    mil1553_message_context_t context = {0};
 
     while (true) {
-        rx[0] = receive_one_byte();
-        rx[1] = receive_one_byte();
-        rx[2] = receive_one_byte();
-        rx[3] = receive_one_byte();
+        for (size_t i = 0; i < MIL1553_SPI_FRAME_SIZE; i++) {
+            rx[i] = receive_one_byte();
+        }
 
-        uint8_t sync = rx[0];
-        uint8_t type = rx[1];
-        uint8_t data = rx[2];
-        uint8_t checksum = rx[3];
-        uint8_t expected = calc_checksum(sync, type, data);
-
-        int valid = 1;
-
-        if (sync != SYNC_BYTE) valid = 0;
-        if (checksum != expected) valid = 0;
-
-        if (!valid) {
-            printf("TRAMA INVALIDA -> %02X %02X %02X %02X\r\n",
-                   rx[0], rx[1], rx[2], rx[3]);
+        if (!mil1553_validate_spi_frame(rx)) {
+            print_invalid_reason(rx);
             continue;
         }
 
-        printf("MATCH -> TYPE: 0x%02X (%s) | DATA: 0x%02X | FRAME: %02X %02X %02X %02X\r\n",
-               type, type_to_name(type), data, rx[0], rx[1], rx[2], rx[3]);
+        print_valid_frame(rx, &context);
     }
 }
