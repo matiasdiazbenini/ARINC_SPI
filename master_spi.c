@@ -10,7 +10,7 @@
 #define PIN_SCK  18
 #define PIN_MOSI 19
 
-#define SYNC_BYTE 0xAA
+#define SYNC_BYTE 0xAX
 
 static inline void cs_select() {
     gpio_put(PIN_CS, 0);
