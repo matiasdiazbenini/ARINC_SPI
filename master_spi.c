@@ -14,12 +14,14 @@
 #define SPI_BAUDRATE_HZ     (100 * 1000)
 #define TX_BURST_DELAY_MS   2
 #define TX_INTERFRAME_DELAY_MS 250
-#define MESSAGE_CYCLES      20
+#define MESSAGE_CYCLES      12
 #define REMOTE_TERMINAL_ID  3
 
 typedef struct {
+    bool terminal_transmit;
     uint8_t subaddress;
     const char *label;
+    uint8_t word_count;
     uint16_t base_value;
     uint16_t step;
 } logical_channel_t;
@@ -60,6 +62,10 @@ static const char *channel_name(uint8_t subaddress) {
     }
 }
 
+static const char *message_direction_name(bool terminal_transmit) {
+    return terminal_transmit ? "RT->BC" : "BC->RT";
+}
+
 static void print_hex_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE]) {
     for (size_t i = 0; i < MIL1553_SPI_FRAME_SIZE; i++) {
         printf("%02X", frame[i]);
@@ -74,16 +80,21 @@ static void log_command_word(uint16_t word) {
     mil1553_command_fields_t decoded;
     mil1553_decode_command_word(word, &decoded);
 
-    printf("COMMAND -> RT: %u | T/R: %s | SUBADDR: %u (%s) | WC: %u",
+    printf("COMMAND -> RT: %u | DIR: %s | SUBADDR: %u (%s) | WC: %u",
            decoded.rt_address,
-           decoded.transmit ? "TX" : "RX",
+           decoded.transmit ? "RT->BC" : "BC->RT",
            decoded.subaddress,
            channel_name(decoded.subaddress),
            decoded.word_count);
 }
 
-static void log_data_word(uint16_t word, uint8_t active_subaddress) {
-    printf("DATA    -> VALUE: 0x%04X | DEC: %u | CANAL: %s",
+static void log_data_word(uint16_t word,
+                          uint8_t active_subaddress,
+                          uint8_t data_index,
+                          uint8_t word_count) {
+    printf("DATA    -> IDX: %u/%u | VALUE: 0x%04X | DEC: %u | CANAL: %s",
+           data_index + 1,
+           word_count,
            word,
            word,
            channel_name(active_subaddress));
@@ -105,6 +116,8 @@ static void log_spi_frame(mil1553_word_type_t type,
                           uint16_t word,
                           uint8_t sequence,
                           uint8_t active_subaddress,
+                          uint8_t data_index,
+                          uint8_t word_count,
                           const uint8_t frame[MIL1553_SPI_FRAME_SIZE]) {
     printf("SEQ %02u | %s | WORD: 0x%04X | PARITY: %u | FRAME: ",
            sequence,
@@ -119,7 +132,7 @@ static void log_spi_frame(mil1553_word_type_t type,
             log_command_word(word);
             break;
         case MIL1553_WORD_DATA:
-            log_data_word(word, active_subaddress);
+            log_data_word(word, active_subaddress, data_index, word_count);
             break;
         case MIL1553_WORD_STATUS:
             log_status_word(word);
@@ -135,21 +148,92 @@ static void log_spi_frame(mil1553_word_type_t type,
 static void send_mil1553_word(mil1553_word_type_t type,
                               uint16_t word,
                               uint8_t *sequence,
-                              uint8_t active_subaddress) {
+                              uint8_t active_subaddress,
+                              uint8_t data_index,
+                              uint8_t word_count) {
     uint8_t frame[MIL1553_SPI_FRAME_SIZE];
 
     mil1553_build_spi_frame(type, word, *sequence, frame);
     send_frame(frame);
-    log_spi_frame(type, word, *sequence, active_subaddress, frame);
+    log_spi_frame(type, word, *sequence, active_subaddress, data_index, word_count, frame);
 
     (*sequence)++;
 }
 
+static uint16_t build_data_word_value(const logical_channel_t *channel,
+                                      int cycle,
+                                      uint8_t data_index) {
+    return channel->base_value + (uint16_t)(cycle * channel->step) + data_index;
+}
+
+static void send_bc_to_rt_message(const logical_channel_t *channel,
+                                  int cycle,
+                                  uint8_t *sequence) {
+    mil1553_status_fields_t status = {
+        .rt_address = REMOTE_TERMINAL_ID,
+        .message_error = false,
+        .instrumentation = false,
+        .service_request = false,
+        .broadcast_received = false,
+        .busy = false,
+        .subsystem_flag = false,
+        .dynamic_bus_acceptance = false,
+        .terminal_flag = false,
+    };
+    uint16_t command_word = mil1553_build_command_word(
+        REMOTE_TERMINAL_ID,
+        false,
+        channel->subaddress,
+        channel->word_count
+    );
+    uint16_t status_word = mil1553_build_status_word(&status);
+
+    send_mil1553_word(MIL1553_WORD_COMMAND, command_word, sequence, channel->subaddress, 0, channel->word_count);
+
+    for (uint8_t i = 0; i < channel->word_count; i++) {
+        uint16_t data_word = mil1553_build_data_word(build_data_word_value(channel, cycle, i));
+        send_mil1553_word(MIL1553_WORD_DATA, data_word, sequence, channel->subaddress, i, channel->word_count);
+    }
+
+    send_mil1553_word(MIL1553_WORD_STATUS, status_word, sequence, channel->subaddress, 0, channel->word_count);
+}
+
+static void send_rt_to_bc_message(const logical_channel_t *channel,
+                                  int cycle,
+                                  uint8_t *sequence) {
+    mil1553_status_fields_t status = {
+        .rt_address = REMOTE_TERMINAL_ID,
+        .message_error = false,
+        .instrumentation = false,
+        .service_request = true,
+        .broadcast_received = false,
+        .busy = false,
+        .subsystem_flag = false,
+        .dynamic_bus_acceptance = false,
+        .terminal_flag = false,
+    };
+    uint16_t command_word = mil1553_build_command_word(
+        REMOTE_TERMINAL_ID,
+        true,
+        channel->subaddress,
+        channel->word_count
+    );
+    uint16_t status_word = mil1553_build_status_word(&status);
+
+    send_mil1553_word(MIL1553_WORD_COMMAND, command_word, sequence, channel->subaddress, 0, channel->word_count);
+    send_mil1553_word(MIL1553_WORD_STATUS, status_word, sequence, channel->subaddress, 0, channel->word_count);
+
+    for (uint8_t i = 0; i < channel->word_count; i++) {
+        uint16_t data_word = mil1553_build_data_word(build_data_word_value(channel, cycle, i));
+        send_mil1553_word(MIL1553_WORD_DATA, data_word, sequence, channel->subaddress, i, channel->word_count);
+    }
+}
+
 int main() {
     const logical_channel_t channels[] = {
-        {.subaddress = 1, .label = "TEMPERATURA", .base_value = 0x1200, .step = 0x0003},
-        {.subaddress = 2, .label = "VELOCIDAD",   .base_value = 0x2200, .step = 0x0005},
-        {.subaddress = 3, .label = "PRESION",     .base_value = 0x3200, .step = 0x0007},
+        {.terminal_transmit = false, .subaddress = 1, .label = "TEMPERATURA", .word_count = 2, .base_value = 0x1200, .step = 0x0003},
+        {.terminal_transmit = true,  .subaddress = 2, .label = "VELOCIDAD",   .word_count = 3, .base_value = 0x2200, .step = 0x0005},
+        {.terminal_transmit = false, .subaddress = 3, .label = "PRESION",     .word_count = 2, .base_value = 0x3200, .step = 0x0007},
     };
     const size_t channel_count = sizeof(channels) / sizeof(channels[0]);
 
@@ -158,7 +242,7 @@ int main() {
 
     printf("MASTER - Simulador logico MIL-STD-1553 sobre SPI\n");
     printf("Trama SPI: [SYNC][TYPE][WORD_MSB][WORD_LSB][PARITY][SEQ][CHECKSUM]\n");
-    printf("Secuencia por mensaje: COMMAND -> DATA -> STATUS\n\n");
+    printf("Mensajes soportados: BC->RT (CMD+DATA+STATUS) y RT->BC (CMD+STATUS+DATA)\n\n");
 
     spi_init(SPI_PORT, SPI_BAUDRATE_HZ);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -175,32 +259,18 @@ int main() {
 
     for (int cycle = 0; cycle < MESSAGE_CYCLES; cycle++) {
         const logical_channel_t *channel = &channels[cycle % channel_count];
-        mil1553_status_fields_t status = {
-            .rt_address = REMOTE_TERMINAL_ID,
-            .message_error = false,
-            .instrumentation = false,
-            .service_request = false,
-            .broadcast_received = false,
-            .busy = false,
-            .subsystem_flag = false,
-            .dynamic_bus_acceptance = false,
-            .terminal_flag = false,
-        };
+        printf("MENSAJE %02d/%02d | TIPO: %s | CANAL: %s | WC: %u\n",
+               cycle + 1,
+               MESSAGE_CYCLES,
+               message_direction_name(channel->terminal_transmit),
+               channel->label,
+               channel->word_count);
 
-        uint16_t command_word = mil1553_build_command_word(
-            REMOTE_TERMINAL_ID,
-            false,
-            channel->subaddress,
-            1
-        );
-        uint16_t data_word = mil1553_build_data_word(channel->base_value + (uint16_t)(cycle * channel->step));
-        uint16_t status_word = mil1553_build_status_word(&status);
-
-        printf("MENSAJE %02d/%02d | CANAL: %s\n", cycle + 1, MESSAGE_CYCLES, channel->label);
-
-        send_mil1553_word(MIL1553_WORD_COMMAND, command_word, &sequence, channel->subaddress);
-        send_mil1553_word(MIL1553_WORD_DATA, data_word, &sequence, channel->subaddress);
-        send_mil1553_word(MIL1553_WORD_STATUS, status_word, &sequence, channel->subaddress);
+        if (channel->terminal_transmit) {
+            send_rt_to_bc_message(channel, cycle, &sequence);
+        } else {
+            send_bc_to_rt_message(channel, cycle, &sequence);
+        }
 
         printf("\n");
         sleep_ms(TX_INTERFRAME_DELAY_MS);
