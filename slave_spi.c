@@ -19,6 +19,23 @@ typedef struct {
     bool has_last_seq;
 } transport_stats_t;
 
+typedef struct {
+    uint32_t message_id;
+    uint32_t completed_messages;
+    uint32_t warning_messages;
+    bool active;
+    bool has_warning;
+    bool transmit;
+    bool is_mode_code;
+    bool is_broadcast;
+    bool status_seen;
+    uint8_t rt_address;
+    uint8_t subaddress;
+    uint8_t mode_code;
+    uint8_t expected_data_words;
+    uint8_t seen_data_words;
+} message_context_t;
+
 static uint8_t receive_one_byte(void) {
     uint8_t dato = 0;
 
@@ -91,8 +108,214 @@ static void print_sequence_gap(uint8_t expected_seq,
            received_seq);
 }
 
+static void reset_message_context(message_context_t *context) {
+    if (!context) {
+        return;
+    }
+
+    context->active = false;
+    context->has_warning = false;
+    context->transmit = false;
+    context->is_mode_code = false;
+    context->is_broadcast = false;
+    context->status_seen = false;
+    context->rt_address = 0;
+    context->subaddress = 0;
+    context->mode_code = 0;
+    context->expected_data_words = 0;
+    context->seen_data_words = 0;
+}
+
+static void print_message_warning(const message_context_t *context,
+                                  const char *warning) {
+    printf("RX_WARN|MSG_ID=%lu|WARNING=%s",
+           context ? (unsigned long)context->message_id : 0UL,
+           warning);
+
+    if (context && context->active) {
+        printf("|DIR=%s|RT=%u|SA=%u",
+               context->transmit ? "RT_TO_BC" : "BC_TO_RT",
+               context->rt_address,
+               context->subaddress);
+    }
+
+    printf("\r\n");
+}
+
+static void mark_message_warning(message_context_t *context) {
+    if (context) {
+        context->has_warning = true;
+    }
+}
+
+static void start_message_context(message_context_t *context,
+                                  const mil1553_command_fields_t *command) {
+    if (!context || !command) {
+        return;
+    }
+
+    context->message_id++;
+    context->active = true;
+    context->has_warning = false;
+    context->transmit = command->transmit;
+    context->is_mode_code = mil1553_command_is_mode_code(command->subaddress);
+    context->is_broadcast = mil1553_command_is_broadcast(command->rt_address);
+    context->status_seen = false;
+    context->rt_address = command->rt_address;
+    context->subaddress = command->subaddress;
+    context->mode_code = command->word_count;
+    context->expected_data_words = mil1553_command_effective_word_count(command);
+    context->seen_data_words = 0;
+
+    printf("RX_MSG_START|MSG_ID=%lu|DIR=%s|RT=%u|SA=%u|BROADCAST=%u|MODE_CODE=%u|MODE_VALUE=%u|DATA_EXPECTED=%u\r\n",
+           (unsigned long)context->message_id,
+           context->transmit ? "RT_TO_BC" : "BC_TO_RT",
+           context->rt_address,
+           context->subaddress,
+           context->is_broadcast ? 1 : 0,
+           context->is_mode_code ? 1 : 0,
+           context->mode_code,
+           context->expected_data_words);
+}
+
+static bool message_is_complete(const message_context_t *context) {
+    if (!context || !context->active) {
+        return false;
+    }
+
+    if (context->is_mode_code) {
+        return context->status_seen || context->expected_data_words == 0;
+    }
+
+    if (context->transmit) {
+        return context->status_seen &&
+               context->seen_data_words >= context->expected_data_words;
+    }
+
+    if (context->is_broadcast) {
+        return context->seen_data_words >= context->expected_data_words;
+    }
+
+    return context->status_seen &&
+           context->seen_data_words >= context->expected_data_words;
+}
+
+static void finalize_message_context(message_context_t *context,
+                                     bool warning,
+                                     const char *result) {
+    if (!context || !context->active) {
+        return;
+    }
+
+    bool final_warning = warning || context->has_warning;
+
+    printf("RX_MSG_END|MSG_ID=%lu|RESULT=%s|DIR=%s|RT=%u|SA=%u|BROADCAST=%u|MODE_CODE=%u|DATA_SEEN=%u|DATA_EXPECTED=%u|STATUS_SEEN=%u\r\n",
+           (unsigned long)context->message_id,
+           final_warning ? "WARN" : result,
+           context->transmit ? "RT_TO_BC" : "BC_TO_RT",
+           context->rt_address,
+           context->subaddress,
+           context->is_broadcast ? 1 : 0,
+           context->is_mode_code ? 1 : 0,
+           context->seen_data_words,
+           context->expected_data_words,
+           context->status_seen ? 1 : 0);
+
+    context->completed_messages++;
+
+    if (final_warning) {
+        context->warning_messages++;
+    }
+
+    reset_message_context(context);
+}
+
+static void handle_command_word(uint16_t word,
+                                message_context_t *context) {
+    mil1553_command_fields_t command;
+    mil1553_decode_command_word(word, &command);
+
+    if (context && context->active) {
+        print_message_warning(context, "COMMAND_BEFORE_PREVIOUS_END");
+        finalize_message_context(context, true, "ABORTED");
+    }
+
+    start_message_context(context, &command);
+}
+
+static void handle_status_word(uint16_t word,
+                               message_context_t *context) {
+    mil1553_status_fields_t status;
+    mil1553_decode_status_word(word, &status);
+
+    if (!context || !context->active) {
+        printf("RX_WARN|WARNING=ORPHAN_STATUS|RT=%u\r\n", status.rt_address);
+        return;
+    }
+
+    if (context->is_broadcast) {
+        mark_message_warning(context);
+        print_message_warning(context, "STATUS_IN_BROADCAST");
+    }
+
+    if (!context->transmit && context->seen_data_words < context->expected_data_words) {
+        mark_message_warning(context);
+        print_message_warning(context, "STATUS_BEFORE_ALL_DATA");
+    }
+
+    if (context->status_seen) {
+        mark_message_warning(context);
+        print_message_warning(context, "DUPLICATE_STATUS");
+    }
+
+    context->status_seen = true;
+
+    printf("RX_STATUS|MSG_ID=%lu|RT=%u|ME=%u|SR=%u|BUSY=%u|TF=%u|BCR=%u\r\n",
+           (unsigned long)context->message_id,
+           status.rt_address,
+           status.message_error ? 1 : 0,
+           status.service_request ? 1 : 0,
+           status.busy ? 1 : 0,
+           status.terminal_flag ? 1 : 0,
+           status.broadcast_received ? 1 : 0);
+
+    if (message_is_complete(context)) {
+        finalize_message_context(context, false, "OK");
+    }
+}
+
+static void handle_data_word(message_context_t *context) {
+    if (!context || !context->active) {
+        printf("RX_WARN|WARNING=ORPHAN_DATA\r\n");
+        return;
+    }
+
+    context->seen_data_words++;
+
+    if (!context->transmit && context->status_seen) {
+        mark_message_warning(context);
+        print_message_warning(context, "DATA_AFTER_STATUS");
+    }
+
+    if (context->expected_data_words > 0 &&
+        context->seen_data_words > context->expected_data_words) {
+        mark_message_warning(context);
+        print_message_warning(context, "DATA_OVERFLOW");
+    }
+
+    printf("RX_DATA|MSG_ID=%lu|INDEX=%u|EXPECTED=%u\r\n",
+           (unsigned long)context->message_id,
+           context->seen_data_words,
+           context->expected_data_words);
+
+    if (message_is_complete(context)) {
+        finalize_message_context(context, false, "OK");
+    }
+}
+
 static void print_valid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
-                              transport_stats_t *stats) {
+                              transport_stats_t *stats,
+                              message_context_t *context) {
     mil1553_word_type_t type = (mil1553_word_type_t)frame[1];
     uint16_t word = ((uint16_t)frame[2] << 8) | frame[3];
     uint8_t seq = frame[5];
@@ -119,6 +342,21 @@ static void print_valid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
            frame[5]);
     print_hex_frame(frame);
     printf("\r\n");
+
+    switch (type) {
+        case MIL1553_WORD_COMMAND:
+            handle_command_word(word, context);
+            break;
+        case MIL1553_WORD_DATA:
+            handle_data_word(context);
+            break;
+        case MIL1553_WORD_STATUS:
+            handle_status_word(word, context);
+            break;
+        default:
+            printf("RX_WARN|WARNING=UNKNOWN_TYPE|TYPE=0x%02X\r\n", frame[1]);
+            break;
+    }
 }
 
 int main() {
@@ -141,6 +379,7 @@ int main() {
 
     uint8_t rx[MIL1553_SPI_FRAME_SIZE];
     transport_stats_t stats = {0};
+    message_context_t context = {0};
 
     while (true) {
         for (size_t i = 0; i < MIL1553_SPI_FRAME_SIZE; i++) {
@@ -152,6 +391,6 @@ int main() {
             continue;
         }
 
-        print_valid_frame(rx, &stats);
+        print_valid_frame(rx, &stats, &context);
     }
 }
