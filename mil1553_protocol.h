@@ -55,6 +55,10 @@ bool mil1553_validate_spi_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE]);
 void mil1553_decode_command_word(uint16_t word, mil1553_command_fields_t *out);
 void mil1553_decode_status_word(uint16_t word, mil1553_status_fields_t *out);
 
+bool mil1553_command_is_mode_code(uint8_t subaddress);
+bool mil1553_command_is_broadcast(uint8_t rt_address);
+uint8_t mil1553_command_effective_word_count(const mil1553_command_fields_t *fields);
+
 const char *mil1553_word_type_name(mil1553_word_type_t type);
 
 #endif

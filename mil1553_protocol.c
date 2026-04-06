@@ -105,6 +105,22 @@ void mil1553_decode_status_word(uint16_t word, mil1553_status_fields_t *out) {
     out->terminal_flag = (word & 0x01) != 0;
 }
 
+bool mil1553_command_is_mode_code(uint8_t subaddress) {
+    return subaddress == 0 || subaddress == 31;
+}
+
+bool mil1553_command_is_broadcast(uint8_t rt_address) {
+    return rt_address == 31;
+}
+
+uint8_t mil1553_command_effective_word_count(const mil1553_command_fields_t *fields) {
+    if (!fields || mil1553_command_is_mode_code(fields->subaddress)) {
+        return 0;
+    }
+
+    return fields->word_count == 0 ? 32 : fields->word_count;
+}
+
 const char *mil1553_word_type_name(mil1553_word_type_t type) {
     switch (type) {
         case MIL1553_WORD_COMMAND:
