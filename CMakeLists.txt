@@ -12,6 +12,7 @@ pico_sdk_init()
 
 add_executable(master_spi
     master_spi.c
+    mil1553_protocol.c
 )
 
 target_link_libraries(master_spi
