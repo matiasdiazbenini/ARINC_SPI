@@ -1,0 +1,353 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue,
+    pdftitle={Informe de simulacion MIL-STD-1553 sobre SPI},
+    pdfauthor={Proyecto Raspberry Pi Pico 2 W}
+}
+
+\title{Informe Tecnico\\Simulacion Logica de MIL-STD-1553 sobre SPI}
+\author{Proyecto basado en Raspberry Pi Pico 2 W}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introduccion}
+
+Este documento resume el trabajo realizado para migrar un prototipo basado en mini-tramas SPI
+hacia una simulacion logica inspirada en el estandar MIL-STD-1553. El objetivo principal fue
+mantener la robustez de la capa de transporte SPI, pero reemplazando la carga util simple por
+palabras y mensajes con estructura compatible a nivel conceptual con un sistema 1553.
+
+La implementacion desarrollada no representa aun una interfaz fisica MIL-STD-1553 real. No se
+utiliza codificacion Manchester, ni sincronismo fisico de 3 us, ni una capa electrica 1553
+dedicada. En cambio, se construyo una capa logica de simulacion sobre SPI que permite:
+
+\begin{itemize}
+    \item generar palabras \texttt{COMMAND}, \texttt{DATA} y \texttt{STATUS},
+    \item organizar esas palabras en mensajes con orden coherente respecto del estandar,
+    \item validar integridad en recepcion,
+    \item dejar preparado el sistema para una Raspberry externa que actue como sniffer y host.
+\end{itemize}
+
+\section{Objetivo del trabajo}
+
+Los cambios realizados apuntaron a cumplir los siguientes objetivos:
+
+\begin{itemize}
+    \item reemplazar mini-tramas manuales por una representacion logica tipo MIL-STD-1553;
+    \item mantener SPI como medio de transporte entre dos placas Pico;
+    \item conservar un esquema robusto de sincronizacion y validacion;
+    \item separar responsabilidades entre emisor, receptor y futuro sniffer host;
+    \item dejar una base modular y clara para seguir creciendo hacia una arquitectura mas cercana
+    a un monitor 1553 real.
+\end{itemize}
+
+\section{Arquitectura adoptada}
+
+La arquitectura resultante queda separada en tres bloques:
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{3.2cm}|>{\raggedright\arraybackslash}p{10.6cm}|}
+\hline
+\textbf{Bloque} & \textbf{Funcion principal} \\
+\hline
+MIL-M & Emisor de mensajes logicos MIL-STD-1553 sobre SPI. Construye palabras, arma mensajes y transmite mini-tramas. \\
+\hline
+MIL-E & Receptor de transporte. Recibe palabra a palabra, valida integridad y reenvia por serial una salida estructurada y estable. \\
+\hline
+Raspberry externa & Sniffer/host futuro. Sera responsable de reconstruir mensajes, aplicar filtros, registrar eventos y mostrar dashboard. \\
+\hline
+\end{longtable}
+
+Esta separacion fue intencional. Se decidio que ni el master ni el slave carguen funciones
+complejas de analisis visual, para reservar esa responsabilidad a un host externo mas apropiado.
+
+\section{Formato de mini-trama SPI}
+
+Cada palabra logica MIL-STD-1553 se encapsula en una mini-trama SPI fija de 7 bytes:
+
+\begin{center}
+\texttt{[SYNC][TYPE][WORD\_MSB][WORD\_LSB][PARITY][SEQ][CHECKSUM]}
+\end{center}
+
+\subsection{Descripcion de campos}
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{2.5cm}|>{\raggedright\arraybackslash}p{2cm}|>{\raggedright\arraybackslash}p{8.7cm}|}
+\hline
+\textbf{Campo} & \textbf{Tamano} & \textbf{Descripcion} \\
+\hline
+\texttt{SYNC} & 1 byte & Byte fijo de sincronizacion. Se utiliza \texttt{0xAA}. \\
+\hline
+\texttt{TYPE} & 1 byte & Tipo de palabra logica: \texttt{0x01} para \texttt{COMMAND}, \texttt{0x02} para \texttt{DATA}, \texttt{0x03} para \texttt{STATUS}. \\
+\hline
+\texttt{WORD\_MSB} & 1 byte & Byte mas significativo de la palabra de 16 bits. \\
+\hline
+\texttt{WORD\_LSB} & 1 byte & Byte menos significativo de la palabra de 16 bits. \\
+\hline
+\texttt{PARITY} & 1 byte & Paridad impar calculada sobre los 16 bits de la palabra. \\
+\hline
+\texttt{SEQ} & 1 byte & Secuencia incremental por palabra transmitida. \\
+\hline
+\texttt{CHECKSUM} & 1 byte & XOR de los 6 bytes anteriores como chequeo rapido de transporte. \\
+\hline
+\end{longtable}
+
+\subsection{Ventajas del formato elegido}
+
+\begin{itemize}
+    \item Permite reconstruccion simple en el receptor.
+    \item Mantiene una logica de depuracion clara.
+    \item Se adapta bien al envio byte a byte.
+    \item Conserva una capa de validacion aun sin hardware 1553 real.
+\end{itemize}
+
+\section{Palabras logicas implementadas}
+
+Se implemento un modulo comun de protocolo para construir y validar palabras tipo
+MIL-STD-1553. Dicho modulo fue agregado como:
+
+\begin{itemize}
+    \item \texttt{mil1553\_protocol.h}
+    \item \texttt{mil1553\_protocol.c}
+\end{itemize}
+
+Este modulo provee:
+
+\begin{itemize}
+    \item calculo de checksum de transporte,
+    \item calculo de paridad impar,
+    \item construccion de \texttt{COMMAND WORD},
+    \item construccion de \texttt{DATA WORD},
+    \item construccion de \texttt{STATUS WORD},
+    \item encapsulado de palabra en mini-trama SPI,
+    \item validacion de mini-trama recibida,
+    \item funciones de decodificacion basicas para campos de comando y estado.
+\end{itemize}
+
+\subsection{Command Word}
+
+La palabra de comando implementada utiliza la estructura logica clasica:
+
+\begin{itemize}
+    \item \texttt{RT Address}: 5 bits
+    \item \texttt{T/R}: 1 bit
+    \item \texttt{Subaddress}: 5 bits
+    \item \texttt{Word Count}: 5 bits
+\end{itemize}
+
+\subsection{Data Word}
+
+La palabra de datos transporta 16 bits de carga util. En esta etapa del proyecto la carga se usa
+como valor de simulacion asociado a canales logicos como temperatura, velocidad o presion.
+
+\subsection{Status Word}
+
+La palabra de estado implementa campos logicos tipicos del estandar:
+
+\begin{itemize}
+    \item direccion RT,
+    \item \texttt{message error},
+    \item \texttt{service request},
+    \item \texttt{busy},
+    \item \texttt{terminal flag},
+    \item y otros bits de estado definidos en la estructura adoptada.
+\end{itemize}
+
+\section{Mensajes simulados}
+
+Uno de los avances mas importantes fue dejar de transmitir palabras aisladas con orden fijo y
+pasar a mensajes logicos con secuencia coherente respecto del protocolo.
+
+\subsection{Mensajes BC a RT}
+
+Para mensajes de recepcion por parte del terminal remoto, se implemento la siguiente secuencia:
+
+\begin{center}
+\texttt{COMMAND + N DATA + STATUS}
+\end{center}
+
+En esta secuencia el controlador de bus ordena al RT recibir datos, por lo que el master transmite
+primero el comando, luego una cantidad variable \texttt{N} de palabras de datos, y finalmente una
+palabra de estado simulada.
+
+\subsection{Mensajes RT a BC}
+
+Para mensajes donde el terminal remoto transmite informacion al controlador, se implemento la
+siguiente secuencia:
+
+\begin{center}
+\texttt{COMMAND + STATUS + N DATA}
+\end{center}
+
+De esta forma el flujo queda mas alineado con el comportamiento esperado en una simulacion logica
+1553.
+
+\subsection{Word Count variable}
+
+Se incorporo soporte para \texttt{word count} variable por canal, permitiendo mensajes con mas de
+una palabra de datos. Esto mejora la fidelidad de la simulacion respecto de una palabra unica por
+mensaje.
+
+\section{Cambios realizados en MIL-M}
+
+En el emisor se realizaron los siguientes cambios:
+
+\begin{itemize}
+    \item reemplazo del formato manual anterior por mini-tramas SPI de 7 bytes;
+    \item incorporacion del modulo \texttt{mil1553\_protocol};
+    \item construccion de palabras \texttt{COMMAND}, \texttt{DATA} y \texttt{STATUS};
+    \item implementacion de mensajes \texttt{BC->RT} y \texttt{RT->BC};
+    \item soporte para multiples palabras de datos por mensaje;
+    \item mantenimiento del envio byte a byte para preservar robustez de sincronizacion;
+    \item logs de depuracion mas ricos para observar direccion, secuencia, palabra y frame.
+\end{itemize}
+
+\subsection{Canales logicos de ejemplo}
+
+Se mantuvieron canales logicos de simulacion para hacer mas facil la observacion del trafico:
+
+\begin{itemize}
+    \item subdireccion 1: temperatura,
+    \item subdireccion 2: velocidad,
+    \item subdireccion 3: presion.
+\end{itemize}
+
+Cada canal define:
+
+\begin{itemize}
+    \item direccion del mensaje,
+    \item subdireccion,
+    \item \texttt{word count},
+    \item valor base,
+    \item incremento por ciclo.
+\end{itemize}
+
+\section{Cambios realizados en MIL-E}
+
+En el receptor se definio una politica deliberadamente simple: no decodificar semantica de alto
+nivel, sino concentrarse en transporte y validacion.
+
+\subsection{Funciones implementadas}
+
+\begin{itemize}
+    \item recepcion byte a byte sincronizada por CS;
+    \item reconstruccion de mini-trama completa;
+    \item validacion de \texttt{SYNC};
+    \item validacion de paridad impar;
+    \item validacion de \texttt{CHECKSUM};
+    \item deteccion de saltos de secuencia \texttt{SEQ};
+    \item emision de salida serial estructurada para una Raspberry host externa.
+\end{itemize}
+
+\subsection{Formato de salida serial}
+
+Se estandarizaron tres tipos de salida:
+
+\begin{itemize}
+    \item \texttt{RX\_OK|...} para palabras validas,
+    \item \texttt{RX\_ERR|...} para palabras invalidas,
+    \item \texttt{RX\_WARN|SEQ\_GAP|...} para saltos de secuencia.
+\end{itemize}
+
+Esto permite a una Raspberry externa interpretar facilmente el flujo serial sin necesidad de
+parsear mensajes ambiguos o logs orientados al operador humano.
+
+\section{Validaciones implementadas}
+
+Las validaciones agregadas forman parte de la capa de mini-tramas lógicas y no de la capa fisica
+1553. Aun asi, constituyen una base solida para desarrollo y depuracion.
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{4.3cm}|>{\raggedright\arraybackslash}p{8.7cm}|}
+\hline
+\textbf{Validacion} & \textbf{Descripcion} \\
+\hline
+\texttt{SYNC} & Verifica que el primer byte de cada mini-trama sea \texttt{0xAA}. \\
+\hline
+Paridad & Verifica la paridad impar calculada sobre la palabra de 16 bits. \\
+\hline
+\texttt{CHECKSUM} & Verifica un XOR sobre los primeros 6 bytes de la mini-trama. \\
+\hline
+\texttt{SEQ} & Verifica continuidad entre palabras consecutivas recibidas. \\
+\hline
+\end{longtable}
+
+\section{Que representa hoy el sistema}
+
+En su estado actual, el sistema ya puede considerarse una simulacion funcional de mini-tramas
+tipo MIL-STD-1553 con validacion de integridad. Esto significa que:
+
+\begin{itemize}
+    \item existe una palabra logica de comando;
+    \item existe una palabra logica de estado;
+    \item existe una palabra logica de datos;
+    \item existe una nocion de mensaje con secuencia valida;
+    \item existe validacion de transporte en recepcion.
+\end{itemize}
+
+Sin embargo, todavia no constituye una implementacion fisica del estandar. Aun faltan, entre otros:
+
+\begin{itemize}
+    \item codificacion Manchester real,
+    \item sincronismos fisicos de palabra,
+    \item temporizacion de nivel 1553,
+    \item front-end analogico de escucha 1553,
+    \item paquete host rico por palabra como el definido en el informe tecnico 2,
+    \item reconstruccion completa de mensajes en la Raspberry externa.
+\end{itemize}
+
+\section{Ventajas de la solucion desarrollada}
+
+\begin{itemize}
+    \item modularidad: el protocolo comun esta aislado del master y del slave;
+    \item claridad: los mensajes y validaciones son faciles de rastrear;
+    \item escalabilidad: la Raspberry externa podra crecer como sniffer sin recargar las Pico;
+    \item robustez: se mantuvo el envio byte a byte y se agregaron controles de integridad;
+    \item trazabilidad: la secuencia \texttt{SEQ} facilita detectar perdidas o desfasajes.
+\end{itemize}
+
+\section{Limitaciones actuales}
+
+\begin{itemize}
+    \item la trama SPI sigue siendo una abstraccion de transporte y no una palabra 1553 fisica;
+    \item el \texttt{SEQ} usa 1 byte y por lo tanto se reinicia cada 256 palabras;
+    \item el receptor no reconstruye mensajes completos, solo valida palabras individuales;
+    \item el sniffer real todavia no fue implementado en la Raspberry externa;
+    \item no se genero aun el paquete extendido con metadatos ricos para el host.
+\end{itemize}
+
+\section{Proximos pasos recomendados}
+
+\begin{enumerate}
+    \item Definir el paquete host por palabra que utilizara la Raspberry externa.
+    \item Agregar al slave el reenvio serial o SPI con campos estructurados para el host.
+    \item Implementar en la Raspberry externa la reconstruccion de mensajes completos.
+    \item Incorporar filtros por RT, subdireccion, direccion y tipo de palabra.
+    \item Dise\~nar el dashboard de monitoreo y almacenamiento persistente.
+    \item En etapas futuras, acercar la captura a una escucha fisica real de bus 1553.
+\end{enumerate}
+
+\section{Conclusion}
+
+El trabajo realizado permitio evolucionar desde un enlace SPI simple hacia una simulacion logica
+mas madura y ordenada, inspirada en MIL-STD-1553. Se mantuvo la robustez del transporte,
+se introdujeron palabras y mensajes con estructura coherente, y se separaron correctamente las
+responsabilidades entre emisor, receptor y futuro sniffer host.
+
+El resultado actual constituye una base valida para seguir avanzando hacia un monitor 1553 mas
+completo, conservando modularidad, facilidad de prueba y claridad de depuracion.
+
+\end{document}
