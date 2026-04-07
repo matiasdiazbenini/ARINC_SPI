@@ -27,24 +27,11 @@ static void send_one_byte(uint8_t b) {
     sleep_ms(2);
 }
 
-/*
- * Formato logico adoptado:
- * bits  0..7   -> LABEL
- * bits  8..9   -> SDI
- * bits 10..28  -> DATA (19 bits)
- * bits 29..30  -> SSM
- * bit   31     -> PARITY impar
- */
-
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     int ones = 0;
-
     for (int i = 0; i < 31; i++) {
-        if ((word_without_parity >> i) & 1u) {
-            ones++;
-        }
+        if ((word_without_parity >> i) & 1u) ones++;
     }
-
     return (ones % 2 == 0) ? 1 : 0;
 }
 
@@ -62,12 +49,6 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
     return word;
 }
 
-/* Conversiones logicas a RAW */
-
-/* Temperatura:
- * valor_fisico = RAW * 0.25 - 50
- * => RAW = (valor_fisico + 50) / 0.25
- */
 static uint32_t encode_temperature(float temp_c) {
     float raw = (temp_c + 50.0f) / 0.25f;
     if (raw < 0) raw = 0;
@@ -75,18 +56,12 @@ static uint32_t encode_temperature(float temp_c) {
     return (uint32_t)(raw + 0.5f);
 }
 
-/* Velocidad:
- * valor_fisico = RAW * 1.0
- */
 static uint32_t encode_speed(float speed_kt) {
     if (speed_kt < 0) speed_kt = 0;
     if (speed_kt > 0x7FFFF) speed_kt = 0x7FFFF;
     return (uint32_t)(speed_kt + 0.5f);
 }
 
-/* Altitud:
- * valor_fisico = RAW * 10 ft
- */
 static uint32_t encode_altitude(float altitude_ft) {
     float raw = altitude_ft / 10.0f;
     if (raw < 0) raw = 0;
@@ -94,10 +69,19 @@ static uint32_t encode_altitude(float altitude_ft) {
     return (uint32_t)(raw + 0.5f);
 }
 
+static const char* ssm_to_text(uint8_t ssm) {
+    switch (ssm) {
+        case 3: return "NORMAL";
+        case 1: return "NCD";
+        case 2: return "FUNCTIONAL_TEST";
+        case 0: return "FAILURE";
+        default: return "DESCONOCIDO";
+    }
+}
+
 typedef struct {
     uint8_t label;
     uint8_t sdi;
-    uint8_t ssm;
     const char *name;
 } arinc_profile_t;
 
@@ -105,8 +89,8 @@ int main() {
     stdio_init_all();
     sleep_ms(3000);
 
-    printf("MASTER - ARINC 429 logico V3\r\n");
-    printf("Con valores fisicos codificados\r\n\r\n");
+    printf("MASTER - ARINC 429 logico V4\r\n");
+    printf("Con SSM semantico\r\n\r\n");
 
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -120,9 +104,9 @@ int main() {
     cs_deselect();
 
     arinc_profile_t profiles[] = {
-        {0xA5, 0x0, 0x3, "TEMPERATURA"},
-        {0xB1, 0x1, 0x3, "VELOCIDAD"},
-        {0xC2, 0x2, 0x3, "ALTITUD"}
+        {0xA5, 0x0, "TEMPERATURA"},
+        {0xB1, 0x1, "VELOCIDAD"},
+        {0xC2, 0x2, "ALTITUD"}
     };
 
     float temp_c = 20.0f;
@@ -134,9 +118,20 @@ int main() {
 
         uint8_t label = profiles[idx].label;
         uint8_t sdi   = profiles[idx].sdi;
-        uint8_t ssm   = profiles[idx].ssm;
+        uint8_t ssm;
         uint32_t data_raw = 0;
-        const char *desc = profiles[idx].name;
+
+        /* Ciclo de estados:
+           0 -> NORMAL
+           1 -> NCD
+           2 -> FUNCTIONAL TEST
+           3 -> FAILURE
+        */
+        int ssm_cycle = (i / 3) % 4;
+        if (ssm_cycle == 0) ssm = 3;
+        else if (ssm_cycle == 1) ssm = 1;
+        else if (ssm_cycle == 2) ssm = 2;
+        else ssm = 0;
 
         if (idx == 0) {
             data_raw = encode_temperature(temp_c);
@@ -158,19 +153,19 @@ int main() {
         send_one_byte(b2);
         send_one_byte(b3);
 
-        if (idx == 0) {
-            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | TEMP: %.1f C | RAW: %lu | WORD: 0x%08lX\r\n",
-                   i + 1, label, desc, temp_c, (unsigned long)data_raw, (unsigned long)word);
-            temp_c += 1.5f;
-        } else if (idx == 1) {
-            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | SPEED: %.1f kt | RAW: %lu | WORD: 0x%08lX\r\n",
-                   i + 1, label, desc, speed_kt, (unsigned long)data_raw, (unsigned long)word);
-            speed_kt += 7.0f;
-        } else {
-            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | ALT: %.1f ft | RAW: %lu | WORD: 0x%08lX\r\n",
-                   i + 1, label, desc, altitude_ft, (unsigned long)data_raw, (unsigned long)word);
-            altitude_ft += 250.0f;
-        }
+        printf("TX %02d/60 -> LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s) | WORD: 0x%08lX\r\n",
+               i + 1,
+               label,
+               profiles[idx].name,
+               (unsigned long)data_raw,
+               sdi,
+               ssm,
+               ssm_to_text(ssm),
+               (unsigned long)word);
+
+        if (idx == 0) temp_c += 1.5f;
+        else if (idx == 1) speed_kt += 7.0f;
+        else altitude_ft += 250.0f;
 
         sleep_ms(1000);
     }
