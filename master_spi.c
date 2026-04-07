@@ -31,9 +31,9 @@ static void send_one_byte(uint8_t b) {
  * Formato logico adoptado:
  * bits  0..7   -> LABEL
  * bits  8..9   -> SDI
- * bits 10..28  -> DATA
+ * bits 10..28  -> DATA (19 bits)
  * bits 29..30  -> SSM
- * bit   31     -> PARITY (impar)
+ * bit   31     -> PARITY impar
  */
 
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
@@ -62,6 +62,38 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
     return word;
 }
 
+/* Conversiones logicas a RAW */
+
+/* Temperatura:
+ * valor_fisico = RAW * 0.25 - 50
+ * => RAW = (valor_fisico + 50) / 0.25
+ */
+static uint32_t encode_temperature(float temp_c) {
+    float raw = (temp_c + 50.0f) / 0.25f;
+    if (raw < 0) raw = 0;
+    if (raw > 0x7FFFF) raw = 0x7FFFF;
+    return (uint32_t)(raw + 0.5f);
+}
+
+/* Velocidad:
+ * valor_fisico = RAW * 1.0
+ */
+static uint32_t encode_speed(float speed_kt) {
+    if (speed_kt < 0) speed_kt = 0;
+    if (speed_kt > 0x7FFFF) speed_kt = 0x7FFFF;
+    return (uint32_t)(speed_kt + 0.5f);
+}
+
+/* Altitud:
+ * valor_fisico = RAW * 10 ft
+ */
+static uint32_t encode_altitude(float altitude_ft) {
+    float raw = altitude_ft / 10.0f;
+    if (raw < 0) raw = 0;
+    if (raw > 0x7FFFF) raw = 0x7FFFF;
+    return (uint32_t)(raw + 0.5f);
+}
+
 typedef struct {
     uint8_t label;
     uint8_t sdi;
@@ -73,8 +105,8 @@ int main() {
     stdio_init_all();
     sleep_ms(3000);
 
-    printf("MASTER - ARINC 429 logico V2\r\n");
-    printf("Alternando multiples labels\r\n\r\n");
+    printf("MASTER - ARINC 429 logico V3\r\n");
+    printf("Con valores fisicos codificados\r\n\r\n");
 
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -89,23 +121,32 @@ int main() {
 
     arinc_profile_t profiles[] = {
         {0xA5, 0x0, 0x3, "TEMPERATURA"},
-        {0xB1, 0x1, 0x2, "VELOCIDAD"},
-        {0xC2, 0x2, 0x1, "ALTITUD"}
+        {0xB1, 0x1, 0x3, "VELOCIDAD"},
+        {0xC2, 0x2, 0x3, "ALTITUD"}
     };
 
-    const int profile_count = sizeof(profiles) / sizeof(profiles[0]);
-
-    uint32_t counters[3] = {20, 150, 1000};
+    float temp_c = 20.0f;
+    float speed_kt = 120.0f;
+    float altitude_ft = 1000.0f;
 
     for (int i = 0; i < 60; i++) {
-        int idx = i % profile_count;
+        int idx = i % 3;
 
         uint8_t label = profiles[idx].label;
         uint8_t sdi   = profiles[idx].sdi;
         uint8_t ssm   = profiles[idx].ssm;
-        uint32_t data = counters[idx];
+        uint32_t data_raw = 0;
+        const char *desc = profiles[idx].name;
 
-        uint32_t word = build_arinc_word(label, sdi, data, ssm);
+        if (idx == 0) {
+            data_raw = encode_temperature(temp_c);
+        } else if (idx == 1) {
+            data_raw = encode_speed(speed_kt);
+        } else {
+            data_raw = encode_altitude(altitude_ft);
+        }
+
+        uint32_t word = build_arinc_word(label, sdi, data_raw, ssm);
 
         uint8_t b0 = (word >>  0) & 0xFF;
         uint8_t b1 = (word >>  8) & 0xFF;
@@ -117,21 +158,18 @@ int main() {
         send_one_byte(b2);
         send_one_byte(b3);
 
-        printf("TX %02d/60 -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | SDI: %u | DATA: %lu | SSM: %u\r\n",
-               i + 1,
-               (unsigned long)word,
-               label,
-               profiles[idx].name,
-               sdi,
-               (unsigned long)data,
-               ssm);
-
         if (idx == 0) {
-            counters[idx] += 1;   // temperatura
+            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | TEMP: %.1f C | RAW: %lu | WORD: 0x%08lX\r\n",
+                   i + 1, label, desc, temp_c, (unsigned long)data_raw, (unsigned long)word);
+            temp_c += 1.5f;
         } else if (idx == 1) {
-            counters[idx] += 5;   // velocidad
+            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | SPEED: %.1f kt | RAW: %lu | WORD: 0x%08lX\r\n",
+                   i + 1, label, desc, speed_kt, (unsigned long)data_raw, (unsigned long)word);
+            speed_kt += 7.0f;
         } else {
-            counters[idx] += 50;  // altitud
+            printf("TX %02d/60 -> LABEL: 0x%02X (%s) | ALT: %.1f ft | RAW: %lu | WORD: 0x%08lX\r\n",
+                   i + 1, label, desc, altitude_ft, (unsigned long)data_raw, (unsigned long)word);
+            altitude_ft += 250.0f;
         }
 
         sleep_ms(1000);
