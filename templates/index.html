@@ -2,239 +2,483 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Dashboard ARINC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard MIL-STD-1553</title>
   <style>
+    :root {
+      --bg: #edf2f7;
+      --surface: #ffffff;
+      --ink: #1a202c;
+      --muted: #64748b;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
+      --ok: #166534;
+      --ok-soft: #dcfce7;
+      --border: #dbe4ee;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
-      margin: 24px;
-      background: #f4f6fb;
-      color: #1f2937;
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background:
+        radial-gradient(circle at top left, #d8f3dc 0, transparent 26%),
+        radial-gradient(circle at top right, #bfdbfe 0, transparent 24%),
+        var(--bg);
+      color: var(--ink);
     }
-    h1 {
-      margin-bottom: 8px;
+
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
     }
+
+    .hero {
+      background: linear-gradient(135deg, #0f172a, #164e63);
+      color: white;
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #dbeafe;
+      max-width: 900px;
+      line-height: 1.5;
+    }
+
     .card {
-      background: white;
-      border-radius: 10px;
-      padding: 16px;
-      margin-top: 16px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      margin-top: 18px;
     }
-    .row {
+
+    .controls-grid,
+    .stats-grid,
+    .two-col {
+      display: grid;
+      gap: 16px;
+    }
+
+    .controls-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      align-items: end;
+    }
+
+    .stats-grid {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .two-col {
+      grid-template-columns: 1.1fr 0.9fr;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    input, select, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 11px 12px;
+      font-size: 14px;
+      background: white;
+    }
+
+    button {
+      cursor: pointer;
+      background: #f8fafc;
+      font-weight: 600;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: #eef2ff;
+    }
+
+    .actions {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 12px;
+      margin-top: 14px;
     }
-    .stats-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 16px;
+
+    .actions button {
+      width: auto;
+      min-width: 140px;
     }
+
     .stat-box {
-      background: white;
-      border-radius: 10px;
-      padding: 14px 18px;
-      min-width: 180px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
     }
-    .instrument-box {
-      background: white;
-      border-radius: 12px;
-      padding: 16px 18px;
-      min-width: 240px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+
+    .stat-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
     }
-    .stat-title, .instrument-title {
-      font-size: 13px;
-      color: #6b7280;
-      margin-bottom: 6px;
-    }
+
     .stat-value {
-      font-size: 26px;
-      font-weight: bold;
-    }
-    .instrument-value {
       font-size: 30px;
-      font-weight: bold;
-      margin-bottom: 6px;
+      font-weight: 700;
     }
-    .instrument-meta {
+
+    .ok-box {
+      background: var(--ok-soft);
+    }
+
+    .warn-box {
+      background: var(--warn-soft);
+    }
+
+    .danger-box {
+      background: var(--danger-soft);
+    }
+
+    h2, h3 {
+      margin-top: 0;
+    }
+
+    .summary-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #334155;
+      line-height: 1.6;
+    }
+
+    .status-panel {
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(135deg, #ecfeff, #f8fafc);
+      border: 1px solid var(--border);
+      min-height: 140px;
+    }
+
+    .status-title {
       font-size: 13px;
-      color: #4b5563;
-      line-height: 1.5;
+      color: var(--muted);
+      margin-bottom: 8px;
     }
-    input, select, button {
-      padding: 8px 10px;
+
+    .status-main {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .status-meta {
+      color: #334155;
+      line-height: 1.6;
       font-size: 14px;
     }
-    button {
-      cursor: pointer;
+
+    .table-wrap {
+      overflow-x: auto;
     }
-    #console {
-      background: #0b1020;
-      color: #d1fae5;
-      padding: 14px;
-      border-radius: 8px;
-      min-height: 220px;
-      white-space: pre-wrap;
-      overflow-y: auto;
-      font-family: Consolas, monospace;
-      font-size: 13px;
-    }
+
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
     }
+
     th, td {
-      border-bottom: 1px solid #e5e7eb;
-      padding: 8px;
+      border-bottom: 1px solid var(--border);
       text-align: left;
+      padding: 10px 8px;
+      vertical-align: top;
     }
+
     th {
-      background: #eef2ff;
+      background: #f8fafc;
+      color: #475569;
+      position: sticky;
+      top: 0;
     }
-    .ok {
-      color: green;
-      font-weight: bold;
+
+    .mono {
+      font-family: Consolas, monospace;
+      white-space: nowrap;
     }
-    .err {
-      color: red;
-      font-weight: bold;
+
+    .tag {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
     }
-    ul {
-      margin: 8px 0 0 18px;
-      padding: 0;
+
+    .tag-ok {
+      background: var(--ok-soft);
+      color: var(--ok);
+    }
+
+    .tag-warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .tag-err {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    #console {
+      min-height: 260px;
+      max-height: 460px;
+      overflow-y: auto;
+      border-radius: 16px;
+      padding: 16px;
+      background: #0b1220;
+      color: #dcfce7;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 980px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Dashboard ARINC 429 lógico</h1>
-  <div>Lectura serial desde la Pico sniffer y visualización estructurada.</div>
+  <div class="page">
+    <section class="hero">
+      <h1>Dashboard MIL-STD-1553 logico</h1>
+      <p>
+        Sniffer provisional sobre salida serial del esclavo MIL. La interfaz muestra frames validos e invalidos,
+        warnings, mensajes reconstruidos y una consola en tiempo real para verificar que la simulacion logica
+        este andando bien antes de migrar al host dedicado.
+      </p>
+    </section>
 
-  <div class="card">
-    <div class="row">
-      <label>Puerto:
-        <select id="port">
-          {% for p in ports %}
-            <option value="{{ p }}">{{ p }}</option>
-          {% endfor %}
-        </select>
-      </label>
+    <section class="card">
+      <div class="controls-grid">
+        <div>
+          <label for="port">Puerto</label>
+          <select id="port">
+            {% for p in ports %}
+              <option value="{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-      <label>Baudrate:
-        <input id="baudrate" type="number" value="{{ baudrate }}">
-      </label>
+        <div>
+          <label for="baudrate">Baudrate</label>
+          <input id="baudrate" type="number" value="{{ baudrate }}">
+        </div>
 
-      <label>Filtro:
-        <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TEMPERATURA o SSM_TXT: NORMAL">
-      </label>
-    </div>
+        <div>
+          <label for="filter_text">Filtro de consola/log</label>
+          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: RX_WARN, MODE_CODE, RT=3">
+        </div>
+      </div>
 
-    <div class="row">
-      <button onclick="startCapture()">Iniciar</button>
-      <button onclick="stopCapture()">Detener</button>
-      <button onclick="clearConsole()">Limpiar</button>
-      <button onclick="refreshPorts()">Actualizar puertos</button>
-    </div>
-  </div>
+      <div class="actions">
+        <button onclick="startCapture()">Iniciar captura</button>
+        <button onclick="stopCapture()">Detener captura</button>
+        <button onclick="clearConsole()">Limpiar buffers</button>
+        <button onclick="refreshPorts()">Actualizar puertos</button>
+      </div>
+    </section>
 
-  <div class="stats-row">
-    <div class="stat-box">
-      <div class="stat-title">Tramas capturadas</div>
-      <div class="stat-value" id="stat-total">0</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-title">Parity OK</div>
-      <div class="stat-value ok" id="stat-ok">0</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-title">Parity ERROR</div>
-      <div class="stat-value err" id="stat-err">0</div>
-    </div>
-  </div>
+    <section class="stats-grid">
+      <div class="stat-box ok-box">
+        <div class="stat-title">Frames validos</div>
+        <div class="stat-value" id="stat-valid">0</div>
+      </div>
+      <div class="stat-box danger-box">
+        <div class="stat-title">Frames invalidos</div>
+        <div class="stat-value" id="stat-invalid">0</div>
+      </div>
+      <div class="stat-box warn-box">
+        <div class="stat-title">Warnings</div>
+        <div class="stat-value" id="stat-warnings">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">Mensajes completos</div>
+        <div class="stat-value" id="stat-messages">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">Mensajes pendientes</div>
+        <div class="stat-value" id="stat-pending">0</div>
+      </div>
+    </section>
 
-  <div class="stats-row">
-    <div class="instrument-box">
-      <div class="instrument-title">Temperatura actual</div>
-      <div class="instrument-value" id="temp-value">--</div>
-      <div class="instrument-meta" id="temp-meta">Sin datos</div>
-    </div>
+    <section class="two-col">
+      <div class="card">
+        <h3>Resumen por tipo de palabra</h3>
+        <ul class="summary-list" id="summary-type"></ul>
+      </div>
+      <div class="card">
+        <h3>Resumen por direccion / resultado</h3>
+        <ul class="summary-list" id="summary-dir"></ul>
+        <ul class="summary-list" id="summary-result" style="margin-top: 12px;"></ul>
+      </div>
+    </section>
 
-    <div class="instrument-box">
-      <div class="instrument-title">Velocidad actual</div>
-      <div class="instrument-value" id="speed-value">--</div>
-      <div class="instrument-meta" id="speed-meta">Sin datos</div>
-    </div>
+    <section class="two-col">
+      <div class="card">
+        <h3>Estado mas reciente del RT</h3>
+        <div class="status-panel">
+          <div class="status-title">Ultima palabra STATUS observada</div>
+          <div class="status-main" id="status-main">Sin datos</div>
+          <div class="status-meta" id="status-meta">Todavia no llego ninguna palabra STATUS.</div>
+        </div>
+      </div>
 
-    <div class="instrument-box">
-      <div class="instrument-title">Altitud actual</div>
-      <div class="instrument-value" id="alt-value">--</div>
-      <div class="instrument-meta" id="alt-meta">Sin datos</div>
-    </div>
-  </div>
+      <div class="card">
+        <h3>Warnings recientes</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Warning</th>
+                <th>Msg ID</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="warnings-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
-  <div class="card">
-    <h3>Resumen por Label</h3>
-    <ul id="label-summary"></ul>
-  </div>
+    <section class="card">
+      <h3>Mensajes MIL reconstruidos</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Msg ID</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Dir</th>
+              <th>RT</th>
+              <th>SA</th>
+              <th>Broadcast</th>
+              <th>Mode Code</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>Resultado</th>
+              <th>Warnings</th>
+            </tr>
+          </thead>
+          <tbody id="messages-body"></tbody>
+        </table>
+      </div>
+    </section>
 
-  <div class="card">
-    <h3>Resumen por SSM</h3>
-    <ul id="ssm-summary"></ul>
-  </div>
+    <section class="card">
+      <h3>Frames recientes</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Evento</th>
+              <th>Tipo</th>
+              <th>Word</th>
+              <th>Parity</th>
+              <th>Seq</th>
+              <th>Errores</th>
+              <th>Frame</th>
+            </tr>
+          </thead>
+          <tbody id="frames-body"></tbody>
+        </table>
+      </div>
+    </section>
 
-  <div class="card">
-    <h3>Tabla ARINC</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Hora</th>
-          <th>Label</th>
-          <th>Nombre</th>
-          <th>RAW</th>
-          <th>Valor</th>
-          <th>Unidad</th>
-          <th>SDI</th>
-          <th>SSM</th>
-          <th>SSM TXT</th>
-          <th>Parity</th>
-        </tr>
-      </thead>
-      <tbody id="records-body"></tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h3>Consola</h3>
-    <div id="console"></div>
+    <section class="card">
+      <h3>Consola serial</h3>
+      <div id="console"></div>
+    </section>
   </div>
 
   <script>
     const consoleDiv = document.getElementById("console");
-    const recordsBody = document.getElementById("records-body");
+    const framesBody = document.getElementById("frames-body");
+    const messagesBody = document.getElementById("messages-body");
+    const warningsBody = document.getElementById("warnings-body");
 
-    function setInstrument(prefix, rec) {
-      const valueEl = document.getElementById(`${prefix}-value`);
-      const metaEl = document.getElementById(`${prefix}-meta`);
+    function tagClass(value) {
+      if (value === "OK") return "tag tag-ok";
+      if (value === "WARN") return "tag tag-warn";
+      return "tag tag-err";
+    }
 
-      if (!rec) {
-        valueEl.textContent = "--";
-        metaEl.textContent = "Sin datos";
+    function updateSummaryList(elementId, entries, emptyText) {
+      const target = document.getElementById(elementId);
+      target.innerHTML = "";
+
+      const items = Object.entries(entries || {});
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.textContent = emptyText;
+        target.appendChild(li);
         return;
       }
 
-      valueEl.textContent = `${rec.value} ${rec.unit}`;
-      metaEl.textContent = `Label ${rec.label} | ${rec.ssm_txt} | Parity ${rec.parity} | ${rec.timestamp}`;
-      valueEl.className = `instrument-value ${rec.parity === 'OK' ? 'ok' : 'err'}`;
+      for (const [key, value] of items) {
+        const li = document.createElement("li");
+        li.textContent = `${key}: ${value}`;
+        target.appendChild(li);
+      }
+    }
+
+    function setLatestStatus(status) {
+      const main = document.getElementById("status-main");
+      const meta = document.getElementById("status-meta");
+
+      if (!status || !status.msg_id) {
+        main.textContent = "Sin datos";
+        meta.textContent = "Todavia no llego ninguna palabra STATUS.";
+        return;
+      }
+
+      main.textContent = `RT ${status.rt} | ${status.dir} | Msg ${status.msg_id}`;
+      meta.textContent =
+        `SR=${status.sr} | BUSY=${status.busy} | TF=${status.tf} | BCR=${status.bcr} | ${status.timestamp}`;
     }
 
     async function refreshConsole() {
       try {
-        const r = await fetch("/lines");
-        const data = await r.json();
+        const response = await fetch("/lines");
+        const data = await response.json();
         consoleDiv.textContent = data.text;
         consoleDiv.scrollTop = consoleDiv.scrollHeight;
       } catch (err) {
@@ -242,30 +486,88 @@
       }
     }
 
-    async function refreshRecords() {
+    async function refreshFrames() {
       try {
-        const r = await fetch("/records");
-        const data = await r.json();
+        const response = await fetch("/frames");
+        const data = await response.json();
+        framesBody.innerHTML = "";
 
-        recordsBody.innerHTML = "";
-
-        for (const rec of data.records.slice().reverse()) {
+        for (const frame of data.frames.slice().reverse()) {
           const tr = document.createElement("tr");
+          const eventClass = frame.event === "RX_OK" ? "tag tag-ok" : "tag tag-err";
 
           tr.innerHTML = `
-            <td>${rec.timestamp}</td>
-            <td>${rec.label}</td>
-            <td>${rec.name}</td>
-            <td>${rec.raw}</td>
-            <td>${rec.value}</td>
-            <td>${rec.unit}</td>
-            <td>${rec.sdi}</td>
-            <td>${rec.ssm}</td>
-            <td>${rec.ssm_txt}</td>
-            <td class="${rec.parity === 'OK' ? 'ok' : 'err'}">${rec.parity}</td>
+            <td>${frame.timestamp}</td>
+            <td><span class="${eventClass}">${frame.event}</span></td>
+            <td>${frame.type_name || "-"}</td>
+            <td class="mono">${frame.word}</td>
+            <td>${frame.parity}</td>
+            <td>${frame.seq}</td>
+            <td>${frame.errors || "-"}</td>
+            <td class="mono">${frame.frame}</td>
           `;
 
-          recordsBody.appendChild(tr);
+          framesBody.appendChild(tr);
+        }
+      } catch (err) {
+      }
+    }
+
+    async function refreshMessages() {
+      try {
+        const response = await fetch("/messages");
+        const data = await response.json();
+        messagesBody.innerHTML = "";
+
+        for (const msg of data.messages.slice().reverse()) {
+          const tr = document.createElement("tr");
+          const warnings = (msg.warnings || []).join(", ");
+
+          tr.innerHTML = `
+            <td>${msg.msg_id}</td>
+            <td>${msg.timestamp_start}</td>
+            <td>${msg.timestamp_end}</td>
+            <td>${msg.dir}</td>
+            <td>${msg.rt}</td>
+            <td>${msg.sa}</td>
+            <td>${msg.broadcast}</td>
+            <td>${msg.mode_code === "1" ? msg.mode_value : "-"}</td>
+            <td>${msg.data_seen}/${msg.data_expected}</td>
+            <td>${msg.status_seen}</td>
+            <td><span class="${tagClass(msg.result)}">${msg.result}</span></td>
+            <td>${warnings || "-"}</td>
+          `;
+
+          messagesBody.appendChild(tr);
+        }
+      } catch (err) {
+      }
+    }
+
+    async function refreshWarnings() {
+      try {
+        const response = await fetch("/warnings");
+        const data = await response.json();
+        warningsBody.innerHTML = "";
+
+        for (const warning of data.warnings.slice().reverse()) {
+          const tr = document.createElement("tr");
+          const detail = [
+            warning.dir ? `DIR=${warning.dir}` : "",
+            warning.rt ? `RT=${warning.rt}` : "",
+            warning.sa ? `SA=${warning.sa}` : "",
+            warning.expected ? `EXPECTED=${warning.expected}` : "",
+            warning.received ? `RECEIVED=${warning.received}` : ""
+          ].filter(Boolean).join(" | ");
+
+          tr.innerHTML = `
+            <td>${warning.timestamp}</td>
+            <td><span class="tag tag-warn">${warning.warning}</span></td>
+            <td>${warning.msg_id || "-"}</td>
+            <td>${detail || "-"}</td>
+          `;
+
+          warningsBody.appendChild(tr);
         }
       } catch (err) {
       }
@@ -273,34 +575,20 @@
 
     async function refreshStats() {
       try {
-        const r = await fetch("/stats");
-        const data = await r.json();
+        const response = await fetch("/stats");
+        const data = await response.json();
 
-        document.getElementById("stat-total").textContent = data.total;
-        document.getElementById("stat-ok").textContent = data.parity_ok;
-        document.getElementById("stat-err").textContent = data.parity_error;
+        document.getElementById("stat-valid").textContent = data.valid_frames;
+        document.getElementById("stat-invalid").textContent = data.invalid_frames;
+        document.getElementById("stat-warnings").textContent = data.warnings;
+        document.getElementById("stat-messages").textContent = data.completed_messages;
+        document.getElementById("stat-pending").textContent = data.pending_messages;
 
-        const labelSummary = document.getElementById("label-summary");
-        labelSummary.innerHTML = "";
-        for (const [label, count] of Object.entries(data.by_label)) {
-          const li = document.createElement("li");
-          li.textContent = `${label}: ${count}`;
-          labelSummary.appendChild(li);
-        }
+        updateSummaryList("summary-type", data.by_type, "Sin frames validos todavia.");
+        updateSummaryList("summary-dir", data.by_dir, "Sin mensajes completos todavia.");
+        updateSummaryList("summary-result", data.by_result, "Sin resultados todavia.");
 
-        const ssmSummary = document.getElementById("ssm-summary");
-        ssmSummary.innerHTML = "";
-        for (const [ssm, count] of Object.entries(data.by_ssm)) {
-          const li = document.createElement("li");
-          li.textContent = `${ssm}: ${count}`;
-          ssmSummary.appendChild(li);
-        }
-
-        const latest = data.latest_by_name || {};
-        setInstrument("temp", latest["TEMPERATURA"]);
-        setInstrument("speed", latest["VELOCIDAD"]);
-        setInstrument("alt", latest["ALTITUD"]);
-
+        setLatestStatus(data.latest_status);
       } catch (err) {
       }
     }
@@ -311,51 +599,54 @@
       form.append("baudrate", document.getElementById("baudrate").value);
       form.append("filter_text", document.getElementById("filter_text").value);
 
-      const r = await fetch("/start", {
+      const response = await fetch("/start", {
         method: "POST",
         body: form
       });
-      const data = await r.json();
+      const data = await response.json();
       alert(data.msg);
     }
 
     async function stopCapture() {
-      const r = await fetch("/stop", { method: "POST" });
-      const data = await r.json();
+      const response = await fetch("/stop", { method: "POST" });
+      const data = await response.json();
       alert(data.msg);
     }
 
     async function clearConsole() {
       await fetch("/clear", { method: "POST" });
       refreshConsole();
-      refreshRecords();
+      refreshFrames();
+      refreshMessages();
+      refreshWarnings();
       refreshStats();
     }
 
     async function refreshPorts() {
-      const r = await fetch("/ports");
-      const data = await r.json();
+      const response = await fetch("/ports");
+      const data = await response.json();
 
-      const sel = document.getElementById("port");
-      sel.innerHTML = "";
+      const select = document.getElementById("port");
+      select.innerHTML = "";
 
-      for (const p of data.ports) {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        sel.appendChild(opt);
+      for (const port of data.ports) {
+        const option = document.createElement("option");
+        option.value = port;
+        option.textContent = port;
+        select.appendChild(option);
       }
     }
 
-    setInterval(() => {
+    function refreshAll() {
       refreshConsole();
-      refreshRecords();
+      refreshFrames();
+      refreshMessages();
+      refreshWarnings();
       refreshStats();
-    }, 500);
+    }
 
-    refreshConsole();
-    refreshRecords();
-    refreshStats();
+    setInterval(refreshAll, 500);
+    refreshAll();
   </script>
 </body>
 </html>
