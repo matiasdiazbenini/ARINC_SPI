@@ -2,29 +2,29 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Dashboard Sniffer</title>
+  <title>Dashboard ARINC</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 24px;
-      background: #f5f7fb;
+      background: #f4f6fb;
       color: #1f2937;
     }
     h1 {
       margin-bottom: 8px;
     }
-    .row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
-    }
     .card {
       background: white;
       border-radius: 10px;
       padding: 16px;
+      margin-top: 16px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-      max-width: 1000px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
     }
     input, select, button {
       padding: 8px 10px;
@@ -38,28 +38,45 @@
       color: #d1fae5;
       padding: 14px;
       border-radius: 8px;
-      min-height: 420px;
+      min-height: 220px;
       white-space: pre-wrap;
       overflow-y: auto;
       font-family: Consolas, monospace;
       font-size: 13px;
     }
-    .small {
-      color: #6b7280;
-      font-size: 13px;
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #eef2ff;
+    }
+    .ok {
+      color: green;
+      font-weight: bold;
+    }
+    .err {
+      color: red;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h1>Dashboard Sniffer</h1>
-  <div class="small">Lee el puerto serie de la Pico y muestra los datos en tiempo real.</div>
+  <h1>Dashboard ARINC 429 lógico</h1>
+  <div>Lectura serial desde la Pico sniffer y visualización estructurada.</div>
 
-  <div class="card" style="margin-top:16px;">
+  <div class="card">
     <div class="row">
       <label>Puerto:
         <select id="port">
           {% for p in ports %}
-            <option value="{{ p }}" {% if p == selected_port %}selected{% endif %}>{{ p }}</option>
+            <option value="{{ p }}">{{ p }}</option>
           {% endfor %}
         </select>
       </label>
@@ -68,25 +85,48 @@
         <input id="baudrate" type="number" value="{{ baudrate }}">
       </label>
 
-      <label>Filtro de texto:
-        <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TYPE: 0x02">
+      <label>Filtro:
+        <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TEMPERATURA o SSM_TXT: NORMAL">
       </label>
     </div>
 
     <div class="row">
       <button onclick="startCapture()">Iniciar</button>
       <button onclick="stopCapture()">Detener</button>
-      <button onclick="clearConsole()">Limpiar consola</button>
+      <button onclick="clearConsole()">Limpiar</button>
       <button onclick="refreshPorts()">Actualizar puertos</button>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
+  <div class="card">
+    <h3>Tabla ARINC</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Hora</th>
+          <th>Label</th>
+          <th>Nombre</th>
+          <th>RAW</th>
+          <th>Valor</th>
+          <th>Unidad</th>
+          <th>SDI</th>
+          <th>SSM</th>
+          <th>SSM TXT</th>
+          <th>Parity</th>
+        </tr>
+      </thead>
+      <tbody id="records-body"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Consola</h3>
     <div id="console"></div>
   </div>
 
   <script>
     const consoleDiv = document.getElementById("console");
+    const recordsBody = document.getElementById("records-body");
 
     async function refreshConsole() {
       try {
@@ -96,6 +136,35 @@
         consoleDiv.scrollTop = consoleDiv.scrollHeight;
       } catch (err) {
         consoleDiv.textContent += "\n[ERROR] No se pudo actualizar la consola";
+      }
+    }
+
+    async function refreshRecords() {
+      try {
+        const r = await fetch("/records");
+        const data = await r.json();
+
+        recordsBody.innerHTML = "";
+
+        for (const rec of data.records.slice().reverse()) {
+          const tr = document.createElement("tr");
+
+          tr.innerHTML = `
+            <td>${rec.timestamp}</td>
+            <td>${rec.label}</td>
+            <td>${rec.name}</td>
+            <td>${rec.raw}</td>
+            <td>${rec.value}</td>
+            <td>${rec.unit}</td>
+            <td>${rec.sdi}</td>
+            <td>${rec.ssm}</td>
+            <td>${rec.ssm_txt}</td>
+            <td class="${rec.parity === 'OK' ? 'ok' : 'err'}">${rec.parity}</td>
+          `;
+
+          recordsBody.appendChild(tr);
+        }
+      } catch (err) {
       }
     }
 
@@ -121,14 +190,32 @@
 
     async function clearConsole() {
       await fetch("/clear", { method: "POST" });
+      refreshConsole();
+      refreshRecords();
     }
 
     async function refreshPorts() {
-      location.reload();
+      const r = await fetch("/ports");
+      const data = await r.json();
+
+      const sel = document.getElementById("port");
+      sel.innerHTML = "";
+
+      for (const p of data.ports) {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      }
     }
 
-    setInterval(refreshConsole, 500);
+    setInterval(() => {
+      refreshConsole();
+      refreshRecords();
+    }, 500);
+
     refreshConsole();
+    refreshRecords();
   </script>
 </body>
 </html>

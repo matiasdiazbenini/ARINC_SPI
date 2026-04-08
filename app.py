@@ -1,18 +1,20 @@
-import os
+import re
 import time
 import threading
 from collections import deque
 
-from flask import Flask, Response, render_template, request, jsonify
+from flask import Flask, jsonify, render_template, request
 import serial
 import serial.tools.list_ports
 
 app = Flask(__name__)
 
-# Buffer en memoria para mostrar ultimas lineas
-latest_lines = deque(maxlen=200)
+latest_lines = deque(maxlen=300)
+latest_records = deque(maxlen=100)
 
-# Estado global simple
+serial_thread = None
+serial_stop = threading.Event()
+
 state = {
     "running": False,
     "port": None,
@@ -21,18 +23,14 @@ state = {
     "log_file": "data_log.txt",
 }
 
-serial_thread = None
-serial_stop = threading.Event()
+
+def append_line(text: str):
+    timestamp = time.strftime("%H:%M:%S")
+    latest_lines.append(f"[{timestamp}] {text}")
 
 
 def list_serial_ports():
-    """Devuelve una lista de puertos serie disponibles."""
     return [p.device for p in serial.tools.list_ports.comports()]
-
-
-def append_line(line: str):
-    """Agrega linea al buffer en memoria."""
-    latest_lines.append(line)
 
 
 def should_store(line: str, filter_text: str) -> bool:
@@ -41,9 +39,42 @@ def should_store(line: str, filter_text: str) -> bool:
     return filter_text.lower() in line.lower()
 
 
+def parse_match_line(line: str):
+    """
+    Parsea lineas del slave tipo:
+    MATCH -> LABEL: 0xA5 (TEMPERATURA) | RAW: 280 | VAL: 20.0 C | SDI: 0 | SSM: 3 | SSM_TXT: NORMAL | PARITY: OK
+    """
+    pattern = (
+        r"LABEL:\s*(0x[0-9A-Fa-f]+)\s*\(([^)]+)\)\s*\|\s*"
+        r"RAW:\s*([0-9]+)\s*\|\s*"
+        r"VAL:\s*([\-0-9.]+)\s*([A-Za-z]+)\s*\|\s*"
+        r"SDI:\s*([0-9]+)\s*\|\s*"
+        r"SSM:\s*([0-9]+)\s*\|\s*"
+        r"SSM_TXT:\s*([A-Z_]+)\s*\|\s*"
+        r"PARITY:\s*(OK|ERROR)"
+    )
+
+    m = re.search(pattern, line)
+    if not m:
+        return None
+
+    return {
+        "label": m.group(1),
+        "name": m.group(2),
+        "raw": m.group(3),
+        "value": m.group(4),
+        "unit": m.group(5),
+        "sdi": m.group(6),
+        "ssm": m.group(7),
+        "ssm_txt": m.group(8),
+        "parity": m.group(9),
+    }
+
+
 def serial_worker(port: str, baudrate: int, filter_text: str):
     try:
         append_line(f"[INFO] Intentando abrir {port} @ {baudrate}")
+
         with serial.Serial(port, baudrate=baudrate, timeout=1) as ser:
             append_line(f"[INFO] Conectado a {port} @ {baudrate}")
 
@@ -56,15 +87,26 @@ def serial_worker(port: str, baudrate: int, filter_text: str):
                 if not line:
                     continue
 
-                timestamp = time.strftime("%H:%M:%S")
-                formatted = f"[{timestamp}] {line}"
+                formatted = line
 
-                if line.startswith("[INFO]") or line.startswith("[ERROR]") or should_store(formatted, filter_text):
+                visible = (
+                    line.startswith("[INFO]")
+                    or line.startswith("[ERROR]")
+                    or should_store(formatted, filter_text)
+                )
+
+                if visible:
                     append_line(formatted)
 
                 if should_store(formatted, filter_text):
                     with open(state["log_file"], "a", encoding="utf-8") as f:
                         f.write(formatted + "\n")
+
+                if line.startswith("MATCH ->"):
+                    record = parse_match_line(line)
+                    if record and should_store(line, filter_text):
+                        record["timestamp"] = time.strftime("%H:%M:%S")
+                        latest_records.append(record)
 
     except Exception as e:
         append_line(f"[ERROR] No se pudo abrir/leer {port}: {e}")
@@ -78,8 +120,6 @@ def index():
     return render_template(
         "index.html",
         ports=list_serial_ports(),
-        running=state["running"],
-        selected_port=state["port"],
         baudrate=state["baudrate"],
         filter_text=state["filter_text"],
     )
@@ -106,6 +146,7 @@ def start():
     state["filter_text"] = filter_text
 
     latest_lines.clear()
+    latest_records.clear()
     append_line("[INFO] Iniciando captura...")
 
     serial_thread = threading.Thread(
@@ -120,41 +161,27 @@ def start():
 
 @app.route("/stop", methods=["POST"])
 def stop():
-    if state["running"]:
-        serial_stop.set()
-        time.sleep(0.3)
+    serial_stop.set()
+    append_line("[INFO] Deteniendo captura...")
     return jsonify({"ok": True, "msg": "Captura detenida"})
-
-@app.route("/lines")
-def lines():
-    return jsonify({"text": "\n".join(latest_lines)})
-
-#@app.route("/stream")
-#def stream():
-    def generate():
-        last_payload = ""
-        while True:
-            payload = "\n".join(latest_lines)
-
-            if payload != last_payload:
-                sse_message = ""
-                for line in payload.splitlines():
-                    sse_message += f"data: {line}\n"
-                sse_message += "\n"
-
-                yield sse_message
-                last_payload = payload
-
-            time.sleep(0.2)
-
-    return Response(generate(), mimetype="text/event-stream")
 
 
 @app.route("/clear", methods=["POST"])
 def clear():
     latest_lines.clear()
+    latest_records.clear()
     append_line("[INFO] Consola limpiada")
     return jsonify({"ok": True})
+
+
+@app.route("/lines")
+def lines():
+    return jsonify({"text": "\n".join(latest_lines)})
+
+
+@app.route("/records")
+def records():
+    return jsonify({"records": list(latest_records)})
 
 
 @app.route("/ports")
@@ -163,8 +190,7 @@ def ports():
 
 
 if __name__ == "__main__":
-    if not os.path.exists(state["log_file"]):
-        with open(state["log_file"], "w", encoding="utf-8") as f:
-            f.write("=== Captura serial ===\n")
+    with open(state["log_file"], "a", encoding="utf-8") as f:
+        pass
 
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    app.run(debug=True, host="127.0.0.1", port=5000, threaded=True)
