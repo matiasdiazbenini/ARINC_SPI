@@ -99,6 +99,7 @@ static void print_invalid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
     }
 
     printf("\r\n");
+    fflush(stdout);
 }
 
 static void print_sequence_gap(uint8_t expected_seq,
@@ -106,6 +107,7 @@ static void print_sequence_gap(uint8_t expected_seq,
     printf("RX_WARN|SEQ_GAP|EXPECTED=%u|RECEIVED=%u\r\n",
            expected_seq,
            received_seq);
+    fflush(stdout);
 }
 
 static void reset_message_context(message_context_t *context) {
@@ -140,6 +142,7 @@ static void print_message_warning(const message_context_t *context,
     }
 
     printf("\r\n");
+    fflush(stdout);
 }
 
 static void mark_message_warning(message_context_t *context) {
@@ -176,6 +179,7 @@ static void start_message_context(message_context_t *context,
            context->is_mode_code ? 1 : 0,
            context->mode_code,
            context->expected_data_words);
+    fflush(stdout);
 }
 
 static bool message_is_complete(const message_context_t *context) {
@@ -220,6 +224,7 @@ static void finalize_message_context(message_context_t *context,
            context->seen_data_words,
            context->expected_data_words,
            context->status_seen ? 1 : 0);
+    fflush(stdout);
 
     context->completed_messages++;
 
@@ -250,6 +255,7 @@ static void handle_status_word(uint16_t word,
 
     if (!context || !context->active) {
         printf("RX_WARN|WARNING=ORPHAN_STATUS|RT=%u\r\n", status.rt_address);
+        fflush(stdout);
         return;
     }
 
@@ -278,6 +284,7 @@ static void handle_status_word(uint16_t word,
            status.busy ? 1 : 0,
            status.terminal_flag ? 1 : 0,
            status.broadcast_received ? 1 : 0);
+    fflush(stdout);
 
     if (message_is_complete(context)) {
         finalize_message_context(context, false, "OK");
@@ -287,6 +294,7 @@ static void handle_status_word(uint16_t word,
 static void handle_data_word(message_context_t *context) {
     if (!context || !context->active) {
         printf("RX_WARN|WARNING=ORPHAN_DATA\r\n");
+        fflush(stdout);
         return;
     }
 
@@ -307,6 +315,7 @@ static void handle_data_word(message_context_t *context) {
            (unsigned long)context->message_id,
            context->seen_data_words,
            context->expected_data_words);
+    fflush(stdout);
 
     if (message_is_complete(context)) {
         finalize_message_context(context, false, "OK");
@@ -342,6 +351,7 @@ static void print_valid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
            frame[5]);
     print_hex_frame(frame);
     printf("\r\n");
+    fflush(stdout);
 
     switch (type) {
         case MIL1553_WORD_COMMAND:
@@ -355,6 +365,7 @@ static void print_valid_frame(const uint8_t frame[MIL1553_SPI_FRAME_SIZE],
             break;
         default:
             printf("RX_WARN|WARNING=UNKNOWN_TYPE|TYPE=0x%02X\r\n", frame[1]);
+            fflush(stdout);
             break;
     }
 }
@@ -363,10 +374,11 @@ int main() {
     stdio_init_all();
     sleep_ms(4000);
 
-    printf("RECEPTOR MIL-STD-1553 SOBRE SPI\r\n");
-    printf("Modo: transporte y validacion minima\r\n");
-    printf("Trama SPI: [SYNC][TYPE][WORD_MSB][WORD_LSB][PARITY][SEQ][CHECKSUM]\r\n");
-    printf("Salida serial estructurada para una Raspberry externa con sniffer/dashboard\r\n\r\n");
+    printf("[INFO] RECEPTOR MIL-STD-1553 SOBRE SPI\r\n");
+    printf("[INFO] Modo: transporte y validacion minima\r\n");
+    printf("[INFO] Trama SPI: [SYNC][TYPE][WORD_MSB][WORD_LSB][PARITY][SEQ][CHECKSUM]\r\n");
+    printf("[INFO] Salida serial estructurada para Flask o Raspberry externa\r\n\r\n");
+    fflush(stdout);
 
     spi_init(SPI_PORT, 100 * 1000);
     spi_set_slave(SPI_PORT, true);
