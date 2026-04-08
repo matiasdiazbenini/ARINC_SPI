@@ -39,7 +39,14 @@
       min-width: 180px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     }
-    .stat-title {
+    .instrument-box {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 18px;
+      min-width: 240px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .stat-title, .instrument-title {
       font-size: 13px;
       color: #6b7280;
       margin-bottom: 6px;
@@ -47,6 +54,16 @@
     .stat-value {
       font-size: 26px;
       font-weight: bold;
+    }
+    .instrument-value {
+      font-size: 30px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .instrument-meta {
+      font-size: 13px;
+      color: #4b5563;
+      line-height: 1.5;
     }
     input, select, button {
       padding: 8px 10px;
@@ -139,6 +156,26 @@
     </div>
   </div>
 
+  <div class="stats-row">
+    <div class="instrument-box">
+      <div class="instrument-title">Temperatura actual</div>
+      <div class="instrument-value" id="temp-value">--</div>
+      <div class="instrument-meta" id="temp-meta">Sin datos</div>
+    </div>
+
+    <div class="instrument-box">
+      <div class="instrument-title">Velocidad actual</div>
+      <div class="instrument-value" id="speed-value">--</div>
+      <div class="instrument-meta" id="speed-meta">Sin datos</div>
+    </div>
+
+    <div class="instrument-box">
+      <div class="instrument-title">Altitud actual</div>
+      <div class="instrument-value" id="alt-value">--</div>
+      <div class="instrument-meta" id="alt-meta">Sin datos</div>
+    </div>
+  </div>
+
   <div class="card">
     <h3>Resumen por Label</h3>
     <ul id="label-summary"></ul>
@@ -178,6 +215,21 @@
   <script>
     const consoleDiv = document.getElementById("console");
     const recordsBody = document.getElementById("records-body");
+
+    function setInstrument(prefix, rec) {
+      const valueEl = document.getElementById(`${prefix}-value`);
+      const metaEl = document.getElementById(`${prefix}-meta`);
+
+      if (!rec) {
+        valueEl.textContent = "--";
+        metaEl.textContent = "Sin datos";
+        return;
+      }
+
+      valueEl.textContent = `${rec.value} ${rec.unit}`;
+      metaEl.textContent = `Label ${rec.label} | ${rec.ssm_txt} | Parity ${rec.parity} | ${rec.timestamp}`;
+      valueEl.className = `instrument-value ${rec.parity === 'OK' ? 'ok' : 'err'}`;
+    }
 
     async function refreshConsole() {
       try {
@@ -243,6 +295,12 @@
           li.textContent = `${ssm}: ${count}`;
           ssmSummary.appendChild(li);
         }
+
+        const latest = data.latest_by_name || {};
+        setInstrument("temp", latest["TEMPERATURA"]);
+        setInstrument("speed", latest["VELOCIDAD"]);
+        setInstrument("alt", latest["ALTITUD"]);
+
       } catch (err) {
       }
     }

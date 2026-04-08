@@ -36,7 +36,12 @@ def list_serial_ports():
 def should_store(line: str, filter_text: str) -> bool:
     if not filter_text:
         return True
-    return filter_text.lower() in line.lower()
+
+    # separar por coma
+    terms = [t.strip().lower() for t in filter_text.split(",") if t.strip()]
+
+    # OR lógico: si alguno coincide, pasa
+    return any(term in line.lower() for term in terms)
 
 
 def parse_match_line(line: str):
@@ -187,6 +192,8 @@ def stats():
     parity_ok = 0
     parity_error = 0
 
+    latest_by_name = {}
+
     for r in records:
         label_key = f"{r['label']} ({r['name']})"
         by_label[label_key] += 1
@@ -197,12 +204,22 @@ def stats():
         else:
             parity_error += 1
 
+        latest_by_name[r["name"]] = {
+            "timestamp": r["timestamp"],
+            "label": r["label"],
+            "value": r["value"],
+            "unit": r["unit"],
+            "ssm_txt": r["ssm_txt"],
+            "parity": r["parity"],
+        }
+
     return jsonify({
         "total": len(records),
         "parity_ok": parity_ok,
         "parity_error": parity_error,
         "by_label": dict(by_label),
         "by_ssm": dict(by_ssm),
+        "latest_by_name": latest_by_name,
     })
 
 
