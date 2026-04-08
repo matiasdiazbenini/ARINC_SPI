@@ -1,7 +1,7 @@
 import re
 import time
 import threading
-from collections import deque
+from collections import deque, Counter
 
 from flask import Flask, jsonify, render_template, request
 import serial
@@ -40,10 +40,6 @@ def should_store(line: str, filter_text: str) -> bool:
 
 
 def parse_match_line(line: str):
-    """
-    Parsea lineas del slave tipo:
-    MATCH -> LABEL: 0xA5 (TEMPERATURA) | RAW: 280 | VAL: 20.0 C | SDI: 0 | SSM: 3 | SSM_TXT: NORMAL | PARITY: OK
-    """
     pattern = (
         r"LABEL:\s*(0x[0-9A-Fa-f]+)\s*\(([^)]+)\)\s*\|\s*"
         r"RAW:\s*([0-9]+)\s*\|\s*"
@@ -87,20 +83,18 @@ def serial_worker(port: str, baudrate: int, filter_text: str):
                 if not line:
                     continue
 
-                formatted = line
-
                 visible = (
                     line.startswith("[INFO]")
                     or line.startswith("[ERROR]")
-                    or should_store(formatted, filter_text)
+                    or should_store(line, filter_text)
                 )
 
                 if visible:
-                    append_line(formatted)
+                    append_line(line)
 
-                if should_store(formatted, filter_text):
+                if should_store(line, filter_text):
                     with open(state["log_file"], "a", encoding="utf-8") as f:
-                        f.write(formatted + "\n")
+                        f.write(line + "\n")
 
                 if line.startswith("MATCH ->"):
                     record = parse_match_line(line)
@@ -184,13 +178,41 @@ def records():
     return jsonify({"records": list(latest_records)})
 
 
+@app.route("/stats")
+def stats():
+    records = list(latest_records)
+
+    by_label = Counter()
+    by_ssm = Counter()
+    parity_ok = 0
+    parity_error = 0
+
+    for r in records:
+        label_key = f"{r['label']} ({r['name']})"
+        by_label[label_key] += 1
+        by_ssm[r["ssm_txt"]] += 1
+
+        if r["parity"] == "OK":
+            parity_ok += 1
+        else:
+            parity_error += 1
+
+    return jsonify({
+        "total": len(records),
+        "parity_ok": parity_ok,
+        "parity_error": parity_error,
+        "by_label": dict(by_label),
+        "by_ssm": dict(by_ssm),
+    })
+
+
 @app.route("/ports")
 def ports():
     return jsonify({"ports": list_serial_ports()})
 
 
 if __name__ == "__main__":
-    with open(state["log_file"], "a", encoding="utf-8") as f:
+    with open(state["log_file"], "a", encoding="utf-8"):
         pass
 
     app.run(debug=True, host="127.0.0.1", port=5000, threaded=True)

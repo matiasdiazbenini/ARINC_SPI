@@ -26,6 +26,28 @@
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .stat-box {
+      background: white;
+      border-radius: 10px;
+      padding: 14px 18px;
+      min-width: 180px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .stat-title {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 26px;
+      font-weight: bold;
+    }
     input, select, button {
       padding: 8px 10px;
       font-size: 14px;
@@ -65,6 +87,10 @@
       color: red;
       font-weight: bold;
     }
+    ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
@@ -96,6 +122,31 @@
       <button onclick="clearConsole()">Limpiar</button>
       <button onclick="refreshPorts()">Actualizar puertos</button>
     </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-title">Tramas capturadas</div>
+      <div class="stat-value" id="stat-total">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-title">Parity OK</div>
+      <div class="stat-value ok" id="stat-ok">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-title">Parity ERROR</div>
+      <div class="stat-value err" id="stat-err">0</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Resumen por Label</h3>
+    <ul id="label-summary"></ul>
+  </div>
+
+  <div class="card">
+    <h3>Resumen por SSM</h3>
+    <ul id="ssm-summary"></ul>
   </div>
 
   <div class="card">
@@ -168,6 +219,34 @@
       }
     }
 
+    async function refreshStats() {
+      try {
+        const r = await fetch("/stats");
+        const data = await r.json();
+
+        document.getElementById("stat-total").textContent = data.total;
+        document.getElementById("stat-ok").textContent = data.parity_ok;
+        document.getElementById("stat-err").textContent = data.parity_error;
+
+        const labelSummary = document.getElementById("label-summary");
+        labelSummary.innerHTML = "";
+        for (const [label, count] of Object.entries(data.by_label)) {
+          const li = document.createElement("li");
+          li.textContent = `${label}: ${count}`;
+          labelSummary.appendChild(li);
+        }
+
+        const ssmSummary = document.getElementById("ssm-summary");
+        ssmSummary.innerHTML = "";
+        for (const [ssm, count] of Object.entries(data.by_ssm)) {
+          const li = document.createElement("li");
+          li.textContent = `${ssm}: ${count}`;
+          ssmSummary.appendChild(li);
+        }
+      } catch (err) {
+      }
+    }
+
     async function startCapture() {
       const form = new FormData();
       form.append("port", document.getElementById("port").value);
@@ -192,6 +271,7 @@
       await fetch("/clear", { method: "POST" });
       refreshConsole();
       refreshRecords();
+      refreshStats();
     }
 
     async function refreshPorts() {
@@ -212,10 +292,12 @@
     setInterval(() => {
       refreshConsole();
       refreshRecords();
+      refreshStats();
     }, 500);
 
     refreshConsole();
     refreshRecords();
+    refreshStats();
   </script>
 </body>
 </html>
