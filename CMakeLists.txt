@@ -15,7 +15,7 @@ add_executable(master_spi
 )
 
 pico_generate_pio_header(master_spi
-    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_tx.pio
+    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
 )
 
 target_link_libraries(master_spi

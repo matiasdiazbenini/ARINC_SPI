@@ -1,0 +1,62 @@
+.program arinc_gpio_link_tx
+
+.define public HALF_CYCLES 5
+
+; Link de dos pines sin SYNC:
+; - bit 0: GP2 activo durante medio bit, luego idle 00
+; - bit 1: GP3 activo durante medio bit, luego idle 00
+; Esto deja una codificacion autocontenida para que el receptor detecte
+; actividad solo observando el par GP2/GP3.
+
+.wrap_target
+bitloop:
+    out x, 1
+    jmp !x send_zero
+
+send_one:
+    set pins, 2        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp bitloop
+
+send_zero:
+    set pins, 1        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+.wrap
+
+
+.program arinc_gpio_link_rx
+
+; RX PIO:
+; - espera actividad en el par GP2/GP3
+; - clasifica el bit mirando GP3 como bit logico
+; - espera el retorno a idle 00
+; - repite 32 veces y hace push de la palabra recibida
+
+.wrap_target
+word_start:
+    mov isr, null
+    set x, 31
+
+wait_active:
+    mov y, pins
+    jmp !y wait_active
+    jmp pin bit_one
+
+bit_zero:
+    set y, 0
+    in y, 1
+    jmp wait_idle
+
+bit_one:
+    set y, 1
+    in y, 1
+
+wait_idle:
+    mov y, pins
+    jmp !y bit_done
+    jmp wait_idle
+
+bit_done:
+    jmp x-- wait_active
+    push block
+.wrap
