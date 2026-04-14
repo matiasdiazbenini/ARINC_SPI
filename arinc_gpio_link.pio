@@ -1,14 +1,22 @@
 .program arinc_gpio_link_tx
 
 .define public HALF_CYCLES 5
+.define public WORD_GAP_HALVES 8
 
-; Link de dos pines sin SYNC:
-; - bit 0: GP2 activo durante medio bit, luego idle 00
-; - bit 1: GP3 activo durante medio bit, luego idle 00
-; Esto deja una codificacion autocontenida para que el receptor detecte
-; actividad solo observando el par GP2/GP3.
+; TX por dos pines, sin SYNC externo.
+; Cada bit ocupa dos mitades:
+; - bit 0: GP2 activo, luego idle 00
+; - bit 1: GP3 activo, luego idle 00
+;
+; El programa hace "pull" palabra por palabra. Eso permite que el gap
+; entre palabras quede dentro de la state machine y no dependa de sleeps
+; del CPU.
 
 .wrap_target
+word_start:
+    pull block
+    set y, 31
+
 bitloop:
     out x, 1
     jmp !x send_zero
@@ -16,21 +24,35 @@ bitloop:
 send_one:
     set pins, 2        [HALF_CYCLES - 1]
     set pins, 0        [HALF_CYCLES - 1]
-    jmp bitloop
+    jmp bit_done
 
 send_zero:
     set pins, 1        [HALF_CYCLES - 1]
     set pins, 0        [HALF_CYCLES - 1]
+
+bit_done:
+    jmp y-- bitloop
+
+gap_setup:
+    set x, 7
+
+gap_loop:
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp x-- gap_loop
 .wrap
 
 
 .program arinc_gpio_link_rx
 
-; RX PIO:
-; - espera actividad en el par GP2/GP3
-; - clasifica el bit mirando GP3 como bit logico
-; - espera el retorno a idle 00
-; - repite 32 veces y hace push de la palabra recibida
+; RX por PIO:
+; 1. Espera cualquier actividad en GP2/GP3.
+; 2. Clasifica el bit usando GP3 como bit logico.
+; 3. Espera el retorno a idle 00 para marcar el fin del simbolo.
+; 4. Repite 32 veces y empuja la palabra completa a la FIFO RX.
+;
+; El filtrado NO se hace aca: la PIO solo reconstruye la palabra.
+; El filtro conviene aplicarlo luego en C, cuando ya existen label, SDI,
+; dato y paridad decodificados.
 
 .wrap_target
 word_start:

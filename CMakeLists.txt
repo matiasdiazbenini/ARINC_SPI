@@ -14,6 +14,7 @@ add_executable(master_spi
     master_spi.c
 )
 
+# Genera el header .pio.h a partir del ensamblador PIO del enlace.
 pico_generate_pio_header(master_spi
     ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
 )
@@ -21,9 +22,11 @@ pico_generate_pio_header(master_spi
 target_link_libraries(master_spi
     pico_stdlib
     hardware_pio
+    # Se usa para calcular el clock divider real del state machine.
     hardware_clocks
 )
 
+# Log por USB para debug; UART tradicional desactivada.
 pico_enable_stdio_usb(master_spi 1)
 pico_enable_stdio_uart(master_spi 0)
 
