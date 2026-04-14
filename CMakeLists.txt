@@ -12,12 +12,12 @@ pico_sdk_init()
 
 add_executable(master_spi
     master_spi.c
-    mil1553_protocol.c
+    bus/bus.c
 )
 
 target_link_libraries(master_spi
     pico_stdlib
-    hardware_spi
+    hardware_clocks
 )
 
 pico_enable_stdio_usb(master_spi 1)
