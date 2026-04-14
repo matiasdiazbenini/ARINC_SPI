@@ -11,13 +11,13 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 add_executable(slave_spi
-    slave_spi.c
-    mil1553_protocol.c
+    main.c
+    bus/bus.c
 )
 
 target_link_libraries(slave_spi
     pico_stdlib
-    hardware_spi
+    hardware_clocks
 )
 
 pico_enable_stdio_usb(slave_spi 1)
