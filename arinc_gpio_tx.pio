@@ -1,0 +1,18 @@
+.program arinc_gpio_tx
+
+.define public HALF_CYCLES 5
+
+.wrap_target
+bitloop:
+    out x, 1
+    jmp !x do_zero
+
+do_one:
+    set pins, 2        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp bitloop
+
+do_zero:
+    set pins, 1        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+.wrap

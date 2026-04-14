@@ -1,43 +1,29 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "pico/stdlib.h"
-#include "hardware/spi.h"
+#include "hardware/clocks.h"
+#include "hardware/pio.h"
+#include "arinc_gpio_tx.pio.h"
 
-#define SPI_PORT spi0
-
-#define PIN_MISO 16
-#define PIN_CS   17
-#define PIN_SCK  18
-#define PIN_MOSI 19
-
-static inline void cs_select() {
-    gpio_put(PIN_CS, 0);
-}
-
-static inline void cs_deselect() {
-    gpio_put(PIN_CS, 1);
-}
-
-static void send_one_byte(uint8_t b) {
-    cs_select();
-    sleep_us(100);
-    spi_write_blocking(SPI_PORT, &b, 1);
-    sleep_us(100);
-    cs_deselect();
-    sleep_ms(2);
-}
+#define SYNC_PIN          4
+#define SYNC_PREAMBLE_US  3000
+#define ARINC_TX_PIN_BASE 2   // GP2 = A, GP3 = B
+#define BIT_RATE_HZ       1000
+#define WORD_GAP_US       15000
+#define HALF_CYCLES       5
 
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     int ones = 0;
     for (int i = 0; i < 31; i++) {
-        if ((word_without_parity >> i) & 1u) ones++;
+        if ((word_without_parity >> i) & 1u) {
+            ones++;
+        }
     }
     return (ones % 2 == 0) ? 1 : 0;
 }
 
 static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint8_t ssm) {
     uint32_t word = 0;
-
     word |= ((uint32_t)(label & 0xFF))    << 0;
     word |= ((uint32_t)(sdi   & 0x03))    << 8;
     word |= ((uint32_t)(data  & 0x7FFFF)) << 10;
@@ -45,7 +31,6 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
 
     uint8_t parity = calc_odd_parity_31bits(word);
     word |= ((uint32_t)parity) << 31;
-
     return word;
 }
 
@@ -79,35 +64,45 @@ static const char* ssm_to_text(uint8_t ssm) {
     }
 }
 
-typedef struct {
-    uint8_t label;
-    uint8_t sdi;
-    const char *name;
-} arinc_profile_t;
+static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, float bit_rate_hz) {
+    pio_gpio_init(pio, pin_base + 0);
+    pio_gpio_init(pio, pin_base + 1);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, true);
+
+    pio_sm_config c = arinc_gpio_tx_program_get_default_config(offset);
+
+    sm_config_set_set_pins(&c, pin_base, 2);
+    sm_config_set_out_shift(&c, true, true, 32); // LSB first, autopull 32
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    const float cycles_per_bit = 2.0f * (float)HALF_CYCLES;
+    float clkdiv = (float)clock_get_hz(clk_sys) / (bit_rate_hz * cycles_per_bit);
+    sm_config_set_clkdiv(&c, clkdiv);
+
+    pio_sm_init(pio, sm, offset, &c);
+
+    pio_sm_set_pins_with_mask(pio, sm, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
+    pio_sm_set_enabled(pio, sm, true);
+}
 
 int main() {
     stdio_init_all();
     sleep_ms(3000);
 
-    printf("MASTER - ARINC 429 logico V4\r\n");
-    printf("Con SSM semantico\r\n\r\n");
+    printf("MASTER - ARINC-like por GPIO con PIO\r\n");
+    printf("TX pins: GP2=ARINC_A, GP3=ARINC_B\r\n");
+    printf("Bit rate: %d bps\r\n\r\n", BIT_RATE_HZ);
 
-    spi_init(SPI_PORT, 100 * 1000);
-    spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    gpio_init(SYNC_PIN);
+    gpio_set_dir(SYNC_PIN, GPIO_OUT);
+    gpio_put(SYNC_PIN, 0);
 
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+    PIO pio = pio0;
+    uint sm = 0;
+    uint offset = pio_add_program(pio, &arinc_gpio_tx_program);
 
-    gpio_init(PIN_CS);
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    cs_deselect();
-
-    arinc_profile_t profiles[] = {
-        {0xA5, 0x0, "TEMPERATURA"},
-        {0xB1, 0x1, "VELOCIDAD"},
-        {0xC2, 0x2, "ALTITUD"}
-    };
+    arinc_tx_program_init(pio, sm, offset, ARINC_TX_PIN_BASE, BIT_RATE_HZ);
 
     float temp_c = 20.0f;
     float speed_kt = 120.0f;
@@ -116,17 +111,12 @@ int main() {
     for (int i = 0; i < 60; i++) {
         int idx = i % 3;
 
-        uint8_t label = profiles[idx].label;
-        uint8_t sdi   = profiles[idx].sdi;
+        uint8_t label;
+        uint8_t sdi;
         uint8_t ssm;
-        uint32_t data_raw = 0;
+        uint32_t raw;
+        const char *name;
 
-        /* Ciclo de estados:
-           0 -> NORMAL
-           1 -> NCD
-           2 -> FUNCTIONAL TEST
-           3 -> FAILURE
-        */
         int ssm_cycle = (i / 3) % 4;
         if (ssm_cycle == 0) ssm = 3;
         else if (ssm_cycle == 1) ssm = 1;
@@ -134,40 +124,48 @@ int main() {
         else ssm = 0;
 
         if (idx == 0) {
-            data_raw = encode_temperature(temp_c);
+            label = 0xA5;
+            sdi = 0;
+            raw = encode_temperature(temp_c);
+            name = "TEMPERATURA";
         } else if (idx == 1) {
-            data_raw = encode_speed(speed_kt);
+            label = 0xB1;
+            sdi = 1;
+            raw = encode_speed(speed_kt);
+            name = "VELOCIDAD";
         } else {
-            data_raw = encode_altitude(altitude_ft);
+            label = 0xC2;
+            sdi = 2;
+            raw = encode_altitude(altitude_ft);
+            name = "ALTITUD";
         }
 
-        uint32_t word = build_arinc_word(label, sdi, data_raw, ssm);
+        uint32_t word = build_arinc_word(label, sdi, raw, ssm);
 
-        uint8_t b0 = (word >>  0) & 0xFF;
-        uint8_t b1 = (word >>  8) & 0xFF;
-        uint8_t b2 = (word >> 16) & 0xFF;
-        uint8_t b3 = (word >> 24) & 0xFF;
+        uint32_t word_time_us = (32u * 1000000u) / BIT_RATE_HZ;
 
-        send_one_byte(b0);
-        send_one_byte(b1);
-        send_one_byte(b2);
-        send_one_byte(b3);
+        gpio_put(SYNC_PIN, 1);
+        sleep_us(SYNC_PREAMBLE_US);
 
-        printf("TX %02d/60 -> LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s) | WORD: 0x%08lX\r\n",
-               i + 1,
-               label,
-               profiles[idx].name,
-               (unsigned long)data_raw,
-               sdi,
-               ssm,
-               ssm_to_text(ssm),
-               (unsigned long)word);
+        pio_sm_put_blocking(pio, sm, word);
 
-        if (idx == 0) temp_c += 1.5f;
-        else if (idx == 1) speed_kt += 7.0f;
-        else altitude_ft += 250.0f;
+        /* Esperar a que la palabra termine de salir */
+        sleep_us(word_time_us + 2000);
 
-        sleep_ms(1000);
+        gpio_put(SYNC_PIN, 0);
+
+        printf("TX %02d/60 -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
+            i + 1,
+            (unsigned long)word,
+            label,
+            name,
+            (unsigned long)raw,
+            sdi,
+            ssm,
+            ssm_to_text(ssm));
+
+        sleep_us(WORD_GAP_US);
+        sleep_ms(300);
     }
 
     printf("\r\nFin del envio.\r\n");
