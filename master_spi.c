@@ -12,14 +12,21 @@
  * - GP2 representa el simbolo de bit 0
  * - GP3 representa el simbolo de bit 1
  * No hay linea SYNC: la separacion entre palabras se hace con idle gap.
+ *
+ * Cambio importante:
+ * el master ya no transmite una sola vez y termina. Ahora emite lotes
+ * consecutivos de 1000 palabras. Eso evita que el slave o Flask queden
+ * "fuera de fase" si arrancan unos segundos tarde.
  */
-#define ARINC_TX_PIN_BASE   2u
-#define BIT_RATE_HZ         100000u
-#define HALF_CYCLES         5u
-#define WORD_GAP_BITS       4u
-#define WORD_COUNT          60u
-#define STARTUP_DELAY_MS    1200u
-#define ENABLE_TX_LOG       1u
+#define ARINC_TX_PIN_BASE    2u
+#define BIT_RATE_HZ          100000u
+#define HALF_CYCLES          5u
+#define WORD_GAP_BITS        4u
+#define WORDS_PER_BATCH      1000u
+#define BATCH_GAP_MS         1500u
+#define STARTUP_DELAY_MS     2500u
+#define ENABLE_TX_WORD_LOG   0u
+#define ENABLE_TX_BATCH_LOG  1u
 
 typedef struct {
     uint8_t label;
@@ -27,7 +34,6 @@ typedef struct {
     const char *name;
 } arinc_profile_t;
 
-/* Paridad impar sobre los 31 bits menos significativos. */
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     int ones = 0;
 
@@ -40,7 +46,6 @@ static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     return (ones % 2 == 0) ? 1u : 0u;
 }
 
-/* Arma la palabra completa con label, SDI, dato, SSM y paridad. */
 static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint8_t ssm) {
     uint32_t word = 0;
 
@@ -53,7 +58,6 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
     return word;
 }
 
-/* Codificacion fisica elegida para la variable temperatura. */
 static uint32_t encode_temperature(float temp_c) {
     float raw = (temp_c + 50.0f) / 0.25f;
 
@@ -67,7 +71,6 @@ static uint32_t encode_temperature(float temp_c) {
     return (uint32_t)(raw + 0.5f);
 }
 
-/* Codificacion directa en nudos. */
 static uint32_t encode_speed(float speed_kt) {
     if (speed_kt < 0.0f) {
         speed_kt = 0.0f;
@@ -79,7 +82,6 @@ static uint32_t encode_speed(float speed_kt) {
     return (uint32_t)(speed_kt + 0.5f);
 }
 
-/* Codificacion de altitud con resolucion de 10 ft. */
 static uint32_t encode_altitude(float altitude_ft) {
     float raw = altitude_ft / 10.0f;
 
@@ -93,7 +95,6 @@ static uint32_t encode_altitude(float altitude_ft) {
     return (uint32_t)(raw + 0.5f);
 }
 
-/* Texto legible para el campo SSM. */
 static const char *ssm_to_text(uint8_t ssm) {
     switch (ssm) {
         case 3: return "NORMAL";
@@ -105,9 +106,8 @@ static const char *ssm_to_text(uint8_t ssm) {
 }
 
 /*
- * Inicializa el TX por PIO.
  * El CPU solo encola palabras; la temporizacion fina del bit y del gap
- * entre palabras queda dentro de la maquina de estado.
+ * entre palabras queda dentro de la maquina de estado PIO.
  */
 static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, float bit_rate_hz) {
     pio_gpio_init(pio, pin_base + 0);
@@ -118,16 +118,6 @@ static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, 
     pio_sm_config c = arinc_gpio_link_tx_program_get_default_config(offset);
 
     sm_config_set_set_pins(&c, pin_base, 2);
-
-    /*
-     * shift_right = true:
-     * el primer bit que sale es el LSB de la palabra, que coincide con
-     * la forma en que estamos armando el word en C.
-     *
-     * autopull = false:
-     * el programa PIO hace un "pull block" explicito por palabra para
-     * poder insertar el inter-word gap dentro del mismo state machine.
-     */
     sm_config_set_out_shift(&c, true, false, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
 
@@ -147,7 +137,8 @@ int main(void) {
 
     printf("MASTER - ARINC-like por PIO sin SYNC\r\n");
     printf("TX pins: GP2=LINE_A, GP3=LINE_B\r\n");
-    printf("Bit rate: %u bps\r\n\r\n", BIT_RATE_HZ);
+    printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
+    printf("Lote continuo: %u palabras por batch\r\n\r\n", WORDS_PER_BATCH);
 
     PIO pio = pio0;
     uint sm = 0;
@@ -155,7 +146,6 @@ int main(void) {
 
     arinc_tx_program_init(pio, sm, offset, ARINC_TX_PIN_BASE, (float)BIT_RATE_HZ);
 
-    /* Tabla de palabras soportadas hoy por el demo. */
     const arinc_profile_t profiles[] = {
         {0xA5, 0x0, "TEMPERATURA"},
         {0xB1, 0x1, "VELOCIDAD"},
@@ -165,76 +155,79 @@ int main(void) {
     float temp_c = 20.0f;
     float speed_kt = 120.0f;
     float altitude_ft = 1000.0f;
-
-    for (uint32_t i = 0; i < WORD_COUNT; ++i) {
-        const uint32_t idx = i % 3u;
-        const arinc_profile_t profile = profiles[idx];
-
-        /* El SSM cicla por los cuatro estados de prueba. */
-        uint8_t ssm;
-        const uint32_t ssm_cycle = (i / 3u) % 4u;
-
-        if (ssm_cycle == 0u) {
-            ssm = 3u;
-        } else if (ssm_cycle == 1u) {
-            ssm = 1u;
-        } else if (ssm_cycle == 2u) {
-            ssm = 2u;
-        } else {
-            ssm = 0u;
-        }
-
-        uint32_t raw;
-        if (idx == 0u) {
-            raw = encode_temperature(temp_c);
-        } else if (idx == 1u) {
-            raw = encode_speed(speed_kt);
-        } else {
-            raw = encode_altitude(altitude_ft);
-        }
-
-        const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
-
-        /*
-         * El CPU solo encola la palabra. Si la FIFO se llena, el bloqueo
-         * natural de pio_sm_put_blocking() hace de backpressure sin tener
-         * que insertar sleeps por palabra en el firmware.
-         */
-        pio_sm_put_blocking(pio, sm, word);
-
-#if ENABLE_TX_LOG
-        printf("TX %02lu/%02u -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
-               (unsigned long)(i + 1u),
-               WORD_COUNT,
-               (unsigned long)word,
-               profile.label,
-               profile.name,
-               (unsigned long)raw,
-               profile.sdi,
-               ssm,
-               ssm_to_text(ssm));
-#endif
-
-        /* Valores dinamicos para que el receptor vea una secuencia cambiante. */
-        if (idx == 0u) {
-            temp_c += 1.5f;
-        } else if (idx == 1u) {
-            speed_kt += 7.0f;
-        } else {
-            altitude_ft += 250.0f;
-        }
-    }
-
-    /*
-     * Solo esperamos el tiempo del ultimo word en vuelo para que el
-     * mensaje final salga cuando la cola ya se vacio.
-     */
-    const uint32_t drain_time_us = ((32u + WORD_GAP_BITS) * 1000000u) / BIT_RATE_HZ;
-    sleep_us(drain_time_us + 20u);
-
-    printf("\r\nFin del envio.\r\n");
+    uint32_t batch_number = 0;
+    uint32_t global_word_index = 0;
 
     while (true) {
-        tight_loop_contents();
+        ++batch_number;
+
+#if ENABLE_TX_BATCH_LOG
+        printf("[INFO] Iniciando batch %lu de %u palabras\r\n",
+               (unsigned long)batch_number,
+               WORDS_PER_BATCH);
+#endif
+
+        for (uint32_t i = 0; i < WORDS_PER_BATCH; ++i) {
+            const uint32_t idx = global_word_index % 3u;
+            const arinc_profile_t profile = profiles[idx];
+
+            uint8_t ssm;
+            const uint32_t ssm_cycle = (global_word_index / 3u) % 4u;
+
+            if (ssm_cycle == 0u) {
+                ssm = 3u;
+            } else if (ssm_cycle == 1u) {
+                ssm = 1u;
+            } else if (ssm_cycle == 2u) {
+                ssm = 2u;
+            } else {
+                ssm = 0u;
+            }
+
+            uint32_t raw;
+            if (idx == 0u) {
+                raw = encode_temperature(temp_c);
+            } else if (idx == 1u) {
+                raw = encode_speed(speed_kt);
+            } else {
+                raw = encode_altitude(altitude_ft);
+            }
+
+            const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
+            pio_sm_put_blocking(pio, sm, word);
+
+#if ENABLE_TX_WORD_LOG
+            printf("TX %08lu -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
+                   (unsigned long)(global_word_index + 1u),
+                   (unsigned long)word,
+                   profile.label,
+                   profile.name,
+                   (unsigned long)raw,
+                   profile.sdi,
+                   ssm,
+                   ssm_to_text(ssm));
+#endif
+
+            if (idx == 0u) {
+                temp_c += 1.5f;
+            } else if (idx == 1u) {
+                speed_kt += 7.0f;
+            } else {
+                altitude_ft += 250.0f;
+            }
+
+            ++global_word_index;
+        }
+
+        const uint32_t drain_time_us = ((32u + WORD_GAP_BITS) * 1000000u) / BIT_RATE_HZ;
+        sleep_us(drain_time_us + 20u);
+
+#if ENABLE_TX_BATCH_LOG
+        printf("[INFO] Batch %lu enviado. Pausa de %u ms antes del siguiente.\r\n",
+               (unsigned long)batch_number,
+               BATCH_GAP_MS);
+#endif
+
+        sleep_ms(BATCH_GAP_MS);
     }
 }
