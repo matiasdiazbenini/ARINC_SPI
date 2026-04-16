@@ -13,6 +13,7 @@ pico_sdk_init()
 add_executable(master_spi
     master_spi.c
     bus/bus.c
+    mil1553_words.c
 )
 
 target_link_libraries(master_spi
