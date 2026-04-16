@@ -6,12 +6,13 @@
 #include "pico/stdlib.h"
 
 // Esta prueba es intencionalmente minima:
-// - sin sync
+// - con sync simple de laboratorio
 // - sin paridad
 // - solo intercambio de palabra de 16 bits.
 
 #define RT_INTERFRAME_GUARD_US 4u
 #define RT_RESPONSE_XOR_MASK   0xFFFFu
+#define RT_SYNC_TIMEOUT_US     30000u
 
 static bool rt_receive_word16(uint16_t *out_word) {
     uint16_t word = 0;
@@ -52,6 +53,12 @@ int main(void) {
 
     while (true) {
         uint16_t request_word = 0;
+        if (!bus_wait_sync(RT_SYNC_TIMEOUT_US)) {
+            // No se detecto sync en ventana de espera.
+            tight_loop_contents();
+            continue;
+        }
+
         if (!rt_receive_word16(&request_word)) {
             // Si hubo error de muestreo/transicion, reintenta.
             tight_loop_contents();
@@ -63,6 +70,7 @@ int main(void) {
 
         bus_set_tx_mode();
         sleep_us(RT_INTERFRAME_GUARD_US);
+        bus_send_sync();
         rt_send_word16(response_word);
         bus_set_rx_mode();
     }
