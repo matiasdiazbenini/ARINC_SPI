@@ -7,7 +7,7 @@
 
 // Sniffer pasivo de banco:
 // escucha palabra completa (sync + 16 bits + paridad)
-// y emite una linea simple por USB serial.
+// y emite una linea simple por USB serial
 
 #define SNIFFER_SYNC_TIMEOUT_US 30000u
 

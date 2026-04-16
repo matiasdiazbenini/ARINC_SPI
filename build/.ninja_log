@@ -1,0 +1,112 @@
+# ninja log v6
+49	566	7980508074945667	pico-sdk/src/rp2350/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.obj	4da7fa467a457b4d
+569	1238	7980508086627767	pico-sdk/src/rp2350/boot_stage2/bs2_default.elf	fc90b5f5992fe4f2
+569	1238	7980508086627767	pico-sdk/src/rp2350/boot_stage2/bs2_default.dis	fc90b5f5992fe4f2
+569	1238	7980508086627767	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/pico-sdk/src/rp2350/boot_stage2/bs2_default.dis	fc90b5f5992fe4f2
+1239	1477	7980508088843499	pico-sdk/src/rp2350/boot_stage2/bs2_default.bin	7d8497c7b5d1bc95
+1239	1477	7980508088843499	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/pico-sdk/src/rp2350/boot_stage2/bs2_default.bin	7d8497c7b5d1bc95
+1478	1777	7980508092006914	pico-sdk/src/rp2350/boot_stage2/bs2_default_padded_checksummed.S	216b02f19f47ed30
+1478	1777	7980508092006914	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/pico-sdk/src/rp2350/boot_stage2/bs2_default_padded_checksummed.S	216b02f19f47ed30
+1798	2634	7980508092629848	CMakeFiles/sniffer_mil.dir/mil1553_words.c.obj	9efd9c13458ed2a0
+1890	2677	7980508093468829	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2350/pico_platform/platform.c.obj	de9dd256bd96a9aa
+1834	3143	7980508092968889	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_stdlib/stdlib.c.obj	8e3bf7cb3846fb1d
+1778	3352	7980508092164452	CMakeFiles/sniffer_mil.dir/sniffer_main.c.obj	3b87434812857f8c
+1788	3416	7980508092279952	CMakeFiles/sniffer_mil.dir/bus/bus.c.obj	c301b0371ac2d42d
+2686	3548	7980508101345224	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_platform_panic/panic.c.obj	8d38b6cd7f341193
+2656	3664	7980508101029316	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_platform_common/common.c.obj	cbd86a736c19b02
+1867	3707	7980508093138889	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_gpio/gpio.c.obj	77f15d0fefc2c97c
+3357	4231	7980508108285358	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_sync/sync.c.obj	8cd9e6a12a744c85
+3432	4312	7980508108713974	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_sync_spin_lock/sync_spin_lock.c.obj	609d98a3e3cf5440
+3688	4493	7980508111344758	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_irq/irq_handler_chain.S.obj	82de124fb0aa24e8
+3161	4582	7980508106313056	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/hardware_claim/claim.c.obj	7bdb5bcee22144df
+3554	4906	7980508110032138	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_irq/irq.c.obj	548493e691db3644
+3717	4935	7980508111916464	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_sync/sem.c.obj	68b7b46cec5734a0
+4260	5159	7980508116987215	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_sync/lock_core.c.obj	597077fd21e3c53a
+4313	5331	7980508117600582	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_sync/mutex.c.obj	1a89fa72a12d292b
+4534	5397	7980508119920505	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_sync/critical_section.c.obj	357a2f7b11f63015
+4925	6785	7980508123635147	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_time/timeout_helper.c.obj	2be8271b8ca53db7
+4971	6976	7980508124220114	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_timer/timer.c.obj	1bddb4712c41c604
+5175	7114	7980508126143198	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_util/datetime.c.obj	8215bf3e97740da
+5420	7203	7980508128586699	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_util/queue.c.obj	482a064ece3141ad
+4588	7640	7980508120271781	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_time/time.c.obj	947a4a2abb586981
+5374	7852	7980508128240647	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/common/pico_util/pheap.c.obj	54124f49beb0ce3a
+7135	7902	7980508145739306	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_pll/pll.c.obj	bb9333bd62fd4311
+6794	7929	7980508142610183	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_uart/uart.c.obj	2f080237c56c5fba
+7205	8123	7980508146431438	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_vreg/vreg.c.obj	c5249e769380aa6b
+7877	8522	7980508153281585	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_ticks/ticks.c.obj	8bc1b76a92f16e87
+7662	8554	7980508151210844	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_watchdog/watchdog.c.obj	69b1e2b093dca628
+7939	8606	7980508153923070	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_bootrom/bootrom_lock.c.obj	2c167209da682dd
+6990	8786	7980508144285591	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_clocks/clocks.c.obj	34b659714655c08b
+8136	8866	7980508155754079	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_boot_lock/boot_lock.c.obj	3d4a24a77b870d06
+7909	9031	7980508153586439	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_bootrom/bootrom.c.obj	6504cea890bed0e4
+8530	9199	7980508159831648	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_flash/flash.c.obj	483cf73f763136e1
+8568	9251	7980508160135391	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_xosc/xosc.c.obj	4a8e2029461c5da1
+8794	9409	7980508162701538	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_runtime/runtime.c.obj	ff15256ef6ae71a2
+8615	9487	7980508160558992	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_divider/divider.c.obj	15e9eb7b1f0134e5
+9225	9887	7980508166646401	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_runtime_init/runtime_init_stack_guard.c.obj	30479672d94ac0bb
+9039	9925	7980508164777704	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_runtime_init/runtime_init_clocks.c.obj	39130577f6496b11
+8898	9971	7980508163364112	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_runtime_init/runtime_init.c.obj	6a2eddf445aa1240
+9252	10003	7980508167106405	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_bit_ops/bit_ops_aeabi.S.obj	86f4a487ff3595a3
+9915	10369	7980508173546393	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_double/double_aeabi_dcp.S.obj	b90a5d0586dcd0ee
+9951	10426	7980508173985465	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_double/double_fma_dcp.S.obj	4f14dd6be4a8b8e4
+9448	10553	7980508168878276	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_divider/divider_compiler.c.obj	5624dee08bba5741
+10017	10597	7980508174568222	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_double/double_conv_m33.S.obj	f42d315912062a77
+9981	10744	7980508174278234	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_double/double_sci_m33.S.obj	ed8aef0809e2b411
+10431	10878	7980508178722934	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_float/float_conv32_vfp.S.obj	62039d37297f812
+10754	11405	7980508182093032	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_malloc/malloc.c.obj	81a770d7c2073b8f
+10555	11460	7980508180061512	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_float/float_common_m33.S.obj	aa4a0689f87caf60
+10617	11563	7980508180579104	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_float/float_sci_m33_vfp.S.obj	38f3aa7fb3839671
+10885	11890	7980508183240462	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_atomic/atomic.c.obj	407ca46ed9ccc5e2
+9495	12072	7980508169344929	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_double/double_math.c.obj	2170e9a9f2a9fd6c
+11483	12371	7980508189493925	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_standard_binary_info/standard_binary_info.c.obj	f091f560cdcc7d12
+10372	12504	7980508178165807	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_float/float_math.c.obj	f46fb39c5550e048
+11921	12711	7980508193924408	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_crt0/crt0.S.obj	82e804df1f0f03ea
+12107	13126	7980508195780797	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_clib_interface/newlib_interface.c.obj	642261cefacf0f7d
+11438	13277	7980508188789810	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_cxx_options/new_delete.cpp.obj	748b80c93ca9e704
+12518	13674	7980508199570234	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_stdio_usb/reset_interface.c.obj	68fef8b173f73314
+12394	14035	7980508198331161	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_stdio/stdio.c.obj	7d5e2be261ca1c8d
+13131	14138	7980508205697547	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_stdio_usb/stdio_usb_descriptors.c.obj	c89b027fcd148a6f
+12757	14184	7980508201971414	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_stdio_usb/stdio_usb.c.obj	c74d25a1ca9e0ad
+11596	14237	7980508190461946	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_printf/printf.c.obj	a6fc2b1b86ad42d8
+13293	14255	7980508207658778	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_unique_id/unique_id.c.obj	ca903db258050559
+14267	15331	7980508217058708	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/device/usbd_control.c.obj	c6b8b27ea313db8f
+13688	15431	7980508211724418	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_flash/flash.c.obj	53c0c369c721e8cc
+14052	15457	7980508214999643	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/hardware_xip_cache/xip_cache.c.obj	683a62368ec1aeb6
+14201	15486	7980508216395806	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/portable/raspberrypi/rp2040/rp2040_usb.c.obj	cd8796865d081735
+14138	15666	7980508215774821	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/portable/raspberrypi/rp2040/dcd_rp2040.c.obj	279f57251bc44058
+15504	16144	7980508229546400	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/dfu/dfu_rt_device.c.obj	ff1ed745e8bfc4c0
+15468	16218	7980508229150537	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/dfu/dfu_device.c.obj	bbcbd69e5b89b4cd
+15333	16260	7980508227802132	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/audio/audio_device.c.obj	91d05d6c1c9a76ae
+15669	16438	7980508231471111	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/hid/hid_device.c.obj	7f5c11a1742e3dd1
+14246	16664	7980508216846665	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/device/usbd.c.obj	aff92961b02ad3bb
+16163	16807	7980508236453152	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/midi/midi_device.c.obj	ab85f0127f46d439
+15445	16838	7980508228843737	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/cdc/cdc_device.c.obj	d90ebbdc5fe0be71
+16218	16873	7980508236909864	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/msc/msc_device.c.obj	ded48476169a64bf
+16445	17026	7980508238925664	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/net/ncm_device.c.obj	acdb2a179c6a61e8
+16320	17054	7980508238264381	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/net/ecm_rndis_device.c.obj	fc795cb73509af34
+16672	17266	7980508241222432	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/usbtmc/usbtmc_device.c.obj	ea9425e0483952b0
+16840	17544	7980508242930629	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/video/video_device.c.obj	3e7a60a34393dd36
+17071	17772	7980508245427456	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/rp2040_usb_device_enumeration.c.obj	ca95af48a1a9a990
+17279	17830	7980508247504130	pico-sdk/src/rp2350/boot_stage2/CMakeFiles/bs2_default_library.dir/bs2_default_padded_checksummed.S.obj	8b001ff8cd4a4055
+16811	17837	7980508242499469	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/class/vendor/vendor_device.c.obj	dcfd626a0d2a5181
+16892	18013	7980508243309153	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/tusb.c.obj	349e4fe5c9edceb7
+17034	18220	7980508244763665	CMakeFiles/sniffer_mil.dir/C_/Users/usuario/.pico-sdk/sdk/2.2.0/lib/tinyusb/src/common/tusb_fifo.c.obj	6ad14a46f70f5d83
+18221	19135	7980508265390303	sniffer_mil.elf	5d1064b352df4330
+18221	19135	7980508265390303	sniffer_mil.dis	5d1064b352df4330
+18221	19135	7980508265390303	sniffer_mil.hex	5d1064b352df4330
+18221	19135	7980508265390303	sniffer_mil.bin	5d1064b352df4330
+18221	19135	7980508265390303	sniffer_mil.uf2	5d1064b352df4330
+18221	19135	7980508265390303	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.dis	5d1064b352df4330
+18221	19135	7980508265390303	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.hex	5d1064b352df4330
+18221	19135	7980508265390303	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.bin	5d1064b352df4330
+18221	19135	7980508265390303	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.uf2	5d1064b352df4330
+73	1352	7980510208872861	CMakeFiles/sniffer_mil.dir/sniffer_main.c.obj	3b87434812857f8c
+1354	3220	7980510237982908	sniffer_mil.elf	5d1064b352df4330
+1354	3220	7980510237982908	sniffer_mil.dis	5d1064b352df4330
+1354	3220	7980510237982908	sniffer_mil.hex	5d1064b352df4330
+1354	3220	7980510237982908	sniffer_mil.bin	5d1064b352df4330
+1354	3220	7980510237982908	sniffer_mil.uf2	5d1064b352df4330
+1354	3220	7980510237982908	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.dis	5d1064b352df4330
+1354	3220	7980510237982908	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.hex	5d1064b352df4330
+1354	3220	7980510237982908	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.bin	5d1064b352df4330
+1354	3220	7980510237982908	C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/sniffer_mil.uf2	5d1064b352df4330
