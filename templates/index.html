@@ -3,28 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard MIL-STD-1553</title>
+  <title>Dashboard Sniffer MIL-STD-1553</title>
   <style>
     :root {
       --bg: #edf2f7;
       --surface: #ffffff;
       --ink: #1a202c;
       --muted: #64748b;
-      --accent: #0f766e;
-      --accent-soft: #ccfbf1;
-      --warn: #b45309;
-      --warn-soft: #fef3c7;
-      --danger: #b91c1c;
-      --danger-soft: #fee2e2;
-      --ok: #166534;
-      --ok-soft: #dcfce7;
       --border: #dbe4ee;
       --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      --ok: #166534;
+      --ok-soft: #dcfce7;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -37,7 +31,7 @@
     }
 
     .page {
-      max-width: 1400px;
+      max-width: 1300px;
       margin: 0 auto;
       padding: 24px;
     }
@@ -52,13 +46,12 @@
 
     .hero h1 {
       margin: 0 0 8px;
-      font-size: 34px;
+      font-size: 32px;
     }
 
     .hero p {
       margin: 0;
       color: #dbeafe;
-      max-width: 900px;
       line-height: 1.5;
     }
 
@@ -72,8 +65,7 @@
     }
 
     .controls-grid,
-    .stats-grid,
-    .two-col {
+    .stats-grid {
       display: grid;
       gap: 16px;
     }
@@ -84,11 +76,7 @@
     }
 
     .stats-grid {
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    }
-
-    .two-col {
-      grid-template-columns: 1.1fr 0.9fr;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
 
     label {
@@ -136,7 +124,14 @@
       border-radius: 16px;
       padding: 16px;
       border: 1px solid var(--border);
-      background: #f8fafc;
+    }
+
+    .stat-box.ok {
+      background: var(--ok-soft);
+    }
+
+    .stat-box.err {
+      background: var(--danger-soft);
     }
 
     .stat-title {
@@ -150,55 +145,6 @@
     .stat-value {
       font-size: 30px;
       font-weight: 700;
-    }
-
-    .ok-box {
-      background: var(--ok-soft);
-    }
-
-    .warn-box {
-      background: var(--warn-soft);
-    }
-
-    .danger-box {
-      background: var(--danger-soft);
-    }
-
-    h2, h3 {
-      margin-top: 0;
-    }
-
-    .summary-list {
-      margin: 0;
-      padding-left: 18px;
-      color: #334155;
-      line-height: 1.6;
-    }
-
-    .status-panel {
-      border-radius: 14px;
-      padding: 16px;
-      background: linear-gradient(135deg, #ecfeff, #f8fafc);
-      border: 1px solid var(--border);
-      min-height: 140px;
-    }
-
-    .status-title {
-      font-size: 13px;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-
-    .status-main {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .status-meta {
-      color: #334155;
-      line-height: 1.6;
-      font-size: 14px;
     }
 
     .table-wrap {
@@ -243,11 +189,6 @@
       color: var(--ok);
     }
 
-    .tag-warn {
-      background: var(--warn-soft);
-      color: var(--warn);
-    }
-
     .tag-err {
       background: var(--danger-soft);
       color: var(--danger);
@@ -265,22 +206,15 @@
       font-size: 13px;
       white-space: pre-wrap;
     }
-
-    @media (max-width: 980px) {
-      .two-col {
-        grid-template-columns: 1fr;
-      }
-    }
   </style>
 </head>
 <body>
   <div class="page">
     <section class="hero">
-      <h1>Dashboard MIL-STD-1553 logico</h1>
+      <h1>Sniffer Logico MIL-STD-1553</h1>
       <p>
-        Sniffer provisional sobre salida serial del esclavo MIL. La interfaz muestra frames validos e invalidos,
-        warnings, mensajes reconstruidos y una consola en tiempo real para verificar que la simulacion logica
-        este andando bien antes de migrar al host dedicado.
+        Vista simplificada para tramas minimas del sniffer: RX_OK / RX_ERR con WORD y PARITY.
+        Pensado para validacion rapida en banco y consumo posterior desde Flask.
       </p>
     </section>
 
@@ -302,7 +236,7 @@
 
         <div>
           <label for="filter_text">Filtro de consola/log</label>
-          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: RX_WARN, MODE_CODE, RT=3">
+          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: RX_OK,RX_ERR,PARITY=ERR">
         </div>
       </div>
 
@@ -315,90 +249,13 @@
     </section>
 
     <section class="stats-grid">
-      <div class="stat-box ok-box">
+      <div class="stat-box ok">
         <div class="stat-title">Frames validos</div>
         <div class="stat-value" id="stat-valid">0</div>
       </div>
-      <div class="stat-box danger-box">
+      <div class="stat-box err">
         <div class="stat-title">Frames invalidos</div>
         <div class="stat-value" id="stat-invalid">0</div>
-      </div>
-      <div class="stat-box warn-box">
-        <div class="stat-title">Warnings</div>
-        <div class="stat-value" id="stat-warnings">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-title">Mensajes completos</div>
-        <div class="stat-value" id="stat-messages">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-title">Mensajes pendientes</div>
-        <div class="stat-value" id="stat-pending">0</div>
-      </div>
-    </section>
-
-    <section class="two-col">
-      <div class="card">
-        <h3>Resumen por tipo de palabra</h3>
-        <ul class="summary-list" id="summary-type"></ul>
-      </div>
-      <div class="card">
-        <h3>Resumen por direccion / resultado</h3>
-        <ul class="summary-list" id="summary-dir"></ul>
-        <ul class="summary-list" id="summary-result" style="margin-top: 12px;"></ul>
-      </div>
-    </section>
-
-    <section class="two-col">
-      <div class="card">
-        <h3>Estado mas reciente del RT</h3>
-        <div class="status-panel">
-          <div class="status-title">Ultima palabra STATUS observada</div>
-          <div class="status-main" id="status-main">Sin datos</div>
-          <div class="status-meta" id="status-meta">Todavia no llego ninguna palabra STATUS.</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Warnings recientes</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Hora</th>
-                <th>Warning</th>
-                <th>Msg ID</th>
-                <th>Detalle</th>
-              </tr>
-            </thead>
-            <tbody id="warnings-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
-      <h3>Mensajes MIL reconstruidos</h3>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Msg ID</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Dir</th>
-              <th>RT</th>
-              <th>SA</th>
-              <th>Broadcast</th>
-              <th>Mode Code</th>
-              <th>Data</th>
-              <th>Status</th>
-              <th>Resultado</th>
-              <th>Warnings</th>
-            </tr>
-          </thead>
-          <tbody id="messages-body"></tbody>
-        </table>
       </div>
     </section>
 
@@ -410,12 +267,9 @@
             <tr>
               <th>Hora</th>
               <th>Evento</th>
-              <th>Tipo</th>
-              <th>Word</th>
-              <th>Parity</th>
-              <th>Seq</th>
-              <th>Errores</th>
-              <th>Frame</th>
+              <th>Palabra</th>
+              <th>Paridad</th>
+              <th>Linea cruda</th>
             </tr>
           </thead>
           <tbody id="frames-body"></tbody>
@@ -432,48 +286,6 @@
   <script>
     const consoleDiv = document.getElementById("console");
     const framesBody = document.getElementById("frames-body");
-    const messagesBody = document.getElementById("messages-body");
-    const warningsBody = document.getElementById("warnings-body");
-
-    function tagClass(value) {
-      if (value === "OK") return "tag tag-ok";
-      if (value === "WARN") return "tag tag-warn";
-      return "tag tag-err";
-    }
-
-    function updateSummaryList(elementId, entries, emptyText) {
-      const target = document.getElementById(elementId);
-      target.innerHTML = "";
-
-      const items = Object.entries(entries || {});
-      if (!items.length) {
-        const li = document.createElement("li");
-        li.textContent = emptyText;
-        target.appendChild(li);
-        return;
-      }
-
-      for (const [key, value] of items) {
-        const li = document.createElement("li");
-        li.textContent = `${key}: ${value}`;
-        target.appendChild(li);
-      }
-    }
-
-    function setLatestStatus(status) {
-      const main = document.getElementById("status-main");
-      const meta = document.getElementById("status-meta");
-
-      if (!status || !status.msg_id) {
-        main.textContent = "Sin datos";
-        meta.textContent = "Todavia no llego ninguna palabra STATUS.";
-        return;
-      }
-
-      main.textContent = `RT ${status.rt} | ${status.dir} | Msg ${status.msg_id}`;
-      meta.textContent =
-        `SR=${status.sr} | BUSY=${status.busy} | TF=${status.tf} | BCR=${status.bcr} | ${status.timestamp}`;
-    }
 
     async function refreshConsole() {
       try {
@@ -482,7 +294,6 @@
         consoleDiv.textContent = data.text;
         consoleDiv.scrollTop = consoleDiv.scrollHeight;
       } catch (err) {
-        consoleDiv.textContent += "\n[ERROR] No se pudo actualizar la consola";
       }
     }
 
@@ -499,75 +310,12 @@
           tr.innerHTML = `
             <td>${frame.timestamp}</td>
             <td><span class="${eventClass}">${frame.event}</span></td>
-            <td>${frame.type_name || "-"}</td>
             <td class="mono">${frame.word}</td>
             <td>${frame.parity}</td>
-            <td>${frame.seq}</td>
-            <td>${frame.errors || "-"}</td>
-            <td class="mono">${frame.frame}</td>
+            <td class="mono">${frame.raw}</td>
           `;
 
           framesBody.appendChild(tr);
-        }
-      } catch (err) {
-      }
-    }
-
-    async function refreshMessages() {
-      try {
-        const response = await fetch("/messages");
-        const data = await response.json();
-        messagesBody.innerHTML = "";
-
-        for (const msg of data.messages.slice().reverse()) {
-          const tr = document.createElement("tr");
-          const warnings = (msg.warnings || []).join(", ");
-
-          tr.innerHTML = `
-            <td>${msg.msg_id}</td>
-            <td>${msg.timestamp_start}</td>
-            <td>${msg.timestamp_end}</td>
-            <td>${msg.dir}</td>
-            <td>${msg.rt}</td>
-            <td>${msg.sa}</td>
-            <td>${msg.broadcast}</td>
-            <td>${msg.mode_code === "1" ? msg.mode_value : "-"}</td>
-            <td>${msg.data_seen}/${msg.data_expected}</td>
-            <td>${msg.status_seen}</td>
-            <td><span class="${tagClass(msg.result)}">${msg.result}</span></td>
-            <td>${warnings || "-"}</td>
-          `;
-
-          messagesBody.appendChild(tr);
-        }
-      } catch (err) {
-      }
-    }
-
-    async function refreshWarnings() {
-      try {
-        const response = await fetch("/warnings");
-        const data = await response.json();
-        warningsBody.innerHTML = "";
-
-        for (const warning of data.warnings.slice().reverse()) {
-          const tr = document.createElement("tr");
-          const detail = [
-            warning.dir ? `DIR=${warning.dir}` : "",
-            warning.rt ? `RT=${warning.rt}` : "",
-            warning.sa ? `SA=${warning.sa}` : "",
-            warning.expected ? `EXPECTED=${warning.expected}` : "",
-            warning.received ? `RECEIVED=${warning.received}` : ""
-          ].filter(Boolean).join(" | ");
-
-          tr.innerHTML = `
-            <td>${warning.timestamp}</td>
-            <td><span class="tag tag-warn">${warning.warning}</span></td>
-            <td>${warning.msg_id || "-"}</td>
-            <td>${detail || "-"}</td>
-          `;
-
-          warningsBody.appendChild(tr);
         }
       } catch (err) {
       }
@@ -577,18 +325,8 @@
       try {
         const response = await fetch("/stats");
         const data = await response.json();
-
         document.getElementById("stat-valid").textContent = data.valid_frames;
         document.getElementById("stat-invalid").textContent = data.invalid_frames;
-        document.getElementById("stat-warnings").textContent = data.warnings;
-        document.getElementById("stat-messages").textContent = data.completed_messages;
-        document.getElementById("stat-pending").textContent = data.pending_messages;
-
-        updateSummaryList("summary-type", data.by_type, "Sin frames validos todavia.");
-        updateSummaryList("summary-dir", data.by_dir, "Sin mensajes completos todavia.");
-        updateSummaryList("summary-result", data.by_result, "Sin resultados todavia.");
-
-        setLatestStatus(data.latest_status);
       } catch (err) {
       }
     }
@@ -615,11 +353,7 @@
 
     async function clearConsole() {
       await fetch("/clear", { method: "POST" });
-      refreshConsole();
-      refreshFrames();
-      refreshMessages();
-      refreshWarnings();
-      refreshStats();
+      refreshAll();
     }
 
     async function refreshPorts() {
@@ -640,8 +374,6 @@
     function refreshAll() {
       refreshConsole();
       refreshFrames();
-      refreshMessages();
-      refreshWarnings();
       refreshStats();
     }
 
