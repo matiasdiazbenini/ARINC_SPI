@@ -14,6 +14,7 @@
 
 #define RT_SYNC_TIMEOUT_US     30000u
 #define RT_INTERWORD_GUARD_US  4u
+#define RT_RX_FAIL_REPORT_EVERY 20u
 
 static bool rt_is_supported_tx_request(const mil1553_command_word_t *cmd) {
     return cmd &&
@@ -53,14 +54,25 @@ int main(void) {
     bus_init();
     bus_set_rx_mode();
 
+    uint32_t rx_fail_count = 0;
+
     while (true) {
         uint16_t rx_word = 0;
         bool parity_ok = false;
 
         if (!bus_receive_full_word(&rx_word, &parity_ok, RT_SYNC_TIMEOUT_US)) {
             // Timeout de sync o recepcion incompleta.
+            rx_fail_count++;
+            if (rx_fail_count == 1 || (rx_fail_count % RT_RX_FAIL_REPORT_EVERY) == 0) {
+                printf("RX_WAIT|TIMEOUT_INVALID|COUNT=%lu\n", (unsigned long)rx_fail_count);
+            }
             tight_loop_contents();
             continue;
+        }
+
+        if (rx_fail_count > 0) {
+            printf("RX_WAIT|RECOVERED|MISSED=%lu\n", (unsigned long)rx_fail_count);
+            rx_fail_count = 0;
         }
 
         if (!parity_ok) {
@@ -68,28 +80,34 @@ int main(void) {
             continue;
         }
 
+        printf("RX_OK|WORD=0x%04X|PARITY=OK\n", rx_word);
+
         mil1553_command_word_t command;
         mil1553_logic_decode_command_word(rx_word, &command);
-
-        // Solo procesa comandos dirigidos a este RT.
-        if (command.rt_address != RT_ADDRESS) {
-            continue;
-        }
-
-        printf("RX_CMD|RT=%u|TR=%u|SA=%u|WC=%u\n",
+        printf("CMD_DEC|RT=%u|TR=%u|SA=%u|WC=%u\n",
                command.rt_address,
                command.transmit ? 1 : 0,
                command.subaddress,
                command.word_count);
 
+        // Solo procesa comandos dirigidos a este RT.
+        if (command.rt_address != RT_ADDRESS) {
+            printf("CMD_IGNORED|TARGET_RT=%u|LOCAL_RT=%u\n",
+                   command.rt_address,
+                   RT_ADDRESS);
+            continue;
+        }
+
         uint16_t status_word = rt_build_status_from_command(&command);
+        const bool send_data = rt_is_supported_tx_request(&command);
+        printf("TX_DECISION|STATUS=1|DATA=%u\n", send_data ? 1 : 0);
 
         bus_set_tx_mode();
         sleep_us(RT_INTERWORD_GUARD_US);
         bus_send_full_word(status_word);
         printf("TX_STATUS|WORD=0x%04X\n", status_word);
 
-        if (rt_is_supported_tx_request(&command)) {
+        if (send_data) {
             uint16_t data_word = mil1553_logic_build_data_word(RT_TEST_DATA_WORD);
             sleep_us(RT_INTERWORD_GUARD_US);
             bus_send_full_word(data_word);
