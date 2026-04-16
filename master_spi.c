@@ -16,7 +16,7 @@
 #define MASTER_WORD_COUNT           1u
 
 #define MASTER_PERIOD_MS            1000u
-#define MASTER_TURNAROUND_GUARD_US  4u
+#define MASTER_TURNAROUND_GUARD_US  50u
 #define MASTER_RX_TIMEOUT_US        40000u
 
 typedef enum {
