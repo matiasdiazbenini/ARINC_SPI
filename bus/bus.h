@@ -42,6 +42,25 @@ void bus_send_sync(void);
 // Devuelve true si detecta sync valido, false por timeout.
 bool bus_wait_sync(uint32_t timeout_us);
 
+// Calcula el bit de paridad impar para una palabra de 16 bits.
+// El bit devuelto (0 o 1) se agrega como bit 17 para que el total de unos sea impar.
+uint8_t bus_calc_odd_parity16(uint16_t word);
+
+// Envia una palabra completa de prueba:
+// sync + 16 bits (MSB primero) + bit de paridad impar.
+// Requiere que el nodo ya este en modo TX.
+void bus_send_full_word(uint16_t word);
+
+// Recibe una palabra completa de prueba:
+// sync + 16 bits (MSB primero) + bit de paridad impar.
+// Devuelve false en timeout de sync o error de recepcion de bits.
+// Devuelve true cuando pudo recibir la palabra; en ese caso:
+//   - out_word contiene los 16 bits recibidos
+//   - out_parity_ok indica si la paridad impar es valida
+bool bus_receive_full_word(uint16_t *out_word,
+                           bool *out_parity_ok,
+                           uint32_t sync_timeout_us);
+
 #ifdef __cplusplus
 }
 #endif

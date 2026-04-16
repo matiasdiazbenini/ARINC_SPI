@@ -206,3 +206,53 @@ bool bus_wait_sync(uint32_t timeout_us) {
 
     return false;
 }
+
+uint8_t bus_calc_odd_parity16(uint16_t word) {
+    uint8_t parity = 1u;
+
+    for (int bit = 0; bit < 16; bit++) {
+        parity ^= (uint8_t)((word >> bit) & 0x01u);
+    }
+
+    return (uint8_t)(parity & 0x01u);
+}
+
+void bus_send_full_word(uint16_t word) {
+    bus_send_sync();
+
+    for (int bit = 15; bit >= 0; bit--) {
+        bus_send_bit((word >> bit) & 0x01);
+    }
+
+    bus_send_bit(bus_calc_odd_parity16(word));
+}
+
+bool bus_receive_full_word(uint16_t *out_word,
+                           bool *out_parity_ok,
+                           uint32_t sync_timeout_us) {
+    if (!out_word || !out_parity_ok) {
+        return false;
+    }
+
+    if (!bus_wait_sync(sync_timeout_us)) {
+        return false;
+    }
+
+    uint16_t word = 0;
+    for (int i = 0; i < 16; i++) {
+        int bit = bus_receive_bit();
+        if (bit < 0) {
+            return false;
+        }
+        word = (uint16_t)((word << 1) | (uint16_t)(bit & 0x01));
+    }
+
+    int parity_bit = bus_receive_bit();
+    if (parity_bit < 0) {
+        return false;
+    }
+
+    *out_word = word;
+    *out_parity_ok = ((uint8_t)parity_bit == bus_calc_odd_parity16(word));
+    return true;
+}
