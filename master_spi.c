@@ -6,7 +6,7 @@
 #include "pico/stdlib.h"
 
 // Prueba minima de maestro:
-// - sin sync
+// - con sync simple de laboratorio
 // - sin paridad
 // - solo palabra de 16 bits ida/vuelta.
 
@@ -38,18 +38,14 @@ static bool master_receive_word16_once(uint16_t *out_word) {
 }
 
 static bool master_wait_response_word16(uint16_t *out_word, uint32_t timeout_ms) {
-    uint32_t t0 = to_ms_since_boot(get_absolute_time());
+    const uint32_t timeout_us = timeout_ms * 1000u;
 
-    while ((to_ms_since_boot(get_absolute_time()) - t0) < timeout_ms) {
-        if (master_receive_word16_once(out_word)) {
-            return true;
-        }
-
-        // Reintento simple ante desalineacion temporal.
-        tight_loop_contents();
+    // Primero alinea inicio de palabra con sync simple.
+    if (!bus_wait_sync(timeout_us)) {
+        return false;
     }
 
-    return false;
+    return master_receive_word16_once(out_word);
 }
 
 int main(void) {
@@ -66,8 +62,9 @@ int main(void) {
         uint16_t response = 0;
         const uint16_t expected = (uint16_t)(MASTER_TEST_WORD ^ 0xFFFFu);
 
-        // 1) TX: envia palabra de prueba.
+        // 1) TX: envia sync simple y luego palabra de prueba.
         bus_set_tx_mode();
+        bus_send_sync();
         master_send_word16(MASTER_TEST_WORD);
 
         // 2) RX: libera el bus y espera respuesta del esclavo.
