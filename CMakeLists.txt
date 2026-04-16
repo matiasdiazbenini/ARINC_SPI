@@ -17,6 +17,7 @@ pico_sdk_init()
 add_executable(sniffer_mil
     sniffer_main.c
     bus/bus.c
+    mil1553_words.c
 )
 
 target_link_libraries(sniffer_mil
