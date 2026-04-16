@@ -47,10 +47,10 @@ def should_store(text: str, filter_text: str) -> bool:
 
 def parse_sniffer_line(line: str):
     # Formato esperado del sniffer:
-    # RX_OK|WORD=0xA5A5|PARITY=OK
-    # RX_ERR|WORD=0x1234|PARITY=ERR
+    # RX_OK|TYPE=CMD|WORD=0xA5A5|PARITY=OK
+    # RX_ERR|TYPE=UNKNOWN|WORD=0x1234|PARITY=ERR
     parts = [part.strip() for part in line.split("|") if part.strip()]
-    if len(parts) < 3:
+    if len(parts) < 4:
         return None
 
     event = parts[0]
@@ -66,12 +66,20 @@ def parse_sniffer_line(line: str):
 
     word = fields.get("WORD")
     parity = fields.get("PARITY")
-    if not word or not parity:
+    word_type = fields.get("TYPE")
+
+    if not word or not parity or not word_type:
         return None
+
+    word_type = word_type.upper()
+    parity = parity.upper()
+    if word_type not in {"CMD", "STS", "DATA", "UNKNOWN"}:
+        word_type = "UNKNOWN"
 
     return {
         "timestamp": now_text(),
         "event": event,
+        "type": word_type,
         "word": word,
         "parity": parity,
         "raw": line,
@@ -208,10 +216,24 @@ def stats():
 
     valid_frames = sum(1 for frame in frames_data if frame["event"] == "RX_OK")
     invalid_frames = sum(1 for frame in frames_data if frame["event"] == "RX_ERR")
+    by_type = {
+        "CMD": 0,
+        "STS": 0,
+        "DATA": 0,
+        "UNKNOWN": 0,
+    }
+
+    for frame in frames_data:
+        frame_type = frame.get("type", "UNKNOWN")
+        if frame_type in by_type:
+            by_type[frame_type] += 1
+        else:
+            by_type["UNKNOWN"] += 1
 
     return jsonify({
         "valid_frames": valid_frames,
         "invalid_frames": invalid_frames,
+        "by_type": by_type,
     })
 
 

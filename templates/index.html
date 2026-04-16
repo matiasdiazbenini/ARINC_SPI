@@ -213,7 +213,7 @@
     <section class="hero">
       <h1>Sniffer Logico MIL-STD-1553</h1>
       <p>
-        Vista simplificada para tramas minimas del sniffer: RX_OK / RX_ERR con WORD y PARITY.
+        Vista simplificada para tramas minimas del sniffer: RX_OK / RX_ERR con TYPE, WORD y PARITY.
         Pensado para validacion rapida en banco y consumo posterior desde Flask.
       </p>
     </section>
@@ -236,7 +236,7 @@
 
         <div>
           <label for="filter_text">Filtro de consola/log</label>
-          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: RX_OK,RX_ERR,PARITY=ERR">
+          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: RX_OK,TYPE=CMD,PARITY=ERR">
         </div>
       </div>
 
@@ -260,6 +260,28 @@
     </section>
 
     <section class="card">
+      <h3>Resumen por TYPE</h3>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-title">CMD</div>
+          <div class="stat-value" id="type-cmd">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-title">STS</div>
+          <div class="stat-value" id="type-sts">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-title">DATA</div>
+          <div class="stat-value" id="type-data">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-title">UNKNOWN</div>
+          <div class="stat-value" id="type-unknown">0</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <h3>Frames recientes</h3>
       <div class="table-wrap">
         <table>
@@ -267,6 +289,7 @@
             <tr>
               <th>Hora</th>
               <th>Evento</th>
+              <th>TYPE</th>
               <th>Palabra</th>
               <th>Paridad</th>
               <th>Linea cruda</th>
@@ -310,6 +333,7 @@
           tr.innerHTML = `
             <td>${frame.timestamp}</td>
             <td><span class="${eventClass}">${frame.event}</span></td>
+            <td class="mono">${frame.type || "UNKNOWN"}</td>
             <td class="mono">${frame.word}</td>
             <td>${frame.parity}</td>
             <td class="mono">${frame.raw}</td>
@@ -325,8 +349,13 @@
       try {
         const response = await fetch("/stats");
         const data = await response.json();
+        const byType = data.by_type || {};
         document.getElementById("stat-valid").textContent = data.valid_frames;
         document.getElementById("stat-invalid").textContent = data.invalid_frames;
+        document.getElementById("type-cmd").textContent = byType.CMD || 0;
+        document.getElementById("type-sts").textContent = byType.STS || 0;
+        document.getElementById("type-data").textContent = byType.DATA || 0;
+        document.getElementById("type-unknown").textContent = byType.UNKNOWN || 0;
       } catch (err) {
       }
     }
