@@ -21,6 +21,12 @@ void bus_set_tx_mode(void);
 // Deshabilita conduccion del bus (RX): ambos pines pasan a INPUT (alta impedancia).
 void bus_set_rx_mode(void);
 
+// Fuerza niveles diferenciales del bus para pruebas de hardware.
+// p_high=true  -> BUS_P=1, BUS_N=0
+// p_high=false -> BUS_P=0, BUS_N=1
+// Requiere que el nodo ya este en modo TX.
+void bus_drive_raw(bool p_high);
+
 // Envia 1 bit Manchester-II (1 Mbps, 1 us por bit).
 // bit=1 -> BUS_P: alto->bajo; bit=0 -> BUS_P: bajo->alto.
 // BUS_N siempre se mantiene complementario de BUS_P.
