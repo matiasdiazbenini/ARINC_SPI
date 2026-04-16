@@ -12,6 +12,7 @@ pico_sdk_init()
 
 add_executable(slave_spi
     main.c
+    mil1553_words.c
     bus/bus.c
 )
 

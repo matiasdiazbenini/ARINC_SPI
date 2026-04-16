@@ -3,51 +3,99 @@
 #include <stdio.h>
 
 #include "bus/bus.h"
+#include "mil1553_words.h"
 #include "pico/stdlib.h"
 
-// Esta prueba es intencionalmente minima:
-// - con sync simple de laboratorio
-// - con paridad impar
-// - intercambio de palabra completa de prueba.
+// Perfil minimo de RT para esta etapa.
+#define RT_ADDRESS             3u
+#define RT_SUBADDRESS          1u
+#define RT_WORD_COUNT          1u
+#define RT_TEST_DATA_WORD      0xA5A5u
 
-#define RT_INTERFRAME_GUARD_US 4u
-#define RT_RESPONSE_XOR_MASK   0xFFFFu
 #define RT_SYNC_TIMEOUT_US     30000u
+#define RT_INTERWORD_GUARD_US  4u
 
-static uint16_t rt_build_response(uint16_t request_word) {
-    // Respuesta simple para validar ida/vuelta en banco.
-    return (uint16_t)(request_word ^ RT_RESPONSE_XOR_MASK);
+static bool rt_is_supported_tx_request(const mil1553_command_word_t *cmd) {
+    return cmd &&
+           cmd->transmit &&
+           cmd->subaddress == RT_SUBADDRESS &&
+           cmd->word_count == RT_WORD_COUNT;
+}
+
+static uint16_t rt_build_status_from_command(const mil1553_command_word_t *cmd) {
+    mil1553_status_word_t status = {
+        .rt_address = RT_ADDRESS,
+        .message_error = !(cmd &&
+                           cmd->subaddress == RT_SUBADDRESS &&
+                           cmd->word_count == RT_WORD_COUNT),
+        .service_request = false,
+        .broadcast_command_received = false,
+        .busy = false,
+        .subsystem_flag = false,
+        .dynamic_bus_control_acceptance = false,
+        .terminal_flag = false,
+    };
+
+    return mil1553_logic_build_status_word(&status);
 }
 
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    printf("MIL-STD-1553 RT test (logico) iniciado.\n");
-    printf("Esperando palabra completa (sync + 16 bits + paridad)...\n");
+    printf("RT logico MIL-STD-1553 iniciado (Command/Status/Data)\n");
+    printf("RT=%u SA=%u WC=%u DATA=0x%04X\n",
+           RT_ADDRESS,
+           RT_SUBADDRESS,
+           RT_WORD_COUNT,
+           RT_TEST_DATA_WORD);
 
     bus_init();
     bus_set_rx_mode();
 
     while (true) {
-        uint16_t request_word = 0;
+        uint16_t rx_word = 0;
         bool parity_ok = false;
-        if (!bus_receive_full_word(&request_word, &parity_ok, RT_SYNC_TIMEOUT_US)) {
-            // Timeout de sync o error de recepcion de bits.
+
+        if (!bus_receive_full_word(&rx_word, &parity_ok, RT_SYNC_TIMEOUT_US)) {
+            // Timeout de sync o recepcion incompleta.
             tight_loop_contents();
             continue;
         }
+
         if (!parity_ok) {
-            printf("RX_ERR_PARITY|WORD=0x%04X\n", request_word);
+            printf("RX_ERR_PARITY|WORD=0x%04X\n", rx_word);
             continue;
         }
 
-        uint16_t response_word = rt_build_response(request_word);
-        printf("RX: 0x%04X | TX: 0x%04X\n", request_word, response_word);
+        mil1553_command_word_t command;
+        mil1553_logic_decode_command_word(rx_word, &command);
+
+        // Solo procesa comandos dirigidos a este RT.
+        if (command.rt_address != RT_ADDRESS) {
+            continue;
+        }
+
+        printf("RX_CMD|RT=%u|TR=%u|SA=%u|WC=%u\n",
+               command.rt_address,
+               command.transmit ? 1 : 0,
+               command.subaddress,
+               command.word_count);
+
+        uint16_t status_word = rt_build_status_from_command(&command);
 
         bus_set_tx_mode();
-        sleep_us(RT_INTERFRAME_GUARD_US);
-        bus_send_full_word(response_word);
+        sleep_us(RT_INTERWORD_GUARD_US);
+        bus_send_full_word(status_word);
+        printf("TX_STATUS|WORD=0x%04X\n", status_word);
+
+        if (rt_is_supported_tx_request(&command)) {
+            uint16_t data_word = mil1553_logic_build_data_word(RT_TEST_DATA_WORD);
+            sleep_us(RT_INTERWORD_GUARD_US);
+            bus_send_full_word(data_word);
+            printf("TX_DATA|WORD=0x%04X\n", data_word);
+        }
+
         bus_set_rx_mode();
     }
 }
