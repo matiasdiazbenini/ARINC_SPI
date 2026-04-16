@@ -1,6 +1,7 @@
 #ifndef BUS_H
 #define BUS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -31,6 +32,15 @@ void bus_send_bit(int bit);
 //  -1 si hay error de nivel/temporizacion (sin transicion valida).
 // Nota: esta funcion asume que el llamador ya esta alineado al inicio del bit.
 int bus_receive_bit(void);
+
+// Envia una secuencia simple de sincronizacion de palabra para banco.
+// Esta secuencia NO es el sync final MIL-STD-1553.
+void bus_send_sync(void);
+
+// Espera y detecta la secuencia simple de sincronizacion.
+// timeout_us: tiempo maximo de espera en microsegundos.
+// Devuelve true si detecta sync valido, false por timeout.
+bool bus_wait_sync(uint32_t timeout_us);
 
 #ifdef __cplusplus
 }
