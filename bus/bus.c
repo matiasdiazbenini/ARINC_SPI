@@ -6,6 +6,9 @@
 
 #define BUS_BIT_RATE_HZ          1000000u
 #define BUS_HALFBIT_RATE_HZ      (BUS_BIT_RATE_HZ * 2u)
+#define BUS_SYNC_PULSE_US        4u
+#define BUS_SYNC_GAP_US          2u
+#define BUS_SYNC_MIN_PULSE_US    3u
 
 static uint32_t s_half_bit_cycles = 1u;
 
@@ -16,6 +19,12 @@ static inline void bus_delay_half_bit(void) {
 static inline void bus_drive_levels(bool p_high) {
     gpio_put(BUS_PIN_P, p_high);
     gpio_put(BUS_PIN_N, !p_high);
+}
+
+static inline bool bus_line_is_valid_level(bool p_high) {
+    const bool p = gpio_get(BUS_PIN_P);
+    const bool n = gpio_get(BUS_PIN_N);
+    return (p == p_high) && (n == !p_high);
 }
 
 void bus_init(void) {
@@ -102,4 +111,98 @@ int bus_receive_bit(void) {
     }
 
     return -1;
+}
+
+void bus_send_sync(void) {
+    // Sync simple de laboratorio:
+    // pulso alto -> pulso bajo -> pulso alto -> gap bajo.
+    bus_drive_levels(true);
+    sleep_us(BUS_SYNC_PULSE_US);
+
+    bus_drive_levels(false);
+    sleep_us(BUS_SYNC_PULSE_US);
+
+    bus_drive_levels(true);
+    sleep_us(BUS_SYNC_PULSE_US);
+
+    bus_drive_levels(false);
+    sleep_us(BUS_SYNC_GAP_US);
+}
+
+bool bus_wait_sync(uint32_t timeout_us) {
+    const uint64_t t_start = to_us_since_boot(get_absolute_time());
+    const uint64_t t_deadline = t_start + (uint64_t)timeout_us;
+
+    while (to_us_since_boot(get_absolute_time()) < t_deadline) {
+        uint64_t t_now = 0;
+        uint64_t t_pulse_start = 0;
+
+        // 1) Busca primer pulso en alto.
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               !bus_line_is_valid_level(true)) {
+            tight_loop_contents();
+        }
+        if (t_now >= t_deadline) {
+            return false;
+        }
+
+        t_pulse_start = t_now;
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               bus_line_is_valid_level(true)) {
+            tight_loop_contents();
+        }
+        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+            continue;
+        }
+
+        // 2) Busca pulso en bajo.
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               !bus_line_is_valid_level(false)) {
+            tight_loop_contents();
+        }
+        if (t_now >= t_deadline) {
+            return false;
+        }
+
+        t_pulse_start = t_now;
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               bus_line_is_valid_level(false)) {
+            tight_loop_contents();
+        }
+        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+            continue;
+        }
+
+        // 3) Busca segundo pulso en alto.
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               !bus_line_is_valid_level(true)) {
+            tight_loop_contents();
+        }
+        if (t_now >= t_deadline) {
+            return false;
+        }
+
+        t_pulse_start = t_now;
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               bus_line_is_valid_level(true)) {
+            tight_loop_contents();
+        }
+        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+            continue;
+        }
+
+        // 4) Detecta inicio de gap bajo y espera su duracion completa.
+        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
+               !bus_line_is_valid_level(false)) {
+            tight_loop_contents();
+        }
+        if (t_now >= t_deadline) {
+            return false;
+        }
+
+        sleep_us(BUS_SYNC_GAP_US);
+        return true;
+    }
+
+    return false;
 }
