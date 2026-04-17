@@ -17,17 +17,6 @@
 #define MASTER_RX_REARM_DELAY_US    2u
 #define MASTER_CMD_TO_DATA_GAP_US   7000u
 
-static void master_rearm_rx_after_tx(void) {
-    // Libera el bus (alta impedancia) al terminar TX.
-    bus_set_rx_mode();
-
-    // Pequenio tiempo de asentamiento de GPIO antes de esperar sync.
-    sleep_us(MASTER_RX_REARM_DELAY_US);
-
-    // Reafirma RX para asegurar estado conocido antes de receive_full_word().
-    bus_set_rx_mode();
-}
-
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -53,11 +42,13 @@ int main(void) {
                MASTER_DEST_WORD_COUNT);
 
         sleep_us(MASTER_CMD_TO_DATA_GAP_US);
-        bus_send_full_word(MASTER_TX_DATA_WORD);
         printf("TX_DATA|WORD=0x%04X\n", MASTER_TX_DATA_WORD);
+        bus_send_full_word(MASTER_TX_DATA_WORD);
 
-        // Transicion TX -> RX para esperar la Status Word del RT.
-        master_rearm_rx_after_tx();
+        // Rearmado explicito de RX para enganchar el sync de Status.
+        bus_set_rx_mode();
+        sleep_us(MASTER_RX_REARM_DELAY_US);
+        bus_set_rx_mode();
 
         uint16_t status_word = 0;
         bool status_parity_ok = false;
