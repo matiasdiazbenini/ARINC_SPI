@@ -17,7 +17,7 @@
 
 #define MASTER_PERIOD_MS            1000u
 #define MASTER_TURNAROUND_GUARD_US  0u
-#define MASTER_RX_TIMEOUT_US        40000u
+#define MASTER_RX_TIMEOUT_US        200000u
 #define MASTER_RX_FAIL_REPORT_EVERY 20u
 
 typedef enum {
