@@ -13,8 +13,8 @@
 #define RT_TEST_DATA_WORD        0xA5A5u
 
 #define RT_SYNC_TIMEOUT_US       30000u
-#define RT_RESPONSE_DELAY_US     100u
-#define RT_INTERWORD_GAP_US      50u
+#define RT_RESPONSE_DELAY_US     500u
+#define RT_INTERWORD_GAP_US      200u
 #define RT_RX_FAIL_REPORT_EVERY  20u
 
 static bool rt_is_supported_tx_request(const mil1553_command_word_t *cmd) {
