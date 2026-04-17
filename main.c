@@ -16,6 +16,11 @@
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         1000u
 
+static uint8_t rt_effective_word_count(uint8_t word_count) {
+    // MIL-STD-1553: en palabras de comando normales, WC=0 representa 32 palabras.
+    return (word_count == 0u) ? 32u : word_count;
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -72,23 +77,59 @@ int main(void) {
             .dynamic_bus_control_acceptance = false,
             .terminal_flag = false,
         };
-        const uint16_t status_word = mil1553_logic_build_status_word(&status);
 
+        if (cmd.transmit) {
+            // Flujo RT -> BC: CMD -> STS -> DATA.
+            const uint16_t status_word = mil1553_logic_build_status_word(&status);
+
+            sleep_us(RT_RESPONSE_DELAY_US);
+            bus_set_tx_mode();
+            bus_send_full_word(status_word);
+            printf("TX_STATUS|WORD=0x%04X\n", status_word);
+
+            if (cmd.subaddress == RT_SUBADDRESS_EXPECTED &&
+                cmd.word_count == RT_WORD_COUNT_EXPECTED) {
+                const uint16_t data_word = mil1553_logic_build_data_word(RT_DATA_WORD_TEST);
+
+                sleep_us(RT_INTERWORD_GAP_US);
+                bus_send_full_word(data_word);
+                printf("TX_DATA|WORD=0x%04X\n", data_word);
+            }
+
+            bus_set_rx_mode();
+            continue;
+        }
+
+        // Flujo BC -> RT: CMD -> DATA(s) -> STS.
+        const uint8_t data_words_expected = rt_effective_word_count(cmd.word_count);
+        for (uint8_t i = 0; i < data_words_expected; i++) {
+            uint16_t data_word = 0;
+            bool data_parity_ok = false;
+
+            if (!bus_receive_full_word(&data_word, &data_parity_ok, RT_RX_TIMEOUT_US)) {
+                status.message_error = true;
+                printf("RX_DATA|INDEX=%u|TIMEOUT_INVALID\n", (unsigned)(i + 1u));
+                break;
+            }
+
+            if (!data_parity_ok) {
+                status.message_error = true;
+                printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=ERR\n",
+                       (unsigned)(i + 1u),
+                       data_word);
+                break;
+            }
+
+            printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=OK\n",
+                   (unsigned)(i + 1u),
+                   data_word);
+        }
+
+        const uint16_t status_word = mil1553_logic_build_status_word(&status);
         sleep_us(RT_RESPONSE_DELAY_US);
         bus_set_tx_mode();
         bus_send_full_word(status_word);
         printf("TX_STATUS|WORD=0x%04X\n", status_word);
-
-        if (cmd.transmit &&
-            cmd.subaddress == RT_SUBADDRESS_EXPECTED &&
-            cmd.word_count == RT_WORD_COUNT_EXPECTED) {
-            const uint16_t data_word = mil1553_logic_build_data_word(RT_DATA_WORD_TEST);
-
-            sleep_us(RT_INTERWORD_GAP_US);
-            bus_send_full_word(data_word);
-            printf("TX_DATA|WORD=0x%04X\n", data_word);
-        }
-
         bus_set_rx_mode();
     }
 }
