@@ -45,7 +45,7 @@ static void rt_post_tr0_rearm_to_wait_cmd(void) {
     sleep_us(RT_POST_TR0_GUARD_US);
     bus_set_rx_mode();
 }
-
+//
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
