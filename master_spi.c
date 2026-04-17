@@ -16,6 +16,17 @@
 #define MASTER_CYCLE_PERIOD_MS      500u
 #define MASTER_RX_REARM_DELAY_US    2u
 #define MASTER_CMD_TO_DATA_GAP_US   7000u
+//
+static void master_rearm_rx_after_tx(void) {
+    // Libera el bus (alta impedancia) al terminar TX.
+    bus_set_rx_mode();
+
+    // Pequenio tiempo de asentamiento de GPIO antes de esperar sync.
+    sleep_us(MASTER_RX_REARM_DELAY_US);
+
+    // Reafirma RX para asegurar estado conocido antes de receive_full_word().
+    bus_set_rx_mode();
+}
 
 int main(void) {
     stdio_init_all();
