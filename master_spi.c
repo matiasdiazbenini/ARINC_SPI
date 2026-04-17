@@ -15,7 +15,7 @@
 #define MASTER_RX_TIMEOUT_US        200000u
 #define MASTER_CYCLE_PERIOD_MS      500u
 #define MASTER_RX_REARM_DELAY_US    2u
-#define MASTER_CMD_TO_DATA_GAP_US   2000u
+#define MASTER_CMD_TO_DATA_GAP_US   3000u
 
 static void master_rearm_rx_after_tx(void) {
     // Libera el bus (alta impedancia) al terminar TX.
