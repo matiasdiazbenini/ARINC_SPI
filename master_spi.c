@@ -9,11 +9,13 @@
 #define MASTER_DEST_RT_ADDRESS      3u
 #define MASTER_DEST_SUBADDRESS      1u
 #define MASTER_DEST_WORD_COUNT      1u
-#define MASTER_DEST_TR              true
+#define MASTER_DEST_TR              false
+#define MASTER_TX_DATA_WORD         0xA5A5u
 
 #define MASTER_RX_TIMEOUT_US        200000u
 #define MASTER_CYCLE_PERIOD_MS      500u
 #define MASTER_RX_REARM_DELAY_US    2u
+#define MASTER_INTERWORD_GAP_US     50u
 
 static void master_rearm_rx_after_tx(void) {
     // Libera el bus (alta impedancia) al terminar TX.
@@ -50,7 +52,11 @@ int main(void) {
                MASTER_DEST_SUBADDRESS,
                MASTER_DEST_WORD_COUNT);
 
-        // Ajuste clave: transicion TX -> RX mas robusta para banco.
+        sleep_us(MASTER_INTERWORD_GAP_US);
+        bus_send_full_word(MASTER_TX_DATA_WORD);
+        printf("TX_DATA|WORD=0x%04X\n", MASTER_TX_DATA_WORD);
+
+        // Transicion TX -> RX para esperar la Status Word del RT.
         master_rearm_rx_after_tx();
 
         uint16_t status_word = 0;
@@ -77,23 +83,6 @@ int main(void) {
                status.service_request ? 1u : 0u,
                status.busy ? 1u : 0u,
                status.terminal_flag ? 1u : 0u);
-
-        uint16_t data_word = 0;
-        bool data_parity_ok = false;
-
-        if (!bus_receive_full_word(&data_word, &data_parity_ok, MASTER_RX_TIMEOUT_US)) {
-            printf("RX_DATA|TIMEOUT/INVALID\n");
-            sleep_ms(MASTER_CYCLE_PERIOD_MS);
-            continue;
-        }
-
-        if (!data_parity_ok) {
-            printf("RX_DATA|PARITY_ERROR|WORD=0x%04X\n", data_word);
-            sleep_ms(MASTER_CYCLE_PERIOD_MS);
-            continue;
-        }
-
-        printf("RX_DATA|WORD=0x%04X|PARITY=OK\n", data_word);
 
         sleep_ms(MASTER_CYCLE_PERIOD_MS);
     }
