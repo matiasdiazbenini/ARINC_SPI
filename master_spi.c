@@ -15,7 +15,7 @@
 #define MASTER_RX_TIMEOUT_US        200000u
 #define MASTER_CYCLE_PERIOD_MS      500u
 #define MASTER_RX_REARM_DELAY_US    2u
-#define MASTER_INTERWORD_GAP_US     50u
+#define MASTER_CMD_TO_DATA_GAP_US   500u
 
 static void master_rearm_rx_after_tx(void) {
     // Libera el bus (alta impedancia) al terminar TX.
@@ -52,7 +52,7 @@ int main(void) {
                MASTER_DEST_SUBADDRESS,
                MASTER_DEST_WORD_COUNT);
 
-        sleep_us(MASTER_INTERWORD_GAP_US);
+        sleep_us(MASTER_CMD_TO_DATA_GAP_US);
         bus_send_full_word(MASTER_TX_DATA_WORD);
         printf("TX_DATA|WORD=0x%04X\n", MASTER_TX_DATA_WORD);
 
