@@ -13,7 +13,7 @@
 
 #define RT_RX_TIMEOUT_US            200000u
 #define RT_TIMEOUT_REPORT_EVERY     20u
-#define RT_RESPONSE_DELAY_US        500u
+#define RT_RESPONSE_DELAY_US        1000u
 #define RT_INTERWORD_GAP_US         1000u
 #define RT_POST_TR0_GUARD_US        5000u
 
