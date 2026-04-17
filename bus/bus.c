@@ -4,7 +4,7 @@
 #include "pico/platform.h"
 #include "pico/stdlib.h"
 
-#define BUS_BIT_RATE_HZ          1000000u
+#define BUS_BIT_RATE_HZ          20000u
 #define BUS_HALFBIT_RATE_HZ      (BUS_BIT_RATE_HZ * 2u)
 #define BUS_SYNC_PULSE_US        4u
 #define BUS_SYNC_GAP_US          2u
