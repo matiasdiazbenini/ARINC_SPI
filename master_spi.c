@@ -18,6 +18,7 @@
 #define MASTER_PERIOD_MS            1000u
 #define MASTER_TURNAROUND_GUARD_US  0u
 #define MASTER_RX_TIMEOUT_US        40000u
+#define MASTER_RX_FAIL_REPORT_EVERY 20u
 
 typedef enum {
     RX_WORD_OK,
@@ -49,6 +50,9 @@ int main(void) {
     bus_init();
     bus_set_rx_mode();
 
+    uint32_t status_timeout_count = 0;
+    uint32_t data_timeout_count = 0;
+
     while (true) {
         uint16_t status_word_raw = 0;
         uint16_t data_word_raw = 0;
@@ -79,7 +83,12 @@ int main(void) {
 
         rx_word_result_t status_rx = master_receive_checked_word(&status_word_raw);
         if (status_rx == RX_WORD_TIMEOUT_INVALID) {
-            printf("RX_STATUS|TIMEOUT/INVALID\n");
+            status_timeout_count++;
+            if (status_timeout_count == 1 ||
+                (status_timeout_count % MASTER_RX_FAIL_REPORT_EVERY) == 0) {
+                printf("RX_STATUS|TIMEOUT/INVALID|COUNT=%lu\n",
+                       (unsigned long)status_timeout_count);
+            }
             sleep_ms(MASTER_PERIOD_MS);
             continue;
         }
@@ -87,6 +96,11 @@ int main(void) {
             printf("RX_STATUS|PARITY ERROR|WORD=0x%04X\n", status_word_raw);
             sleep_ms(MASTER_PERIOD_MS);
             continue;
+        }
+
+        if (status_timeout_count > 0) {
+            printf("RX_STATUS|RECOVERED|MISSED=%lu\n", (unsigned long)status_timeout_count);
+            status_timeout_count = 0;
         }
 
         mil1553_logic_decode_status_word(status_word_raw, &status);
@@ -104,7 +118,12 @@ int main(void) {
         // 3) RX: espera Data Word.
         rx_word_result_t data_rx = master_receive_checked_word(&data_word_raw);
         if (data_rx == RX_WORD_TIMEOUT_INVALID) {
-            printf("RX_DATA|TIMEOUT/INVALID\n");
+            data_timeout_count++;
+            if (data_timeout_count == 1 ||
+                (data_timeout_count % MASTER_RX_FAIL_REPORT_EVERY) == 0) {
+                printf("RX_DATA|TIMEOUT/INVALID|COUNT=%lu\n",
+                       (unsigned long)data_timeout_count);
+            }
             sleep_ms(MASTER_PERIOD_MS);
             continue;
         }
@@ -112,6 +131,11 @@ int main(void) {
             printf("RX_DATA|PARITY ERROR|WORD=0x%04X\n", data_word_raw);
             sleep_ms(MASTER_PERIOD_MS);
             continue;
+        }
+
+        if (data_timeout_count > 0) {
+            printf("RX_DATA|RECOVERED|MISSED=%lu\n", (unsigned long)data_timeout_count);
+            data_timeout_count = 0;
         }
 
         // Data Word es payload de 16 bits.
