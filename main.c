@@ -1,26 +1,94 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "bus/bus.h"
+#include "mil1553_words.h"
 #include "pico/stdlib.h"
 
-#define TX_TEST_WORD        0x1800u
-#define TX_START_DELAY_MS   1000u
-#define TX_PERIOD_MS        500u
+#define RT_ADDRESS                  3u
+#define RT_SUBADDRESS_EXPECTED      1u
+#define RT_WORD_COUNT_EXPECTED      1u
+#define RT_DATA_WORD_TEST           0xA5A5u
+
+#define RT_RX_TIMEOUT_US            200000u
+#define RT_TIMEOUT_REPORT_EVERY     20u
+#define RT_RESPONSE_DELAY_US        500u
+#define RT_INTERWORD_GAP_US         1000u
 
 int main(void) {
     stdio_init_all();
+    sleep_ms(1200);
+
+    printf("RT MIL test iniciado\n");
 
     bus_init();
+    bus_set_rx_mode();
 
-    // Espera inicial para estabilizar prueba y consola.
-    sleep_ms(TX_START_DELAY_MS);
-
-    bus_set_tx_mode();
+    uint32_t rx_timeout_count = 0;
 
     while (true) {
-        bus_send_full_word(TX_TEST_WORD);
-        printf("TX_TEST|WORD=0x%04X\n", TX_TEST_WORD);
-        sleep_ms(TX_PERIOD_MS);
+        uint16_t rx_word = 0;
+        bool parity_ok = false;
+
+        if (!bus_receive_full_word(&rx_word, &parity_ok, RT_RX_TIMEOUT_US)) {
+            rx_timeout_count++;
+            if (rx_timeout_count == 1u || (rx_timeout_count % RT_TIMEOUT_REPORT_EVERY) == 0u) {
+                printf("RX_WAIT|TIMEOUT_INVALID|COUNT=%lu\n", (unsigned long)rx_timeout_count);
+            }
+            tight_loop_contents();
+            continue;
+        }
+
+        rx_timeout_count = 0;
+
+        if (!parity_ok) {
+            printf("RX_ERR|WORD=0x%04X|PARITY=ERR\n", rx_word);
+            continue;
+        }
+
+        printf("RX_OK|WORD=0x%04X|PARITY=OK\n", rx_word);
+
+        mil1553_command_word_t cmd = {0};
+        mil1553_logic_decode_command_word(rx_word, &cmd);
+
+        printf("CMD_DEC|RT=%u|TR=%u|SA=%u|WC=%u\n",
+               cmd.rt_address,
+               cmd.transmit ? 1u : 0u,
+               cmd.subaddress,
+               cmd.word_count);
+
+        if (cmd.rt_address != RT_ADDRESS) {
+            continue;
+        }
+
+        mil1553_status_word_t status = {
+            .rt_address = RT_ADDRESS,
+            .message_error = false,
+            .service_request = false,
+            .broadcast_command_received = false,
+            .busy = false,
+            .subsystem_flag = false,
+            .dynamic_bus_control_acceptance = false,
+            .terminal_flag = false,
+        };
+        const uint16_t status_word = mil1553_logic_build_status_word(&status);
+
+        sleep_us(RT_RESPONSE_DELAY_US);
+        bus_set_tx_mode();
+        bus_send_full_word(status_word);
+        printf("TX_STATUS|WORD=0x%04X\n", status_word);
+
+        if (cmd.transmit &&
+            cmd.subaddress == RT_SUBADDRESS_EXPECTED &&
+            cmd.word_count == RT_WORD_COUNT_EXPECTED) {
+            const uint16_t data_word = mil1553_logic_build_data_word(RT_DATA_WORD_TEST);
+
+            sleep_us(RT_INTERWORD_GAP_US);
+            bus_send_full_word(data_word);
+            printf("TX_DATA|WORD=0x%04X\n", data_word);
+        }
+
+        bus_set_rx_mode();
     }
 }
