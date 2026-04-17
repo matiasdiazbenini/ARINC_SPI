@@ -16,6 +16,22 @@
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         1000u
 
+static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
+    if (!cmd) {
+        return false;
+    }
+
+    const bool rt_match = (cmd->rt_address == RT_ADDRESS);
+    const bool sa_match = (cmd->subaddress == RT_SUBADDRESS_EXPECTED);
+    const bool wc_match = (cmd->word_count == RT_WORD_COUNT_EXPECTED);
+
+    // Este firmware soporta ambos casos de T/R:
+    // TR=1 (RT->BC) y TR=0 (BC->RT).
+    const bool tr_supported = true;
+
+    return rt_match && sa_match && wc_match && tr_supported;
+}
+
 static uint8_t rt_effective_word_count(uint8_t word_count) {
     // MIL-STD-1553: en palabras de comando normales, WC=0 representa 32 palabras.
     return (word_count == 0u) ? 32u : word_count;
@@ -63,7 +79,13 @@ int main(void) {
                cmd.subaddress,
                cmd.word_count);
 
-        if (cmd.rt_address != RT_ADDRESS) {
+        if (!rt_is_supported_command(&cmd)) {
+            printf("CMD_INVALID|WORD=0x%04X|RT=%u|TR=%u|SA=%u|WC=%u\n",
+                   rx_word,
+                   cmd.rt_address,
+                   cmd.transmit ? 1u : 0u,
+                   cmd.subaddress,
+                   cmd.word_count);
             continue;
         }
 
