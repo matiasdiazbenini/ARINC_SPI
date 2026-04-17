@@ -13,7 +13,8 @@
 #define RT_TEST_DATA_WORD        0xA5A5u
 
 #define RT_SYNC_TIMEOUT_US       30000u
-#define RT_INTERWORD_GUARD_US    4u
+#define RT_RESPONSE_DELAY_US     100u
+#define RT_INTERWORD_GAP_US      50u
 #define RT_RX_FAIL_REPORT_EVERY  20u
 
 static bool rt_is_supported_tx_request(const mil1553_command_word_t *cmd) {
@@ -99,13 +100,13 @@ int main(void) {
         const bool send_data = rt_is_supported_tx_request(&command);
 
         bus_set_tx_mode();
-        sleep_us(RT_INTERWORD_GUARD_US);
+        sleep_us(RT_RESPONSE_DELAY_US);
         bus_send_full_word(status_word);
         printf("TX_STATUS|WORD=0x%04X\n", status_word);
 
         if (send_data) {
             uint16_t data_word = mil1553_logic_build_data_word(RT_TEST_DATA_WORD);
-            sleep_us(RT_INTERWORD_GUARD_US);
+            sleep_us(RT_INTERWORD_GAP_US);
             bus_send_full_word(data_word);
             printf("TX_DATA|WORD=0x%04X\n", data_word);
         }
