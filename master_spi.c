@@ -16,7 +16,7 @@
 #define MASTER_WORD_COUNT           1u
 
 #define MASTER_PERIOD_MS            1000u
-#define MASTER_TURNAROUND_GUARD_US  50u
+#define MASTER_TURNAROUND_GUARD_US  0u
 #define MASTER_RX_TIMEOUT_US        40000u
 
 typedef enum {
@@ -73,7 +73,9 @@ int main(void) {
 
         // 2) RX: espera Status Word.
         bus_set_rx_mode();
-        sleep_us(MASTER_TURNAROUND_GUARD_US);
+        if (MASTER_TURNAROUND_GUARD_US > 0u) {
+            sleep_us(MASTER_TURNAROUND_GUARD_US);
+        }
 
         rx_word_result_t status_rx = master_receive_checked_word(&status_word_raw);
         if (status_rx == RX_WORD_TIMEOUT_INVALID) {
