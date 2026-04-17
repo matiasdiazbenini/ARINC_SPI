@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "bus/bus.h"
+#include "mil1553_words.h"
 #include "pico/stdlib.h"
 
 // Sniffer pasivo de banco:
@@ -10,24 +11,43 @@
 // y emite una linea simple por USB serial
 
 #define SNIFFER_SYNC_TIMEOUT_US 30000u
+#define SNIFFER_RT_ADDRESS      3u
+#define SNIFFER_SUBADDRESS      1u
+#define SNIFFER_WORD_COUNT      1u
 
-typedef enum {
-    SEQ_EXPECT_CMD = 0,
-    SEQ_EXPECT_STS = 1,
-    SEQ_EXPECT_DATA = 2
-} sniffer_seq_state_t;
+static bool is_valid_command_word(uint16_t word) {
+    mil1553_command_word_t cmd = {0};
+    mil1553_logic_decode_command_word(word, &cmd);
 
-static const char *type_from_state(sniffer_seq_state_t state) {
-    switch (state) {
-        case SEQ_EXPECT_CMD:
-            return "CMD";
-        case SEQ_EXPECT_STS:
-            return "STS";
-        case SEQ_EXPECT_DATA:
-            return "DATA";
-        default:
-            return "UNKNOWN";
+    // Perfil de banco actual: comando al RT=3, SA=1, WC=1.
+    return (cmd.rt_address == SNIFFER_RT_ADDRESS) &&
+           (cmd.subaddress == SNIFFER_SUBADDRESS) &&
+           (cmd.word_count == SNIFFER_WORD_COUNT);
+}
+
+static bool is_valid_status_word(uint16_t word) {
+    mil1553_status_word_t status = {0};
+    mil1553_logic_decode_status_word(word, &status);
+
+    // En esta etapa, los bits reservados [9], [7], [6] y [0]
+    // deben permanecer en cero para considerar la palabra como status.
+    const bool reserved_bits_ok =
+        ((word & (1u << 9)) == 0u) &&
+        ((word & (1u << 7)) == 0u) &&
+        ((word & (1u << 6)) == 0u) &&
+        ((word & (1u << 0)) == 0u);
+
+    return (status.rt_address == SNIFFER_RT_ADDRESS) && reserved_bits_ok;
+}
+
+static const char *classify_word_type(uint16_t word) {
+    if (is_valid_command_word(word)) {
+        return "CMD";
     }
+    if (is_valid_status_word(word)) {
+        return "STS";
+    }
+    return "DATA";
 }
 
 int main(void) {
@@ -36,7 +56,6 @@ int main(void) {
 
     bus_init();
     bus_set_rx_mode();
-    sniffer_seq_state_t seq_state = SEQ_EXPECT_CMD;
 
     while (true) {
         uint16_t word = 0;
@@ -49,17 +68,10 @@ int main(void) {
         }
 
         if (parity_ok) {
-            const char *type = type_from_state(seq_state);
+            const char *type = classify_word_type(word);
             printf("RX_OK|TYPE=%s|WORD=0x%04X|PARITY=OK\r\n", type, word);
-
-            if (seq_state == SEQ_EXPECT_DATA) {
-                seq_state = SEQ_EXPECT_CMD;
-            } else {
-                seq_state = (sniffer_seq_state_t)(seq_state + 1);
-            }
         } else {
             printf("RX_ERR|TYPE=UNKNOWN|WORD=0x%04X|PARITY=ERR\r\n", word);
-            seq_state = SEQ_EXPECT_CMD;
         }
 
         fflush(stdout);
