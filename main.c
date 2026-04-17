@@ -15,6 +15,7 @@
 #define RT_TIMEOUT_REPORT_EVERY     20u
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         1000u
+#define RT_POST_TR0_GUARD_US        1200u
 
 static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
     if (!cmd) {
@@ -35,6 +36,14 @@ static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
 static uint8_t rt_effective_word_count(uint8_t word_count) {
     // MIL-STD-1553: en palabras de comando normales, WC=0 representa 32 palabras.
     return (word_count == 0u) ? 32u : word_count;
+}
+
+static void rt_post_tr0_rearm_to_wait_cmd(void) {
+    // Vuelve a alta impedancia y deja pasar residuos inmediatos del bus
+    // antes de volver a interpretar nuevas Command Words.
+    bus_set_rx_mode();
+    sleep_us(RT_POST_TR0_GUARD_US);
+    bus_set_rx_mode();
 }
 
 int main(void) {
@@ -152,6 +161,6 @@ int main(void) {
         bus_set_tx_mode();
         bus_send_full_word(status_word);
         printf("TX_STATUS|WORD=0x%04X\n", status_word);
-        bus_set_rx_mode();
+        rt_post_tr0_rearm_to_wait_cmd();
     }
 }
