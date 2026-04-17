@@ -3,45 +3,98 @@
 #include <stdio.h>
 
 #include "bus/bus.h"
+#include "mil1553_words.h"
 #include "pico/stdlib.h"
 
+#define MASTER_DEST_RT_ADDRESS      3u
+#define MASTER_DEST_SUBADDRESS      1u
+#define MASTER_DEST_WORD_COUNT      1u
+#define MASTER_DEST_TR              true
+
 #define MASTER_RX_TIMEOUT_US        200000u
-#define MASTER_RX_FAIL_REPORT_EVERY 20u
+#define MASTER_CYCLE_PERIOD_MS      500u
+#define MASTER_RX_REARM_DELAY_US    2u
+
+static void master_rearm_rx_after_tx(void) {
+    // Libera el bus (alta impedancia) al terminar TX.
+    bus_set_rx_mode();
+
+    // Pequenio tiempo de asentamiento de GPIO antes de esperar sync.
+    sleep_us(MASTER_RX_REARM_DELAY_US);
+
+    // Reafirma RX para asegurar estado conocido antes de receive_full_word().
+    bus_set_rx_mode();
+}
 
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    printf("MASTER RX test pasivo iniciado\n");
+    printf("MASTER MIL test iniciado\n");
 
     bus_init();
-    bus_set_rx_mode();
-
-    uint32_t rx_fail_count = 0;
 
     while (true) {
-        uint16_t word = 0;
-        bool parity_ok = false;
+        const uint16_t command_word = mil1553_logic_build_command_word(
+            MASTER_DEST_RT_ADDRESS,
+            MASTER_DEST_TR,
+            MASTER_DEST_SUBADDRESS,
+            MASTER_DEST_WORD_COUNT);
 
-        if (!bus_receive_full_word(&word, &parity_ok, MASTER_RX_TIMEOUT_US)) {
-            // Timeout de sync o recepcion incompleta.
-            rx_fail_count++;
-            if (rx_fail_count == 1 || (rx_fail_count % MASTER_RX_FAIL_REPORT_EVERY) == 0) {
-                printf("RX_WAIT|TIMEOUT/INVALID|COUNT=%lu\n", (unsigned long)rx_fail_count);
-            }
-            tight_loop_contents();
+        bus_set_tx_mode();
+        bus_send_full_word(command_word);
+        printf("TX_CMD|WORD=0x%04X|RT=%u|TR=%u|SA=%u|WC=%u\n",
+               command_word,
+               MASTER_DEST_RT_ADDRESS,
+               MASTER_DEST_TR ? 1u : 0u,
+               MASTER_DEST_SUBADDRESS,
+               MASTER_DEST_WORD_COUNT);
+
+        // Ajuste clave: transicion TX -> RX mas robusta para banco.
+        master_rearm_rx_after_tx();
+
+        uint16_t status_word = 0;
+        bool status_parity_ok = false;
+
+        if (!bus_receive_full_word(&status_word, &status_parity_ok, MASTER_RX_TIMEOUT_US)) {
+            printf("RX_STATUS|TIMEOUT/INVALID\n");
+            sleep_ms(MASTER_CYCLE_PERIOD_MS);
             continue;
         }
 
-        if (rx_fail_count > 0) {
-            printf("RX_WAIT|RECOVERED|MISSED=%lu\n", (unsigned long)rx_fail_count);
-            rx_fail_count = 0;
+        if (!status_parity_ok) {
+            printf("RX_STATUS|PARITY_ERROR|WORD=0x%04X\n", status_word);
+            sleep_ms(MASTER_CYCLE_PERIOD_MS);
+            continue;
         }
 
-        if (parity_ok) {
-            printf("RX_OK|WORD=0x%04X|PARITY=OK\n", word);
-        } else {
-            printf("RX_ERR|WORD=0x%04X|PARITY=ERR\n", word);
+        mil1553_status_word_t status = {0};
+        mil1553_logic_decode_status_word(status_word, &status);
+        printf("RX_STATUS|WORD=0x%04X|PARITY=OK|RT=%u|ME=%u|SR=%u|BUSY=%u|TF=%u\n",
+               status_word,
+               status.rt_address,
+               status.message_error ? 1u : 0u,
+               status.service_request ? 1u : 0u,
+               status.busy ? 1u : 0u,
+               status.terminal_flag ? 1u : 0u);
+
+        uint16_t data_word = 0;
+        bool data_parity_ok = false;
+
+        if (!bus_receive_full_word(&data_word, &data_parity_ok, MASTER_RX_TIMEOUT_US)) {
+            printf("RX_DATA|TIMEOUT/INVALID\n");
+            sleep_ms(MASTER_CYCLE_PERIOD_MS);
+            continue;
         }
+
+        if (!data_parity_ok) {
+            printf("RX_DATA|PARITY_ERROR|WORD=0x%04X\n", data_word);
+            sleep_ms(MASTER_CYCLE_PERIOD_MS);
+            continue;
+        }
+
+        printf("RX_DATA|WORD=0x%04X|PARITY=OK\n", data_word);
+
+        sleep_ms(MASTER_CYCLE_PERIOD_MS);
     }
 }
