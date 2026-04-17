@@ -16,7 +16,7 @@
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         500u
 #define RT_POST_TR0_GUARD_US        5000u
-//
+
 static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
     if (!cmd) {
         return false;
@@ -39,30 +39,10 @@ static uint8_t rt_effective_word_count(uint8_t word_count) {
 }
 
 static void rt_post_tr0_rearm_to_wait_cmd(void) {
-    // Flush silencioso post-TR=0: consume posibles residuos (ej. ultima DATA)
-    // para evitar que se interpreten como nuevos comandos.
+    // Vuelve a alta impedancia y deja pasar residuos inmediatos del bus
+    // antes de volver a interpretar nuevas Command Words.
     bus_set_rx_mode();
-
-    const uint64_t deadline_us =
-        to_us_since_boot(get_absolute_time()) + (uint64_t)RT_POST_TR0_FLUSH_US;
-
-    while (true) {
-        const uint64_t now_us = to_us_since_boot(get_absolute_time());
-        if (now_us >= deadline_us) {
-            break;
-        }
-
-        uint32_t remaining_us = (uint32_t)(deadline_us - now_us);
-        uint32_t sync_timeout_us = RT_FLUSH_STEP_TIMEOUT_US;
-        if (remaining_us < sync_timeout_us) {
-            sync_timeout_us = remaining_us;
-        }
-
-        uint16_t discard_word = 0;
-        bool discard_parity_ok = false;
-        (void)bus_receive_full_word(&discard_word, &discard_parity_ok, sync_timeout_us);
-    }
-
+    sleep_us(RT_POST_TR0_GUARD_US);
     bus_set_rx_mode();
 }
 //
