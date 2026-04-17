@@ -15,7 +15,7 @@
 #define RT_TIMEOUT_REPORT_EVERY     20u
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         1000u
-#define RT_POST_TR0_GUARD_US        1200u
+#define RT_POST_TR0_GUARD_US        3000u
 
 static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
     if (!cmd) {
