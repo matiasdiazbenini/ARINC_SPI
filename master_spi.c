@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
@@ -8,31 +9,41 @@
 #include "arinc_gpio_link.pio.h"
 
 /*
- * Enlace ARINC-like sobre dos GPIO:
- * - GP2 representa el simbolo de bit 0
- * - GP3 representa el simbolo de bit 1
- * No hay linea SYNC: la separacion entre palabras se hace con idle gap.
+ * Master half-duplex sobre GP2/GP3:
+ * 1. Transmite un batch completo por PIO.
+ * 2. Libera la linea y pasa a modo RX.
+ * 3. Espera una palabra ACK enviada por el slave.
+ * 4. Recien ahi arranca el siguiente batch.
  *
- * Cambio importante:
- * el master ya no transmite una sola vez y termina. Ahora emite lotes
- * consecutivos de 1000 palabras. Eso evita que el slave o Flask queden
- * "fuera de fase" si arrancan unos segundos tarde.
+ * Esto sigue siendo ARINC-like de laboratorio, no ARINC 429 real: ARINC 429
+ * clasico es unidireccional. El ACK es una capa propia para ensayar un flujo
+ * tipo TCP primitivo sobre el enlace que ya venimos usando.
  */
-#define ARINC_TX_PIN_BASE    2u
-#define BIT_RATE_HZ          100000u
-#define HALF_CYCLES          5u
-#define WORD_GAP_BITS        4u
-#define WORDS_PER_BATCH      1000u
-#define BATCH_GAP_MS         1500u
-#define STARTUP_DELAY_MS     2500u
-#define ENABLE_TX_WORD_LOG   0u
-#define ENABLE_TX_BATCH_LOG  1u
+#define ARINC_PIN_BASE        2u
+#define BIT_RATE_HZ           100000u
+#define HALF_CYCLES           5u
+#define WORD_GAP_BITS         4u
+#define WORDS_PER_BATCH       1000u
+#define STARTUP_DELAY_MS      2500u
+#define ACK_LABEL             0xACu
+#define ACK_SDI               0x03u
+#define ACK_WAIT_LOG_MS       1500u
+#define POST_ACK_GUARD_US     20000u
+#define ENABLE_TX_WORD_LOG    0u
+#define ENABLE_TX_BATCH_LOG   1u
 
 typedef struct {
     uint8_t label;
     uint8_t sdi;
     const char *name;
 } arinc_profile_t;
+
+typedef struct {
+    float temp_c;
+    float speed_kt;
+    float altitude_ft;
+    uint32_t rng_state;
+} signal_state_t;
 
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     int ones = 0;
@@ -58,40 +69,56 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
     return word;
 }
 
+static float clamp_float(float value, float min_value, float max_value) {
+    if (value < min_value) {
+        return min_value;
+    }
+    if (value > max_value) {
+        return max_value;
+    }
+    return value;
+}
+
+static uint32_t prng_next(uint32_t *state) {
+    *state = (*state * 1664525u) + 1013904223u;
+    return *state;
+}
+
+static float random_range(uint32_t *state, float min_value, float max_value) {
+    const uint32_t sample = prng_next(state) & 0xFFFFu;
+    const float normalized = (float)sample / 65535.0f;
+    return min_value + ((max_value - min_value) * normalized);
+}
+
+static uint8_t random_ssm(uint32_t *state) {
+    const uint32_t sample = prng_next(state) % 100u;
+
+    if (sample < 86u) {
+        return 3u; /* NORMAL */
+    }
+    if (sample < 91u) {
+        return 1u; /* NCD */
+    }
+    if (sample < 96u) {
+        return 2u; /* FUNCTIONAL_TEST */
+    }
+    return 0u;     /* FAILURE */
+}
+
 static uint32_t encode_temperature(float temp_c) {
     float raw = (temp_c + 50.0f) / 0.25f;
-
-    if (raw < 0.0f) {
-        raw = 0.0f;
-    }
-    if (raw > 0x7FFFF) {
-        raw = (float)0x7FFFF;
-    }
-
+    raw = clamp_float(raw, 0.0f, (float)0x7FFFFu);
     return (uint32_t)(raw + 0.5f);
 }
 
 static uint32_t encode_speed(float speed_kt) {
-    if (speed_kt < 0.0f) {
-        speed_kt = 0.0f;
-    }
-    if (speed_kt > 0x7FFFF) {
-        speed_kt = (float)0x7FFFF;
-    }
-
+    speed_kt = clamp_float(speed_kt, 0.0f, (float)0x7FFFFu);
     return (uint32_t)(speed_kt + 0.5f);
 }
 
 static uint32_t encode_altitude(float altitude_ft) {
     float raw = altitude_ft / 10.0f;
-
-    if (raw < 0.0f) {
-        raw = 0.0f;
-    }
-    if (raw > 0x7FFFF) {
-        raw = (float)0x7FFFF;
-    }
-
+    raw = clamp_float(raw, 0.0f, (float)0x7FFFFu);
     return (uint32_t)(raw + 0.5f);
 }
 
@@ -105,15 +132,36 @@ static const char *ssm_to_text(uint8_t ssm) {
     }
 }
 
-/*
- * El CPU solo encola palabras; la temporizacion fina del bit y del gap
- * entre palabras queda dentro de la maquina de estado PIO.
- */
+static void evolve_signal(signal_state_t *signals, uint32_t idx) {
+    if (idx == 0u) {
+        signals->temp_c += random_range(&signals->rng_state, -0.8f, 0.9f);
+        signals->temp_c = clamp_float(signals->temp_c, -20.0f, 60.0f);
+    } else if (idx == 1u) {
+        signals->speed_kt += random_range(&signals->rng_state, -6.0f, 8.0f);
+        signals->speed_kt = clamp_float(signals->speed_kt, 0.0f, 320.0f);
+    } else {
+        signals->altitude_ft += random_range(&signals->rng_state, -180.0f, 260.0f);
+        signals->altitude_ft = clamp_float(signals->altitude_ft, 0.0f, 12000.0f);
+    }
+}
+
+static uint32_t encode_profile_value(const signal_state_t *signals, uint32_t idx) {
+    if (idx == 0u) {
+        return encode_temperature(signals->temp_c);
+    }
+    if (idx == 1u) {
+        return encode_speed(signals->speed_kt);
+    }
+    return encode_altitude(signals->altitude_ft);
+}
+
+static uint32_t word_time_us(void) {
+    return ((32u + WORD_GAP_BITS) * 1000000u) / BIT_RATE_HZ;
+}
+
 static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, float bit_rate_hz) {
     pio_gpio_init(pio, pin_base + 0);
     pio_gpio_init(pio, pin_base + 1);
-
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, true);
 
     pio_sm_config c = arinc_gpio_link_tx_program_get_default_config(offset);
 
@@ -127,24 +175,120 @@ static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, 
     sm_config_set_clkdiv(&c, clkdiv);
 
     pio_sm_init(pio, sm, offset, &c);
-    pio_sm_set_pins_with_mask(pio, sm, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
-    pio_sm_set_enabled(pio, sm, true);
+    pio_sm_set_enabled(pio, sm, false);
+}
+
+static void arinc_rx_program_init(PIO pio, uint sm, uint offset, uint pin_base) {
+    pio_gpio_init(pio, pin_base + 0);
+    pio_gpio_init(pio, pin_base + 1);
+    gpio_pull_down(pin_base + 0);
+    gpio_pull_down(pin_base + 1);
+
+    pio_sm_config c = arinc_gpio_link_rx_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin_base);
+    sm_config_set_jmp_pin(&c, pin_base + 1);
+    sm_config_set_in_shift(&c, true, false, 32);
+    sm_config_set_clkdiv(&c, 1.0f);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, false);
+}
+
+static void set_tx_mode(PIO pio, uint sm_tx, uint sm_rx, uint pin_base) {
+    pio_sm_set_enabled(pio, sm_rx, false);
+    pio_sm_clear_fifos(pio, sm_rx);
+    pio_sm_restart(pio, sm_rx);
+
+    pio_sm_set_consecutive_pindirs(pio, sm_tx, pin_base, 2, true);
+    pio_sm_set_pins_with_mask(pio, sm_tx, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
+    pio_sm_set_enabled(pio, sm_tx, true);
+}
+
+static void set_rx_mode(PIO pio, uint sm_tx, uint sm_rx, uint pin_base) {
+    pio_sm_set_enabled(pio, sm_tx, false);
+    pio_sm_set_pins_with_mask(pio, sm_tx, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
+
+    pio_sm_set_consecutive_pindirs(pio, sm_rx, pin_base, 2, false);
+    pio_sm_clear_fifos(pio, sm_rx);
+    pio_sm_restart(pio, sm_rx);
+    pio_sm_set_enabled(pio, sm_rx, true);
+}
+
+static void wait_tx_drain(PIO pio, uint sm_tx) {
+    while (!pio_sm_is_tx_fifo_empty(pio, sm_tx)) {
+        tight_loop_contents();
+    }
+
+    sleep_us(word_time_us() + 50u);
+}
+
+static bool is_valid_ack(uint32_t word, uint32_t *ack_batch) {
+    const uint8_t label = (word >> 0) & 0xFFu;
+    const uint8_t sdi = (word >> 8) & 0x03u;
+    const uint32_t raw = (word >> 10) & 0x7FFFFu;
+    const uint8_t parity_rx = (word >> 31) & 0x01u;
+    const uint8_t parity_exp = calc_odd_parity_31bits(word & 0x7FFFFFFFu);
+
+    if (label == ACK_LABEL && sdi == ACK_SDI && parity_rx == parity_exp) {
+        *ack_batch = raw;
+        return true;
+    }
+
+    return false;
+}
+
+static uint32_t wait_for_ack(PIO pio, uint sm_rx, uint32_t batch_number) {
+    absolute_time_t last_log_time = get_absolute_time();
+
+    while (true) {
+        while (!pio_sm_is_rx_fifo_empty(pio, sm_rx)) {
+            const uint32_t word = pio_sm_get(pio, sm_rx);
+            uint32_t ack_batch = 0;
+
+            if (is_valid_ack(word, &ack_batch)) {
+                printf("[ACK] MASTER <- ACK recibido | batch_rx=%lu | batch_tx=%lu\r\n",
+                       (unsigned long)ack_batch,
+                       (unsigned long)batch_number);
+
+                if (ack_batch != batch_number) {
+                    printf("[WARN] MASTER <- ACK valido pero numero distinto al esperado\r\n");
+                }
+
+                return ack_batch;
+            }
+
+            printf("[WARN] MASTER <- palabra no ACK ignorada: 0x%08lX\r\n", (unsigned long)word);
+        }
+
+        const int64_t idle_us = absolute_time_diff_us(last_log_time, get_absolute_time());
+        if (idle_us >= (int64_t)(ACK_WAIT_LOG_MS * 1000u)) {
+            printf("[INFO] MASTER -> esperando ACK del slave para batch %lu\r\n",
+                   (unsigned long)batch_number);
+            last_log_time = get_absolute_time();
+        }
+
+        tight_loop_contents();
+    }
 }
 
 int main(void) {
     stdio_init_all();
     sleep_ms(STARTUP_DELAY_MS);
 
-    printf("MASTER - ARINC-like por PIO sin SYNC\r\n");
-    printf("TX pins: GP2=LINE_A, GP3=LINE_B\r\n");
+    printf("MASTER - ARINC-like half-duplex con ACK por PIO\r\n");
+    printf("Data pins: GP2=LINE_A, GP3=LINE_B\r\n");
     printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
-    printf("Lote continuo: %u palabras por batch\r\n\r\n", WORDS_PER_BATCH);
+    printf("Batch: %u palabras | ACK label: 0x%02X\r\n\r\n", WORDS_PER_BATCH, ACK_LABEL);
 
     PIO pio = pio0;
-    uint sm = 0;
-    uint offset = pio_add_program(pio, &arinc_gpio_link_tx_program);
+    const uint sm_tx = 0;
+    const uint sm_rx = 1;
+    const uint tx_offset = pio_add_program(pio, &arinc_gpio_link_tx_program);
+    const uint rx_offset = pio_add_program(pio, &arinc_gpio_link_rx_program);
 
-    arinc_tx_program_init(pio, sm, offset, ARINC_TX_PIN_BASE, (float)BIT_RATE_HZ);
+    arinc_tx_program_init(pio, sm_tx, tx_offset, ARINC_PIN_BASE, (float)BIT_RATE_HZ);
+    arinc_rx_program_init(pio, sm_rx, rx_offset, ARINC_PIN_BASE);
 
     const arinc_profile_t profiles[] = {
         {0xA5, 0x0, "TEMPERATURA"},
@@ -152,49 +296,37 @@ int main(void) {
         {0xC2, 0x2, "ALTITUD"},
     };
 
-    float temp_c = 20.0f;
-    float speed_kt = 120.0f;
-    float altitude_ft = 1000.0f;
+    signal_state_t signals = {
+        .temp_c = 20.0f,
+        .speed_kt = 120.0f,
+        .altitude_ft = 1000.0f,
+        .rng_state = 0xC0FFEEu,
+    };
+
     uint32_t batch_number = 0;
     uint32_t global_word_index = 0;
 
     while (true) {
         ++batch_number;
+        set_tx_mode(pio, sm_tx, sm_rx, ARINC_PIN_BASE);
 
 #if ENABLE_TX_BATCH_LOG
-        printf("[INFO] Iniciando batch %lu de %u palabras\r\n",
+        printf("[INFO] MASTER -> iniciando batch %lu de %u palabras | T=%.1f C | V=%.1f kt | ALT=%.1f ft\r\n",
                (unsigned long)batch_number,
-               WORDS_PER_BATCH);
+               WORDS_PER_BATCH,
+               signals.temp_c,
+               signals.speed_kt,
+               signals.altitude_ft);
 #endif
 
         for (uint32_t i = 0; i < WORDS_PER_BATCH; ++i) {
             const uint32_t idx = global_word_index % 3u;
             const arinc_profile_t profile = profiles[idx];
-
-            uint8_t ssm;
-            const uint32_t ssm_cycle = (global_word_index / 3u) % 4u;
-
-            if (ssm_cycle == 0u) {
-                ssm = 3u;
-            } else if (ssm_cycle == 1u) {
-                ssm = 1u;
-            } else if (ssm_cycle == 2u) {
-                ssm = 2u;
-            } else {
-                ssm = 0u;
-            }
-
-            uint32_t raw;
-            if (idx == 0u) {
-                raw = encode_temperature(temp_c);
-            } else if (idx == 1u) {
-                raw = encode_speed(speed_kt);
-            } else {
-                raw = encode_altitude(altitude_ft);
-            }
-
+            const uint8_t ssm = random_ssm(&signals.rng_state);
+            const uint32_t raw = encode_profile_value(&signals, idx);
             const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
-            pio_sm_put_blocking(pio, sm, word);
+
+            pio_sm_put_blocking(pio, sm_tx, word);
 
 #if ENABLE_TX_WORD_LOG
             printf("TX %08lu -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
@@ -208,26 +340,19 @@ int main(void) {
                    ssm_to_text(ssm));
 #endif
 
-            if (idx == 0u) {
-                temp_c += 1.5f;
-            } else if (idx == 1u) {
-                speed_kt += 7.0f;
-            } else {
-                altitude_ft += 250.0f;
-            }
-
+            evolve_signal(&signals, idx);
             ++global_word_index;
         }
 
-        const uint32_t drain_time_us = ((32u + WORD_GAP_BITS) * 1000000u) / BIT_RATE_HZ;
-        sleep_us(drain_time_us + 20u);
+        wait_tx_drain(pio, sm_tx);
 
 #if ENABLE_TX_BATCH_LOG
-        printf("[INFO] Batch %lu enviado. Pausa de %u ms antes del siguiente.\r\n",
-               (unsigned long)batch_number,
-               BATCH_GAP_MS);
+        printf("[INFO] MASTER -> batch %lu enviado, liberando bus y esperando ACK\r\n",
+               (unsigned long)batch_number);
 #endif
 
-        sleep_ms(BATCH_GAP_MS);
+        set_rx_mode(pio, sm_tx, sm_rx, ARINC_PIN_BASE);
+        (void)wait_for_ack(pio, sm_rx, batch_number);
+        sleep_us(POST_ACK_GUARD_US);
     }
 }
