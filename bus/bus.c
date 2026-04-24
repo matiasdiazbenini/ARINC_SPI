@@ -200,7 +200,8 @@ bool bus_wait_sync(uint32_t timeout_us) {
 
         // 1) Pulso alto inicial.
         if (!bus_wait_level_with_timeout(true, t_deadline, 0u, &t_high1_start)) {
-            return false;
+            // No aparecio un nuevo candidato antes del timeout global.
+            break;
         }
         if (!bus_measure_pulse_us(true,
                                   t_high1_start,
@@ -253,7 +254,8 @@ bool bus_wait_sync(uint32_t timeout_us) {
 
         const uint64_t t_gap_min_end = t_gap_start + (uint64_t)BUS_SYNC_GAP_US;
         if (t_gap_min_end > t_deadline) {
-            return false;
+            // No hay tiempo suficiente para validar el gap completo.
+            break;
         }
 
         // El gap debe permanecer estable al menos BUS_SYNC_GAP_US.
