@@ -18,22 +18,6 @@
 #define RT_INTERWORD_GAP_US         200u
 #define RT_POST_TR0_GUARD_US        5000u
 
-typedef enum {
-    RT_STATE_WAIT_CMD = 0,
-    RT_STATE_WAIT_DATA,
-    RT_STATE_SEND_STATUS,
-    RT_STATE_SEND_DATA,
-    RT_STATE_GUARD
-} rt_state_t;
-
-typedef struct {
-    rt_state_t state;
-    mil1553_command_word_t cmd;
-    mil1553_status_word_t status;
-    uint8_t data_words_expected;
-    uint8_t data_words_received;
-} rt_fsm_t;
-
 static bool rt_is_supported_command(const mil1553_command_word_t *cmd) {
     if (!cmd) {
         return false;
@@ -69,21 +53,7 @@ static void rt_rearm_rx_before_data_window(void) {
     sleep_us(RT_RX_REARM_DELAY_US);
     bus_set_rx_mode();
 }
-
-static mil1553_status_word_t rt_build_default_status(void) {
-    mil1553_status_word_t status = {
-        .rt_address = RT_ADDRESS,
-        .message_error = false,
-        .service_request = false,
-        .broadcast_command_received = false,
-        .busy = false,
-        .subsystem_flag = false,
-        .dynamic_bus_control_acceptance = false,
-        .terminal_flag = false,
-    };
-    return status;
-}
-
+//
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -94,145 +64,113 @@ int main(void) {
     bus_set_rx_mode();
 
     uint32_t rx_timeout_count = 0;
-    rt_fsm_t fsm = {
-        .state = RT_STATE_WAIT_CMD,
-        .cmd = {0},
-        .status = {0},
-        .data_words_expected = 0u,
-        .data_words_received = 0u,
-    };
 
     while (true) {
-        switch (fsm.state) {
-            case RT_STATE_WAIT_CMD: {
-                uint16_t rx_word = 0;
-                bool parity_ok = false;
+        uint16_t rx_word = 0;
+        bool parity_ok = false;
 
-                if (!bus_receive_full_word(&rx_word, &parity_ok, RT_RX_TIMEOUT_US)) {
-                    rx_timeout_count++;
-                    if (rx_timeout_count == 1u ||
-                        (rx_timeout_count % RT_TIMEOUT_REPORT_EVERY) == 0u) {
-                        printf("RX_WAIT|TIMEOUT_INVALID|COUNT=%lu\n",
-                               (unsigned long)rx_timeout_count);
-                    }
-                    tight_loop_contents();
-                    break;
-                }
+        if (!bus_receive_full_word(&rx_word, &parity_ok, RT_RX_TIMEOUT_US)) {
+            rx_timeout_count++;
+            if (rx_timeout_count == 1u || (rx_timeout_count % RT_TIMEOUT_REPORT_EVERY) == 0u) {
+                printf("RX_WAIT|TIMEOUT_INVALID|COUNT=%lu\n", (unsigned long)rx_timeout_count);
+            }
+            tight_loop_contents();
+            continue;
+        }
 
-                rx_timeout_count = 0;
+        rx_timeout_count = 0;
 
-                if (!parity_ok) {
-                    printf("RX_ERR|WORD=0x%04X|PARITY=ERR\n", rx_word);
-                    break;
-                }
+        if (!parity_ok) {
+            printf("RX_ERR|WORD=0x%04X|PARITY=ERR\n", rx_word);
+            continue;
+        }
 
-                printf("RX_OK|WORD=0x%04X|PARITY=OK\n", rx_word);
+        printf("RX_OK|WORD=0x%04X|PARITY=OK\n", rx_word);
 
-                mil1553_command_word_t cmd = {0};
-                mil1553_logic_decode_command_word(rx_word, &cmd);
+        mil1553_command_word_t cmd = {0};
+        mil1553_logic_decode_command_word(rx_word, &cmd);
 
-                if (!rt_is_supported_command(&cmd)) {
+        if (!rt_is_supported_command(&cmd)) {
                     printf("CMD_INVALID|WORD=0x%04X|RT=%u|TR=%u|SA=%u|WC=%u\n",
-                           rx_word,
-                           cmd.rt_address,
-                           cmd.transmit ? 1u : 0u,
-                           cmd.subaddress,
-                           cmd.word_count);
-                    break;
+                        rx_word,
+                        cmd.rt_address,
+                        cmd.transmit ? 1u : 0u,
+                        cmd.subaddress,
+                        cmd.word_count);
+                    continue;
                 }
 
-                printf("CMD_DEC|RT=%u|TR=%u|SA=%u|WC=%u\n",
-                       cmd.rt_address,
-                       cmd.transmit ? 1u : 0u,
-                       cmd.subaddress,
-                       cmd.word_count);
+        printf("CMD_DEC|RT=%u|TR=%u|SA=%u|WC=%u\n",
+               cmd.rt_address,
+               cmd.transmit ? 1u : 0u,
+               cmd.subaddress,
+               cmd.word_count);
 
-                fsm.cmd = cmd;
-                fsm.status = rt_build_default_status();
-                fsm.data_words_expected = 0u;
-                fsm.data_words_received = 0u;
+        mil1553_status_word_t status = {
+            .rt_address = RT_ADDRESS,
+            .message_error = false,
+            .service_request = false,
+            .broadcast_command_received = false,
+            .busy = false,
+            .subsystem_flag = false,
+            .dynamic_bus_control_acceptance = false,
+            .terminal_flag = false,
+        };
 
-                if (cmd.transmit) {
-                    // TR=1: CMD -> STS -> DATA.
-                    fsm.state = RT_STATE_SEND_STATUS;
-                } else {
-                    // TR=0: CMD -> DATA -> STS.
-                    rt_rearm_rx_before_data_window();
-                    fsm.data_words_expected = rt_effective_word_count(cmd.word_count);
-                    fsm.state = RT_STATE_WAIT_DATA;
-                }
-                break;
-            }
+        if (cmd.transmit) {
+            // Flujo RT -> BC: CMD -> STS -> DATA.
+            const uint16_t status_word = mil1553_logic_build_status_word(&status);
 
-            case RT_STATE_WAIT_DATA: {
-                if (fsm.data_words_received >= fsm.data_words_expected) {
-                    fsm.state = RT_STATE_SEND_STATUS;
-                    break;
-                }
+            sleep_us(RT_RESPONSE_DELAY_US);
+            bus_set_tx_mode();
+            bus_send_full_word(status_word);
+            printf("TX_STATUS|WORD=0x%04X\n", status_word);
 
-                uint16_t data_word = 0;
-                bool data_parity_ok = false;
-                const unsigned index = (unsigned)fsm.data_words_received + 1u;
-
-                if (!bus_receive_full_word(&data_word, &data_parity_ok, RT_RX_TIMEOUT_US)) {
-                    fsm.status.message_error = true;
-                    printf("RX_DATA|INDEX=%u|TIMEOUT_INVALID\n", index);
-                    fsm.state = RT_STATE_SEND_STATUS;
-                    break;
-                }
-
-                if (!data_parity_ok) {
-                    fsm.status.message_error = true;
-                    printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=ERR\n", index, data_word);
-                    fsm.state = RT_STATE_SEND_STATUS;
-                    break;
-                }
-
-                printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=OK\n", index, data_word);
-                fsm.data_words_received++;
-
-                if (fsm.data_words_received >= fsm.data_words_expected) {
-                    fsm.state = RT_STATE_SEND_STATUS;
-                }
-                break;
-            }
-
-            case RT_STATE_SEND_STATUS: {
-                const uint16_t status_word = mil1553_logic_build_status_word(&fsm.status);
-
-                sleep_us(RT_RESPONSE_DELAY_US);
-                bus_set_tx_mode();
-                bus_send_full_word(status_word);
-                printf("TX_STATUS|WORD=0x%04X\n", status_word);
-
-                fsm.state = fsm.cmd.transmit ? RT_STATE_SEND_DATA : RT_STATE_GUARD;
-                break;
-            }
-
-            case RT_STATE_SEND_DATA: {
-                // Solo valido para TR=1 en este banco.
+            if (cmd.subaddress == RT_SUBADDRESS_EXPECTED &&
+                cmd.word_count == RT_WORD_COUNT_EXPECTED) {
                 const uint16_t data_word = mil1553_logic_build_data_word(RT_DATA_WORD_TEST);
 
                 sleep_us(RT_INTERWORD_GAP_US);
                 bus_send_full_word(data_word);
                 printf("TX_DATA|WORD=0x%04X\n", data_word);
-
-                bus_set_rx_mode();
-                fsm.state = RT_STATE_WAIT_CMD;
-                break;
             }
 
-            case RT_STATE_GUARD: {
-                // Cierre de TR=0 antes de volver a aceptar comandos.
-                rt_post_tr0_rearm_to_wait_cmd();
-                fsm.state = RT_STATE_WAIT_CMD;
-                break;
-            }
-
-            default:
-                bus_set_rx_mode();
-                fsm.state = RT_STATE_WAIT_CMD;
-                break;
+            bus_set_rx_mode();
+            continue;
         }
+
+        // Flujo BC -> RT: CMD -> DATA(s) -> STS.
+        rt_rearm_rx_before_data_window();
+
+        const uint8_t data_words_expected = rt_effective_word_count(cmd.word_count);
+        for (uint8_t i = 0; i < data_words_expected; i++) {
+            uint16_t data_word = 0;
+            bool data_parity_ok = false;
+
+            if (!bus_receive_full_word(&data_word, &data_parity_ok, RT_RX_TIMEOUT_US)) {
+                status.message_error = true;
+                printf("RX_DATA|INDEX=%u|TIMEOUT_INVALID\n", (unsigned)(i + 1u));
+                break;
+            }
+
+            if (!data_parity_ok) {
+                status.message_error = true;
+                printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=ERR\n",
+                       (unsigned)(i + 1u),
+                       data_word);
+                break;
+            }
+
+            printf("RX_DATA|INDEX=%u|WORD=0x%04X|PARITY=OK\n",
+                   (unsigned)(i + 1u),
+                   data_word);
+        }
+
+        const uint16_t status_word = mil1553_logic_build_status_word(&status);
+        sleep_us(RT_RESPONSE_DELAY_US);
+        bus_set_tx_mode();
+        bus_send_full_word(status_word);
+        printf("TX_STATUS|WORD=0x%04X\n", status_word);
+        rt_post_tr0_rearm_to_wait_cmd();
     }
 }
