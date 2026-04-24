@@ -82,21 +82,21 @@ int main(void) {
         mil1553_command_word_t cmd = {0};
         mil1553_logic_decode_command_word(rx_word, &cmd);
 
+        if (!rt_is_supported_command(&cmd)) {
+                    printf("CMD_INVALID|WORD=0x%04X|RT=%u|TR=%u|SA=%u|WC=%u\n",
+                        rx_word,
+                        cmd.rt_address,
+                        cmd.transmit ? 1u : 0u,
+                        cmd.subaddress,
+                        cmd.word_count);
+                    continue;
+                }
+
         printf("CMD_DEC|RT=%u|TR=%u|SA=%u|WC=%u\n",
                cmd.rt_address,
                cmd.transmit ? 1u : 0u,
                cmd.subaddress,
                cmd.word_count);
-
-        if (!rt_is_supported_command(&cmd)) {
-            printf("CMD_INVALID|WORD=0x%04X|RT=%u|TR=%u|SA=%u|WC=%u\n",
-                   rx_word,
-                   cmd.rt_address,
-                   cmd.transmit ? 1u : 0u,
-                   cmd.subaddress,
-                   cmd.word_count);
-            continue;
-        }
 
         mil1553_status_word_t status = {
             .rt_address = RT_ADDRESS,
