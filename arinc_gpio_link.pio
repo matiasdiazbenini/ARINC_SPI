@@ -4,9 +4,11 @@
 .define public WORD_GAP_HALVES 8
 
 ; TX por dos pines, sin SYNC externo.
+; El mismo programa se usa para cualquier canal simplex configurando
+; "pin_base" y "pin_base + 1" desde C.
 ; Cada bit ocupa dos mitades:
-; - bit 0: GP2 activo, luego idle 00
-; - bit 1: GP3 activo, luego idle 00
+; - bit 0: pin_base activo, luego idle 00
+; - bit 1: pin_base + 1 activo, luego idle 00
 ;
 ; El programa hace "pull" palabra por palabra. Eso permite que el gap
 ; entre palabras quede dentro de la state machine y no dependa de sleeps
@@ -45,8 +47,8 @@ gap_loop:
 .program arinc_gpio_link_rx
 
 ; RX por PIO:
-; 1. Espera cualquier actividad en GP2/GP3.
-; 2. Clasifica el bit usando GP3 como bit logico.
+; 1. Espera cualquier actividad en el par configurado.
+; 2. Clasifica el bit usando "pin_base + 1" como bit logico.
 ; 3. Espera el retorno a idle 00 para marcar el fin del simbolo.
 ; 4. Repite 32 veces y empuja la palabra completa a la FIFO RX.
 ;

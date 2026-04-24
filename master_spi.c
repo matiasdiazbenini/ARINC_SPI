@@ -9,28 +9,26 @@
 #include "arinc_gpio_link.pio.h"
 
 /*
- * Master half-duplex sobre GP2/GP3:
- * 1. Transmite un batch completo por PIO.
- * 2. Libera la linea y pasa a modo RX.
- * 3. Espera una palabra ACK enviada por el slave.
- * 4. Recien ahi arranca el siguiente batch.
+ * Master con dos enlaces simplex ARINC-like:
+ * - canal directo GP2/GP3: master -> slave
+ * - canal inverso GP4/GP5: slave -> master (ACK)
  *
- * Esto sigue siendo ARINC-like de laboratorio, no ARINC 429 real: ARINC 429
- * clasico es unidireccional. El ACK es una capa propia para ensayar un flujo
- * tipo TCP primitivo sobre el enlace que ya venimos usando.
+ * Esto se acerca mas a la topologia real de ARINC 429: un canal por sentido,
+ * en lugar de forzar ida y vuelta sobre el mismo par de pines.
  */
-#define ARINC_PIN_BASE        2u
-#define BIT_RATE_HZ           100000u
-#define HALF_CYCLES           5u
-#define WORD_GAP_BITS         4u
-#define WORDS_PER_BATCH       1000u
-#define STARTUP_DELAY_MS      2500u
-#define ACK_LABEL             0xACu
-#define ACK_SDI               0x03u
-#define ACK_WAIT_LOG_MS       1500u
-#define POST_ACK_GUARD_US     20000u
-#define ENABLE_TX_WORD_LOG    0u
-#define ENABLE_TX_BATCH_LOG   1u
+#define ARINC_FWD_PIN_BASE      2u
+#define ARINC_REV_PIN_BASE      4u
+#define BIT_RATE_HZ             100000u
+#define HALF_CYCLES             5u
+#define WORD_GAP_BITS           4u
+#define WORDS_PER_BATCH         1000u
+#define STARTUP_DELAY_MS        2500u
+#define ACK_LABEL               0xACu
+#define ACK_SDI                 0x03u
+#define ACK_WAIT_LOG_MS         1500u
+#define POST_ACK_GUARD_US       500u
+#define ENABLE_TX_WORD_LOG      0u
+#define ENABLE_TX_BATCH_LOG     1u
 
 typedef struct {
     uint8_t label;
@@ -195,21 +193,25 @@ static void arinc_rx_program_init(PIO pio, uint sm, uint offset, uint pin_base) 
     pio_sm_set_enabled(pio, sm, false);
 }
 
-static void set_tx_mode(PIO pio, uint sm_tx, uint sm_rx, uint pin_base) {
-    pio_sm_set_enabled(pio, sm_rx, false);
-    pio_sm_clear_fifos(pio, sm_rx);
-    pio_sm_restart(pio, sm_rx);
-
+static void start_tx_channel(PIO pio, uint sm_tx, uint pin_base) {
+    pio_sm_set_enabled(pio, sm_tx, false);
+    pio_sm_clear_fifos(pio, sm_tx);
+    pio_sm_restart(pio, sm_tx);
     pio_sm_set_consecutive_pindirs(pio, sm_tx, pin_base, 2, true);
     pio_sm_set_pins_with_mask(pio, sm_tx, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
     pio_sm_set_enabled(pio, sm_tx, true);
 }
 
-static void set_rx_mode(PIO pio, uint sm_tx, uint sm_rx, uint pin_base) {
-    pio_sm_set_enabled(pio, sm_tx, false);
-    pio_sm_set_pins_with_mask(pio, sm_tx, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
-
+static void start_rx_channel(PIO pio, uint sm_rx, uint pin_base) {
+    pio_sm_set_enabled(pio, sm_rx, false);
     pio_sm_set_consecutive_pindirs(pio, sm_rx, pin_base, 2, false);
+    pio_sm_clear_fifos(pio, sm_rx);
+    pio_sm_restart(pio, sm_rx);
+    pio_sm_set_enabled(pio, sm_rx, true);
+}
+
+static void reset_rx_channel(PIO pio, uint sm_rx) {
+    pio_sm_set_enabled(pio, sm_rx, false);
     pio_sm_clear_fifos(pio, sm_rx);
     pio_sm_restart(pio, sm_rx);
     pio_sm_set_enabled(pio, sm_rx, true);
@@ -238,12 +240,12 @@ static bool is_valid_ack(uint32_t word, uint32_t *ack_batch) {
     return false;
 }
 
-static uint32_t wait_for_ack(PIO pio, uint sm_rx, uint32_t batch_number) {
+static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number) {
     absolute_time_t last_log_time = get_absolute_time();
 
     while (true) {
-        while (!pio_sm_is_rx_fifo_empty(pio, sm_rx)) {
-            const uint32_t word = pio_sm_get(pio, sm_rx);
+        while (!pio_sm_is_rx_fifo_empty(pio, sm_ack_rx)) {
+            const uint32_t word = pio_sm_get(pio, sm_ack_rx);
             uint32_t ack_batch = 0;
 
             if (is_valid_ack(word, &ack_batch)) {
@@ -258,12 +260,17 @@ static uint32_t wait_for_ack(PIO pio, uint sm_rx, uint32_t batch_number) {
                 return ack_batch;
             }
 
-            printf("[WARN] MASTER <- palabra no ACK ignorada: 0x%08lX\r\n", (unsigned long)word);
+            if (word == 0u) {
+                continue;
+            }
+
+            printf("[WARN] MASTER <- palabra no ACK ignorada en canal reverso: 0x%08lX\r\n",
+                   (unsigned long)word);
         }
 
         const int64_t idle_us = absolute_time_diff_us(last_log_time, get_absolute_time());
         if (idle_us >= (int64_t)(ACK_WAIT_LOG_MS * 1000u)) {
-            printf("[INFO] MASTER -> esperando ACK del slave para batch %lu\r\n",
+            printf("[INFO] MASTER -> esperando ACK del slave para batch %lu por GP4/GP5\r\n",
                    (unsigned long)batch_number);
             last_log_time = get_absolute_time();
         }
@@ -276,19 +283,22 @@ int main(void) {
     stdio_init_all();
     sleep_ms(STARTUP_DELAY_MS);
 
-    printf("MASTER - ARINC-like half-duplex con ACK por PIO\r\n");
-    printf("Data pins: GP2=LINE_A, GP3=LINE_B\r\n");
+    printf("MASTER - ARINC-like con dos canales simplex\r\n");
+    printf("TX directo: GP2=FWD_A, GP3=FWD_B\r\n");
+    printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
     printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
     printf("Batch: %u palabras | ACK label: 0x%02X\r\n\r\n", WORDS_PER_BATCH, ACK_LABEL);
 
     PIO pio = pio0;
-    const uint sm_tx = 0;
-    const uint sm_rx = 1;
+    const uint sm_fwd_tx = 0;
+    const uint sm_rev_rx = 1;
     const uint tx_offset = pio_add_program(pio, &arinc_gpio_link_tx_program);
     const uint rx_offset = pio_add_program(pio, &arinc_gpio_link_rx_program);
 
-    arinc_tx_program_init(pio, sm_tx, tx_offset, ARINC_PIN_BASE, (float)BIT_RATE_HZ);
-    arinc_rx_program_init(pio, sm_rx, rx_offset, ARINC_PIN_BASE);
+    arinc_tx_program_init(pio, sm_fwd_tx, tx_offset, ARINC_FWD_PIN_BASE, (float)BIT_RATE_HZ);
+    arinc_rx_program_init(pio, sm_rev_rx, rx_offset, ARINC_REV_PIN_BASE);
+    start_tx_channel(pio, sm_fwd_tx, ARINC_FWD_PIN_BASE);
+    start_rx_channel(pio, sm_rev_rx, ARINC_REV_PIN_BASE);
 
     const arinc_profile_t profiles[] = {
         {0xA5, 0x0, "TEMPERATURA"},
@@ -308,7 +318,7 @@ int main(void) {
 
     while (true) {
         ++batch_number;
-        set_tx_mode(pio, sm_tx, sm_rx, ARINC_PIN_BASE);
+        reset_rx_channel(pio, sm_rev_rx);
 
 #if ENABLE_TX_BATCH_LOG
         printf("[INFO] MASTER -> iniciando batch %lu de %u palabras | T=%.1f C | V=%.1f kt | ALT=%.1f ft\r\n",
@@ -326,7 +336,7 @@ int main(void) {
             const uint32_t raw = encode_profile_value(&signals, idx);
             const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
 
-            pio_sm_put_blocking(pio, sm_tx, word);
+            pio_sm_put_blocking(pio, sm_fwd_tx, word);
 
 #if ENABLE_TX_WORD_LOG
             printf("TX %08lu -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
@@ -344,15 +354,14 @@ int main(void) {
             ++global_word_index;
         }
 
-        wait_tx_drain(pio, sm_tx);
+        wait_tx_drain(pio, sm_fwd_tx);
 
 #if ENABLE_TX_BATCH_LOG
-        printf("[INFO] MASTER -> batch %lu enviado, liberando bus y esperando ACK\r\n",
+        printf("[INFO] MASTER -> batch %lu enviado por GP2/GP3, esperando ACK en GP4/GP5\r\n",
                (unsigned long)batch_number);
 #endif
 
-        set_rx_mode(pio, sm_tx, sm_rx, ARINC_PIN_BASE);
-        (void)wait_for_ack(pio, sm_rx, batch_number);
+        (void)wait_for_ack(pio, sm_rev_rx, batch_number);
         sleep_us(POST_ACK_GUARD_US);
     }
 }
