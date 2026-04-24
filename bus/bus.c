@@ -9,6 +9,8 @@
 #define BUS_SYNC_PULSE_US        4u
 #define BUS_SYNC_GAP_US          2u
 #define BUS_SYNC_MIN_PULSE_US    3u
+#define BUS_SYNC_MAX_PULSE_US    12u
+#define BUS_SYNC_TRANSITION_US   6u
 
 static uint32_t s_half_bit_cycles = 1u;
 
@@ -25,6 +27,62 @@ static inline bool bus_line_is_valid_level(bool p_high) {
     const bool p = gpio_get(BUS_PIN_P);
     const bool n = gpio_get(BUS_PIN_N);
     return (p == p_high) && (n == !p_high);
+}
+
+static bool bus_wait_level_with_timeout(bool p_high,
+                                        uint64_t hard_deadline_us,
+                                        uint32_t max_wait_us,
+                                        uint64_t *out_start_us) {
+    uint64_t now_us = to_us_since_boot(get_absolute_time());
+    uint64_t wait_deadline_us = hard_deadline_us;
+
+    if (max_wait_us > 0u) {
+        const uint64_t soft_deadline_us = now_us + (uint64_t)max_wait_us;
+        if (soft_deadline_us < wait_deadline_us) {
+            wait_deadline_us = soft_deadline_us;
+        }
+    }
+
+    while ((now_us = to_us_since_boot(get_absolute_time())) < wait_deadline_us) {
+        if (bus_line_is_valid_level(p_high)) {
+            if (out_start_us) {
+                *out_start_us = now_us;
+            }
+            return true;
+        }
+        tight_loop_contents();
+    }
+
+    return false;
+}
+
+static bool bus_measure_pulse_us(bool level_high,
+                                 uint64_t pulse_start_us,
+                                 uint64_t hard_deadline_us,
+                                 uint32_t min_us,
+                                 uint32_t max_us,
+                                 uint64_t *out_end_us) {
+    uint64_t now_us = pulse_start_us;
+
+    while ((now_us = to_us_since_boot(get_absolute_time())) < hard_deadline_us) {
+        if (!bus_line_is_valid_level(level_high)) {
+            const uint64_t pulse_us = now_us - pulse_start_us;
+            if (pulse_us < (uint64_t)min_us || pulse_us > (uint64_t)max_us) {
+                return false;
+            }
+            if (out_end_us) {
+                *out_end_us = now_us;
+            }
+            return true;
+        }
+
+        if ((now_us - pulse_start_us) > (uint64_t)max_us) {
+            return false;
+        }
+        tight_loop_contents();
+    }
+
+    return false;
 }
 
 void bus_init(void) {
@@ -134,73 +192,84 @@ bool bus_wait_sync(uint32_t timeout_us) {
     const uint64_t t_deadline = t_start + (uint64_t)timeout_us;
 
     while (to_us_since_boot(get_absolute_time()) < t_deadline) {
-        uint64_t t_now = 0;
-        uint64_t t_pulse_start = 0;
+        uint64_t t_high1_start = 0;
+        uint64_t t_low1_start = 0;
+        uint64_t t_high2_start = 0;
+        uint64_t t_gap_start = 0;
+        uint64_t pulse_end = 0;
 
-        // 1) Busca primer pulso en alto.
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               !bus_line_is_valid_level(true)) {
-            tight_loop_contents();
-        }
-        if (t_now >= t_deadline) {
+        // 1) Pulso alto inicial.
+        if (!bus_wait_level_with_timeout(true, t_deadline, 0u, &t_high1_start)) {
             return false;
         }
-
-        t_pulse_start = t_now;
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               bus_line_is_valid_level(true)) {
-            tight_loop_contents();
-        }
-        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+        if (!bus_measure_pulse_us(true,
+                                  t_high1_start,
+                                  t_deadline,
+                                  BUS_SYNC_MIN_PULSE_US,
+                                  BUS_SYNC_MAX_PULSE_US,
+                                  &pulse_end)) {
             continue;
         }
 
-        // 2) Busca pulso en bajo.
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               !bus_line_is_valid_level(false)) {
-            tight_loop_contents();
+        // 2) Pulso bajo inmediatamente despues del alto.
+        if (!bus_wait_level_with_timeout(false,
+                                         t_deadline,
+                                         BUS_SYNC_TRANSITION_US,
+                                         &t_low1_start)) {
+            continue;
         }
-        if (t_now >= t_deadline) {
-            return false;
-        }
-
-        t_pulse_start = t_now;
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               bus_line_is_valid_level(false)) {
-            tight_loop_contents();
-        }
-        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+        if (!bus_measure_pulse_us(false,
+                                  t_low1_start,
+                                  t_deadline,
+                                  BUS_SYNC_MIN_PULSE_US,
+                                  BUS_SYNC_MAX_PULSE_US,
+                                  &pulse_end)) {
             continue;
         }
 
-        // 3) Busca segundo pulso en alto.
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               !bus_line_is_valid_level(true)) {
-            tight_loop_contents();
+        // 3) Segundo pulso alto inmediatamente despues del bajo.
+        if (!bus_wait_level_with_timeout(true,
+                                         t_deadline,
+                                         BUS_SYNC_TRANSITION_US,
+                                         &t_high2_start)) {
+            continue;
         }
-        if (t_now >= t_deadline) {
-            return false;
-        }
-
-        t_pulse_start = t_now;
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               bus_line_is_valid_level(true)) {
-            tight_loop_contents();
-        }
-        if ((t_now - t_pulse_start) < BUS_SYNC_MIN_PULSE_US) {
+        if (!bus_measure_pulse_us(true,
+                                  t_high2_start,
+                                  t_deadline,
+                                  BUS_SYNC_MIN_PULSE_US,
+                                  BUS_SYNC_MAX_PULSE_US,
+                                  &pulse_end)) {
             continue;
         }
 
-        // 4) Detecta inicio de gap bajo y espera su duracion completa.
-        while ((t_now = to_us_since_boot(get_absolute_time())) < t_deadline &&
-               !bus_line_is_valid_level(false)) {
-            tight_loop_contents();
+        // 4) Gap en bajo, tambien inmediato tras el ultimo pulso.
+        if (!bus_wait_level_with_timeout(false,
+                                         t_deadline,
+                                         BUS_SYNC_TRANSITION_US,
+                                         &t_gap_start)) {
+            continue;
         }
-        if (t_now >= t_deadline) {
+
+        const uint64_t t_gap_min_end = t_gap_start + (uint64_t)BUS_SYNC_GAP_US;
+        if (t_gap_min_end > t_deadline) {
             return false;
         }
 
-        sleep_us(BUS_SYNC_GAP_US);
+        // El gap debe permanecer estable al menos BUS_SYNC_GAP_US.
+        bool gap_ok = true;
+        while (to_us_since_boot(get_absolute_time()) < t_gap_min_end) {
+            if (!bus_line_is_valid_level(false)) {
+                gap_ok = false;
+                break;
+            }
+            tight_loop_contents();
+        }
+
+        if (!gap_ok) {
+            continue;
+        }
+
         return true;
     }
 
