@@ -13,6 +13,7 @@
 
 #define RT_RX_TIMEOUT_US            200000u
 #define RT_TIMEOUT_REPORT_EVERY     20u
+#define RT_RX_REARM_DELAY_US        2u
 #define RT_RESPONSE_DELAY_US        500u
 #define RT_INTERWORD_GAP_US         200u
 #define RT_POST_TR0_GUARD_US        5000u
@@ -43,6 +44,13 @@ static void rt_post_tr0_rearm_to_wait_cmd(void) {
     // antes de volver a interpretar nuevas Command Words.
     bus_set_rx_mode();
     sleep_us(RT_POST_TR0_GUARD_US);
+    bus_set_rx_mode();
+}
+
+static void rt_rearm_rx_before_data_window(void) {
+    // Rearmado corto antes de esperar DATA en TR=0.
+    bus_set_rx_mode();
+    sleep_us(RT_RX_REARM_DELAY_US);
     bus_set_rx_mode();
 }
 //
@@ -132,6 +140,8 @@ int main(void) {
         }
 
         // Flujo BC -> RT: CMD -> DATA(s) -> STS.
+        rt_rearm_rx_before_data_window();
+
         const uint8_t data_words_expected = rt_effective_word_count(cmd.word_count);
         for (uint8_t i = 0; i < data_words_expected; i++) {
             uint16_t data_word = 0;
