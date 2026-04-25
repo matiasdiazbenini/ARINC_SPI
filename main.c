@@ -59,6 +59,11 @@ int main(void) {
                cmd.subaddress,
                cmd.word_count);
 
+        const bool cmd_valid = (cmd.rt_address == 3u) &&
+                               (cmd.subaddress == 1u) &&
+                               (cmd.word_count == 1u);
+        printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
+
         // ===== DATA =====
         uint16_t data = 0;
         if (!bus_read_word16_parity(&data)) {
@@ -70,8 +75,8 @@ int main(void) {
 
         // ===== STATUS RESPONSE =====
         mil1553_status_t status = {
-            .rt_address = cmd.rt_address,
-            .message_error = false,
+            .rt_address = 3u,
+            .message_error = !cmd_valid,
             .service_request = false,
             .busy = false,
             .terminal_flag = false,
