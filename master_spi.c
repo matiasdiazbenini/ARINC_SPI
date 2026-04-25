@@ -3,6 +3,8 @@
 #include "pico/stdlib.h"
 
 #include "bus/bus.h"
+#include "mil1553_words.h"
+
 
 int main(void) {
     stdio_init_all();
@@ -26,7 +28,6 @@ int main(void) {
         bus_set_rx_mode();
         sleep_ms(BIT_PERIOD_MS);
 
-        uint16_t status = 0;
         uint16_t status_word = 0;
 
         if (bus_read_word16_parity(&status_word)) {
