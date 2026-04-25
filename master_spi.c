@@ -5,6 +5,11 @@
 #define BUS_PIN_P 2
 #define BUS_PIN_N 3
 
+void bus_idle(void) {
+    gpio_put(BUS_PIN_P, 0);
+    gpio_put(BUS_PIN_N, 0);
+}
+
 void send_bit(bool bit) {
     if (bit) {
         gpio_put(BUS_PIN_P, 1);
@@ -17,8 +22,7 @@ void send_bit(bool bit) {
 
 void send_byte(uint8_t byte) {
     for (int i = 7; i >= 0; i--) {
-        bool bit = (byte >> i) & 1;
-        send_bit(bit);
+        send_bit((byte >> i) & 1);
         sleep_ms(500);
     }
 }
@@ -35,10 +39,15 @@ int main(void) {
     printf("MASTER SYNC TEST\n");
 
     while (true) {
+
+        bus_idle();
+        sleep_ms(1000);
+
         printf("---- FRAME ----\n");
 
         send_byte(0b11110000);  // SYNC
         send_byte(0b10101010);  // DATA
+        bus_idle();
 
         sleep_ms(2000);
     }
