@@ -8,58 +8,40 @@
 extern "C" {
 #endif
 
-// Diferencial logico del bus (P/N) sobre RP2040.
+// Pines del bus diferencial.
 #define BUS_PIN_P 2u
 #define BUS_PIN_N 3u
 
-// Inicializa GPIO del bus y deja el nodo en modo RX (alta impedancia).
+// Periodo de bit total (ms).
+#define BIT_PERIOD_MS 500u
+
+// Inicializa GPIO del bus.
 void bus_init(void);
 
-// Habilita conduccion del bus (TX): ambos pines pasan a OUTPUT.
+// Modo transmision (OUTPUT).
 void bus_set_tx_mode(void);
 
-// Deshabilita conduccion del bus (RX): ambos pines pasan a INPUT (alta impedancia).
+// Modo recepcion (INPUT).
 void bus_set_rx_mode(void);
 
-// Envia 1 bit Manchester-II (1 Mbps, 1 us por bit).
-// bit=1 -> BUS_P: alto->bajo; bit=0 -> BUS_P: bajo->alto.
-// BUS_N siempre se mantiene complementario de BUS_P.
-void bus_send_bit(int bit);
+// Fuerza estado IDLE: P=0, N=0.
+void bus_idle(void);
 
-// Recibe 1 bit Manchester-II leyendo la transicion de mitad de bit.
-// Devuelve:
-//   0 o 1 si el bit es valido
-//  -1 si hay error de nivel/temporizacion (sin transicion valida).
-// Nota: esta funcion asume que el llamador ya esta alineado al inicio del bit.
-int bus_receive_bit(void);
+// Manchester:
+// bit 1 -> HIGH -> LOW
+// bit 0 -> LOW  -> HIGH
+void bus_send_bit(bool bit);
 
-// Envia una secuencia simple de sincronizacion de palabra para banco.
-// Esta secuencia NO es el sync final MIL-STD-1553.
-void bus_send_sync(void);
+// Lee un bit Manchester. Devuelve false si el patron no es valido.
+bool bus_read_bit(bool *bit);
 
-// Espera y detecta la secuencia simple de sincronizacion.
-// timeout_us: tiempo maximo de espera en microsegundos.
-// Devuelve true si detecta sync valido, false por timeout.
-bool bus_wait_sync(uint32_t timeout_us);
+// Envio/recepcion de byte (MSB primero).
+void bus_send_byte(uint8_t byte);
+bool bus_read_byte(uint8_t *byte);
 
-// Calcula el bit de paridad impar para una palabra de 16 bits.
-// El bit devuelto (0 o 1) se agrega como bit 17 para que el total de unos sea impar.
-uint8_t bus_calc_odd_parity16(uint16_t word);
-
-// Envia una palabra completa de prueba:
-// sync + 16 bits (MSB primero) + bit de paridad impar.
-// Requiere que el nodo ya este en modo TX.
-void bus_send_full_word(uint16_t word);
-
-// Recibe una palabra completa de prueba:
-// sync + 16 bits (MSB primero) + bit de paridad impar.
-// Devuelve false en timeout de sync o error de recepcion de bits.
-// Devuelve true cuando pudo recibir la palabra; en ese caso:
-//   - out_word contiene los 16 bits recibidos
-//   - out_parity_ok indica si la paridad impar es valida
-bool bus_receive_full_word(uint16_t *out_word,
-                           bool *out_parity_ok,
-                           uint32_t sync_timeout_us);
+// Envio/recepcion de word de 16 bits (MSB primero).
+void bus_send_word16(uint16_t word);
+bool bus_read_word16(uint16_t *word);
 
 #ifdef __cplusplus
 }
