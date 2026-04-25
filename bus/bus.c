@@ -3,6 +3,8 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
+#define BUS_SYNC_LAB_BYTE 0xF0u
+
 static int bus_read_diff_level(void) {
     const int p = gpio_get(BUS_PIN_P);
     const int n = gpio_get(BUS_PIN_N);
@@ -119,6 +121,27 @@ bool bus_read_byte(uint8_t *byte) {
 
     *byte = value;
     return true;
+}
+
+void bus_send_sync_cmd_status(void) {
+    // Sync temporal/de laboratorio: hoy se emite como byte fijo 0xF0.
+    // Luego se reemplazara por el patron MIL real para command/status.
+    bus_send_byte(BUS_SYNC_LAB_BYTE);
+}
+
+void bus_send_sync_data(void) {
+    // Sync temporal/de laboratorio: hoy se emite como byte fijo 0xF0.
+    // Luego se reemplazara por el patron MIL real para data.
+    bus_send_byte(BUS_SYNC_LAB_BYTE);
+}
+
+bool bus_read_sync(void) {
+    uint8_t sync = 0;
+    if (!bus_read_byte(&sync)) {
+        return false;
+    }
+
+    return sync == BUS_SYNC_LAB_BYTE;
 }
 
 void bus_send_word16(uint16_t word) {
