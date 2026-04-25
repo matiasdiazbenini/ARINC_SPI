@@ -3,7 +3,6 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
-
 static int bus_read_diff_level(void) {
     const int p = gpio_get(BUS_PIN_P);
     const int n = gpio_get(BUS_PIN_N);
@@ -134,20 +133,21 @@ void bus_send_sync_data(void) {
 
 bool bus_read_sync(uint8_t *type) {
     uint8_t sync = 0;
+
     if (!bus_read_byte(&sync)) {
         return false;
     }
 
     if (sync == SYNC_CMD_STATUS) {
         if (type != NULL) {
-            *type = (uint8_t)CMD_STATUS;
+            *type = BUS_SYNC_TYPE_CMD_STATUS;
         }
         return true;
     }
 
     if (sync == SYNC_DATA) {
         if (type != NULL) {
-            *type = (uint8_t)DATA;
+            *type = BUS_SYNC_TYPE_DATA;
         }
         return true;
     }
