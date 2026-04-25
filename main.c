@@ -37,7 +37,13 @@ int main(void) {
 
         uint16_t cmd = 0;
         uint16_t data = 0;
-        if (!bus_read_word16(&cmd) || !bus_read_word16(&data)) {
+        if (!bus_read_word16_parity(&cmd)) {
+            printf("CMD_PARITY_OR_READ_ERROR\n");
+            continue;
+        }
+
+        if (!bus_read_word16_parity(&data)) {
+            printf("DATA_PARITY_OR_READ_ERROR\n");
             continue;
         }
 
@@ -47,7 +53,7 @@ int main(void) {
         bus_set_tx_mode();
         bus_idle();
         sleep_ms(BIT_PERIOD_MS / 2u);
-        bus_send_word16(STATUS_WORD);
+        bus_send_word16_parity(STATUS_WORD);
         printf("TX_STATUS=0x%04X\n", STATUS_WORD);
         bus_idle();
         sleep_ms(1000);
