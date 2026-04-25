@@ -3,18 +3,19 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
-static int bus_read_level(void) {
+static int bus_read_diff_level(void) {
     const int p = gpio_get(BUS_PIN_P);
     const int n = gpio_get(BUS_PIN_N);
 
     if (p == 1 && n == 0) {
         return 1; // HIGH
     }
+
     if (p == 0 && n == 1) {
         return 0; // LOW
     }
 
-    return -1; // invalid/idle
+    return -1; // invalid or idle
 }
 
 void bus_init(void) {
@@ -39,59 +40,58 @@ void bus_idle(void) {
 }
 
 void bus_send_bit(bool bit) {
-    const uint32_t half = BIT_PERIOD_MS / 2u;
+    const uint32_t half_period_ms = BIT_PERIOD_MS / 2u;
 
     if (bit) {
-        // Manchester: 1 = HIGH -> LOW
+        // bit 1: HIGH -> LOW
         gpio_put(BUS_PIN_P, 1);
         gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half);
+        sleep_ms(half_period_ms);
 
         gpio_put(BUS_PIN_P, 0);
         gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half);
+        sleep_ms(half_period_ms);
     } else {
-        // Manchester: 0 = LOW -> HIGH
+        // bit 0: LOW -> HIGH
         gpio_put(BUS_PIN_P, 0);
         gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half);
+        sleep_ms(half_period_ms);
 
         gpio_put(BUS_PIN_P, 1);
         gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half);
+        sleep_ms(half_period_ms);
     }
 }
 
 bool bus_read_bit(bool *bit) {
-    const uint32_t half = BIT_PERIOD_MS / 2u;
-    int first = 0;
-    int second = 0;
+    int first_half = 0;
+    int second_half = 0;
 
     if (bit == NULL) {
         return false;
     }
 
-    first = bus_read_level();
-    if (first < 0) {
+    first_half = bus_read_diff_level();
+    if (first_half < 0) {
         return false;
     }
 
-    sleep_ms(half);
+    sleep_ms(BIT_PERIOD_MS / 2u);
 
-    second = bus_read_level();
-    if (second < 0) {
+    second_half = bus_read_diff_level();
+    if (second_half < 0) {
         return false;
     }
 
-    if (first == 1 && second == 0) {
+    if (first_half == 1 && second_half == 0) {
         *bit = true;
-    } else if (first == 0 && second == 1) {
+    } else if (first_half == 0 && second_half == 1) {
         *bit = false;
     } else {
         return false;
     }
 
-    sleep_ms(half);
+    sleep_ms(BIT_PERIOD_MS / 2u);
     return true;
 }
 
@@ -110,7 +110,6 @@ bool bus_read_byte(uint8_t *byte) {
 
     for (int i = 0; i < 8; i++) {
         bool bit = false;
-
         if (!bus_read_bit(&bit)) {
             return false;
         }
@@ -137,7 +136,6 @@ bool bus_read_word16(uint16_t *word) {
 
     for (int i = 0; i < 16; i++) {
         bool bit = false;
-
         if (!bus_read_bit(&bit)) {
             return false;
         }
