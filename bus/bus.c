@@ -3,6 +3,7 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
+
 static int bus_read_diff_level(void) {
     const int p = gpio_get(BUS_PIN_P);
     const int n = gpio_get(BUS_PIN_N);
