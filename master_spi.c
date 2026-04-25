@@ -53,23 +53,29 @@ int main(void) {
             }
         }
 
-        if (data_ok && bus_read_word16_parity(&status_word)) {
-            printf("RX_STATUS=0x%04X\n", status_word);
+        if (data_ok) {
+            uint8_t status_sync = 0;
 
-            mil1553_status_t status = {0};
+            if (!bus_read_byte(&status_sync) || status_sync != 0xF0u) {
+                printf("STATUS_SYNC_ERROR|SYNC=0x%02X\n", status_sync);
+            } else if (bus_read_word16_parity(&status_word)) {
+                printf("RX_STATUS=0x%04X\n", status_word);
 
-            if (mil1553_decode_status(status_word, &status)) {
-                printf("STATUS_DECODED|RT=%u|ME=%u|SR=%u|BUSY=%u|TF=%u\n",
-                    status.rt_address,
-                    status.message_error ? 1 : 0,
-                    status.service_request ? 1 : 0,
-                    status.busy ? 1 : 0,
-                    status.terminal_flag ? 1 : 0);
+                mil1553_status_t status = {0};
+
+                if (mil1553_decode_status(status_word, &status)) {
+                    printf("STATUS_DECODED|RT=%u|ME=%u|SR=%u|BUSY=%u|TF=%u\n",
+                        status.rt_address,
+                        status.message_error ? 1 : 0,
+                        status.service_request ? 1 : 0,
+                        status.busy ? 1 : 0,
+                        status.terminal_flag ? 1 : 0);
+                } else {
+                    printf("STATUS_DECODE_ERROR\n");
+                }
             } else {
-                printf("STATUS_DECODE_ERROR\n");
+                printf("STATUS_PARITY_OR_READ_ERROR\n");
             }
-        } else if (data_ok) {
-            printf("STATUS_PARITY_OR_READ_ERROR\n");
         }
 
         bus_set_tx_mode();
