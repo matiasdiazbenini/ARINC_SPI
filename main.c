@@ -24,25 +24,20 @@ int main(void) {
     bus_set_rx_mode();
 
     while (true) {
-
-        // Espera inicio de señal
         while (!has_valid_start()) {
             sleep_ms(10);
         }
 
-        // Alineación Manchester
         sleep_ms(BIT_PERIOD_MS / 4u);
 
-        // ===== SYNC =====
-        uint8_t sync = 0;
-        if (!bus_read_byte(&sync) || sync != 0xF0u) {
-            printf("SYNC_ERROR|SYNC=0x%02X\n", sync);
+        uint8_t sync_type = 0;
+        if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_CMD_STATUS) {
+            printf("SYNC_ERROR\n");
             continue;
         }
 
         printf("SYNC DETECTADO\n");
 
-        // ===== COMMAND =====
         uint16_t cmd_word = 0;
         if (!bus_read_word16_parity(&cmd_word)) {
             printf("CMD_PARITY_OR_READ_ERROR\n");
@@ -67,16 +62,24 @@ int main(void) {
                                (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) &&
                                (cmd.word_count > 0u) &&
                                (cmd.word_count <= RT_MAX_WORD_COUNT);
+
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
         bool data_error = false;
 
-        // ===== DATA =====
         if (!cmd.transmit) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
+                uint8_t data_sync_type = 0;
+
+                if (!bus_read_sync(&data_sync_type) || data_sync_type != BUS_SYNC_TYPE_DATA) {
+                    printf("DATA_SYNC_ERROR[%u]\n", (unsigned)i);
+                    data_error = true;
+                    break;
+                }
+
                 uint16_t data = 0;
                 if (!bus_read_word16_parity(&data)) {
-                    printf("DATA_PARITY_OR_READ_ERROR\n");
+                    printf("DATA_PARITY_OR_READ_ERROR[%u]\n", (unsigned)i);
                     data_error = true;
                     break;
                 }
@@ -85,7 +88,6 @@ int main(void) {
             }
         }
 
-        // ===== STATUS RESPONSE =====
         mil1553_status_t status = {
             .rt_address = RT_LOCAL_ADDRESS,
             .message_error = (!cmd_valid) || data_error,
@@ -100,15 +102,18 @@ int main(void) {
         bus_idle();
         sleep_ms(BIT_PERIOD_MS / 2u);
 
-        bus_send_byte(0xF0);
         if (cmd.transmit) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 const uint16_t tx_data = (uint16_t)(0x1000u + i);
+
+                bus_send_sync_data();
                 bus_send_word16_parity(tx_data);
+
                 printf("TX_DATA[%u]=0x%04X\n", (unsigned)i, tx_data);
             }
         }
 
+        bus_send_sync_cmd_status();
         bus_send_word16_parity(status_word);
 
         printf("TX_STATUS=0x%04X\n", status_word);
