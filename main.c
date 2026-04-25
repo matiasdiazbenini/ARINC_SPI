@@ -23,6 +23,9 @@ static bool looks_like_command(const mil1553_command_t *cmd) {
 }
 
 int main(void) {
+    bool pending_rt_to_bc = false;
+    uint8_t pending_wc = 0u;
+
     stdio_init_all();
     sleep_ms(1200);
 
@@ -43,6 +46,43 @@ int main(void) {
         }
 
         printf("SYNC DETECTADO\n");
+
+        if (pending_rt_to_bc) {
+            bool data_ok = true;
+
+            for (uint8_t i = 0; i < pending_wc; ++i) {
+                uint16_t data_word = 0;
+                if (!bus_read_word16_parity(&data_word)) {
+                    printf("DATA_ERROR[%u]\n", (unsigned)i);
+                    data_ok = false;
+                    break;
+                }
+
+                printf("DATA[%u]=0x%04X\n", (unsigned)i, data_word);
+            }
+
+            if (data_ok) {
+                uint16_t status_word = 0;
+                if (!bus_read_word16_parity(&status_word)) {
+                    printf("STATUS_ERROR\n");
+                } else {
+                    mil1553_status_t status = {0};
+                    printf("STATUS=0x%04X\n", status_word);
+                    if (mil1553_decode_status(status_word, &status)) {
+                        printf("STATUS_DECODED|RT=%u|ME=%u|SR=%u|BUSY=%u|TF=%u\n",
+                               status.rt_address,
+                               status.message_error ? 1u : 0u,
+                               status.service_request ? 1u : 0u,
+                               status.busy ? 1u : 0u,
+                               status.terminal_flag ? 1u : 0u);
+                    }
+                }
+            }
+
+            pending_rt_to_bc = false;
+            pending_wc = 0u;
+            continue;
+        }
 
         uint16_t first_word = 0;
         if (!bus_read_word16_parity(&first_word)) {
@@ -69,6 +109,9 @@ int main(void) {
 
                     printf("DATA[%u]=0x%04X\n", (unsigned)i, data_word);
                 }
+            } else {
+                pending_rt_to_bc = true;
+                pending_wc = cmd.word_count;
             }
 
             continue;
