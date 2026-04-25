@@ -65,12 +65,26 @@ static bool read_bit(bool *bit) {
 }
 
 static void send_bit(bool bit) {
+    const uint32_t half = BIT_PERIOD_MS / 2;
+
     if (bit) {
+        // Manchester: 1 = HIGH -> LOW
         gpio_put(BUS_PIN_P, 1);
         gpio_put(BUS_PIN_N, 0);
-    } else {
+        sleep_ms(half);
+
         gpio_put(BUS_PIN_P, 0);
         gpio_put(BUS_PIN_N, 1);
+        sleep_ms(half);
+    } else {
+        // Manchester: 0 = LOW -> HIGH
+        gpio_put(BUS_PIN_P, 0);
+        gpio_put(BUS_PIN_N, 1);
+        sleep_ms(half);
+
+        gpio_put(BUS_PIN_P, 1);
+        gpio_put(BUS_PIN_N, 0);
+        sleep_ms(half);
     }
 }
 
@@ -109,7 +123,6 @@ static bool read_word16(uint16_t *value) {
 static void send_word(uint16_t word) {
     for (int i = 15; i >= 0; i--) {
         send_bit(((word >> i) & 1u) != 0u);
-        sleep_ms(BIT_PERIOD_MS);
     }
 }
 
@@ -138,7 +151,7 @@ int main(void) {
 
         uint8_t sync = 0;
         if (!read_byte(&sync) || sync != 0xF0) {
-            printf("SYNC_ERROR\n");
+            printf("SYNC_ERROR|SYNC=0x%02X\n", sync);
             continue;
         }
 
