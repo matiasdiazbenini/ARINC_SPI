@@ -119,11 +119,14 @@ int main(void) {
         send_word(0x1821);
         send_word(0xA5A5);
 
+        bus_idle();
         set_bus_input();
-        sleep_ms(BIT_PERIOD_MS / 4);
+        sleep_ms(BIT_PERIOD_MS);
         uint16_t status = 0;
         if (read_word(&status)) {
             printf("RX_STATUS=0x%04X\n", status);
+        }else {
+            printf("Failed to read status\n");
         }
 
         set_bus_output();
