@@ -19,7 +19,7 @@ extern "C" {
 #define BUS_PIN_N 3u
 
 // Periodo de bit total (ms).
-#define BIT_PERIOD_MS 500u
+#define BIT_PERIOD_MS 200u
 
 // Inicializa GPIO del bus.
 void bus_init(void);
