@@ -17,7 +17,7 @@ static void wait_and_align_to_new_transmitter(void) {
         sleep_ms(10);
     }
 
-    sleep_ms(BIT_PERIOD_MS / 4u);
+    sleep_us(BIT_PERIOD_US / 4u);
 }
 
 static bool read_expected_sync(uint8_t expected_type, const char *label) {
@@ -83,21 +83,21 @@ int main(void) {
         wait_and_align_to_new_transmitter();
 
         if (!read_expected_sync(BUS_SYNC_TYPE_CMD_STATUS, "CMD")) {
-            sleep_ms(BIT_PERIOD_MS * 2u);
+            sleep_us(BIT_PERIOD_US * 2u);
             continue;
         }
 
         uint16_t cmd_word = 0;
         if (!bus_read_word16_parity(&cmd_word)) {
             printf("CMD_WORD_ERROR\n");
-            sleep_ms(BIT_PERIOD_MS * 2u);
+            sleep_us(BIT_PERIOD_US * 2u);
             continue;
         }
 
         mil1553_command_t cmd = {0};
         if (!mil1553_decode_command(cmd_word, &cmd)) {
             printf("CMD_DECODE_ERROR|WORD=0x%04X\n", cmd_word);
-            sleep_ms(BIT_PERIOD_MS * 2u);
+            sleep_us(BIT_PERIOD_US * 2u);
             continue;
         }
 
@@ -116,14 +116,14 @@ int main(void) {
              */
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 if (!read_expected_sync(BUS_SYNC_TYPE_DATA, "DATA")) {
-                    sleep_ms(BIT_PERIOD_MS * 2u);
+                    sleep_us(BIT_PERIOD_US * 2u);
                     break;
                 }
 
                 uint16_t data_word = 0;
                 if (!bus_read_word16_parity(&data_word)) {
                     printf("DATA_WORD_ERROR[%u]\n", (unsigned)i);
-                    sleep_ms(BIT_PERIOD_MS * 2u);
+                    sleep_us(BIT_PERIOD_US * 2u);
                     break;
                 }
 
@@ -137,7 +137,7 @@ int main(void) {
             wait_and_align_to_new_transmitter();
 
             if (!read_expected_sync(BUS_SYNC_TYPE_CMD_STATUS, "STATUS")) {
-                sleep_ms(BIT_PERIOD_MS * 2u);
+                sleep_us(BIT_PERIOD_US * 2u);
                 continue;
             }
 
@@ -152,14 +152,14 @@ int main(void) {
 
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 if (!read_expected_sync(BUS_SYNC_TYPE_DATA, "DATA")) {
-                    sleep_ms(BIT_PERIOD_MS * 2u);
+                    sleep_us(BIT_PERIOD_US * 2u);
                     break;
                 }
 
                 uint16_t data_word = 0;
                 if (!bus_read_word16_parity(&data_word)) {
                     printf("DATA_WORD_ERROR[%u]\n", (unsigned)i);
-                    sleep_ms(BIT_PERIOD_MS * 2u);
+                    sleep_us(BIT_PERIOD_US * 2u);
                     break;
                 }
 
@@ -167,7 +167,7 @@ int main(void) {
             }
 
             if (!read_expected_sync(BUS_SYNC_TYPE_CMD_STATUS, "STATUS")) {
-                sleep_ms(BIT_PERIOD_MS * 2u);
+                sleep_us(BIT_PERIOD_US * 2u);
                 continue;
             }
 
