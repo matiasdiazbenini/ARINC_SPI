@@ -39,12 +39,20 @@ bool bus_read_bit(bool *bit);
 void bus_send_byte(uint8_t byte);
 bool bus_read_byte(uint8_t *byte);
 
-// Sync temporal/de laboratorio:
-// por ahora se codifica como byte 0xF0 sobre el bus.
-// Luego sera reemplazado por el sync MIL real (command/status y data).
+// Aproximacion de laboratorio al sync MIL:
+// se modela con bytes distintos para command/status y data.
+// Mas adelante se reemplazara por el sincronismo MIL real.
+#define SYNC_CMD_STATUS 0xF0u
+#define SYNC_DATA       0x0Fu
+
+typedef enum {
+    CMD_STATUS = 0u,
+    DATA = 1u,
+} bus_sync_type_t;
+
 void bus_send_sync_cmd_status(void);
 void bus_send_sync_data(void);
-bool bus_read_sync(void);
+bool bus_read_sync(uint8_t *type);
 
 // Envio/recepcion de word de 16 bits (MSB primero).
 void bus_send_word16(uint16_t word);
