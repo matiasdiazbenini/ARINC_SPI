@@ -51,7 +51,7 @@ int main(void) {
 
         bus_idle();
         bus_set_rx_mode();
-        sleep_ms(BIT_PERIOD_MS);
+        sleep_us(BIT_PERIOD_US);
 
         bool data_ok = true;
         uint16_t status_word = 0;
