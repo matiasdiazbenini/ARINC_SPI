@@ -22,21 +22,46 @@ static void set_bus_output(void) {
     gpio_set_dir(BUS_PIN_N, GPIO_OUT);
 }
 
-static bool read_bit(bool *bit) {
+static int read_diff_level(void) {
     int p = gpio_get(BUS_PIN_P);
     int n = gpio_get(BUS_PIN_N);
 
     if (p == 1 && n == 0) {
-        *bit = true;
-        return true;
+        return 1; // HIGH
     }
 
     if (p == 0 && n == 1) {
-        *bit = false;
-        return true;
+        return 0; // LOW
     }
 
-    return false;
+    return -1; // invalid or idle
+}
+
+static bool read_bit(bool *bit) {
+    int first_half = read_diff_level();
+    if (first_half < 0) {
+        return false;
+    }
+
+    sleep_ms(BIT_PERIOD_MS / 2);
+
+    int second_half = read_diff_level();
+    if (second_half < 0) {
+        return false;
+    }
+
+    if (first_half == 1 && second_half == 0) {
+        *bit = true;
+    } else if (first_half == 0 && second_half == 1) {
+        *bit = false;
+    } else {
+        return false;
+    }
+
+    // Completa el periodo del bit antes de leer el siguiente.
+    sleep_ms(BIT_PERIOD_MS / 2);
+
+    return true;
 }
 
 static void send_bit(bool bit) {
@@ -59,7 +84,6 @@ static bool read_byte(uint8_t *value) {
         }
 
         byte = (uint8_t)((byte << 1) | (bit ? 1 : 0));
-        sleep_ms(BIT_PERIOD_MS);
     }
 
     *value = byte;
@@ -76,7 +100,6 @@ static bool read_word16(uint16_t *value) {
         }
 
         word = (uint16_t)((word << 1) | (bit ? 1u : 0u));
-        sleep_ms(BIT_PERIOD_MS);
     }
 
     *value = word;
@@ -111,7 +134,7 @@ int main(void) {
             sleep_ms(10);
         }
 
-        sleep_ms(BIT_PERIOD_MS / 2);
+        sleep_ms(BIT_PERIOD_MS / 4);
 
         uint8_t sync = 0;
         if (!read_byte(&sync) || sync != 0xF0) {
