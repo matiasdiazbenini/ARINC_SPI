@@ -6,6 +6,10 @@
 #include "mil1553_words.h"
 #include "bus/bus.h"
 
+#define RT_LOCAL_ADDRESS        3u
+#define RT_SUPPORTED_SUBADDRESS 1u
+#define RT_MAX_WORD_COUNT       3u
+
 static bool has_valid_start(void) {
     const int p = gpio_get(BUS_PIN_P);
     const int n = gpio_get(BUS_PIN_N);
@@ -59,9 +63,10 @@ int main(void) {
                cmd.subaddress,
                cmd.word_count);
 
-        const bool cmd_valid = (cmd.rt_address == 3u) &&
-                               (cmd.subaddress == 1u) &&
-                               (cmd.word_count > 0u);
+        const bool cmd_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
+                               (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) &&
+                               (cmd.word_count > 0u) &&
+                               (cmd.word_count <= RT_MAX_WORD_COUNT);
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
         bool data_error = false;
@@ -82,7 +87,7 @@ int main(void) {
 
         // ===== STATUS RESPONSE =====
         mil1553_status_t status = {
-            .rt_address = 3u,
+            .rt_address = RT_LOCAL_ADDRESS,
             .message_error = (!cmd_valid) || data_error,
             .service_request = false,
             .busy = false,
