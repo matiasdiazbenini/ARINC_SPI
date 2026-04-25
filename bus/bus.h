@@ -4,12 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SYNC_CMD_STATUS 0xF0u
-#define SYNC_DATA       0x0Fu
-
-#define BUS_SYNC_TYPE_CMD_STATUS 1u
-#define BUS_SYNC_TYPE_DATA       2u
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,9 +12,13 @@ extern "C" {
 #define BUS_PIN_P 2u
 #define BUS_PIN_N 3u
 
-// Periodo de bit total (ms).
-#define BIT_PERIOD_MS 40u
+// Periodo de bit total (us).
+#define BIT_PERIOD_US 40000u
+#define SYNC_CMD_STATUS 0xF0u
+#define SYNC_DATA       0x0Fu
 
+#define BUS_SYNC_TYPE_CMD_STATUS 1u
+#define BUS_SYNC_TYPE_DATA       2u
 // Inicializa GPIO del bus.
 void bus_init(void);
 
