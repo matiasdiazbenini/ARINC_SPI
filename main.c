@@ -28,7 +28,7 @@ int main(void) {
             sleep_ms(10);
         }
 
-        sleep_ms(BIT_PERIOD_US / 4u);
+        sleep_us(BIT_PERIOD_US / 4u);
 
         uint8_t sync_type = 0;
         if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_CMD_STATUS) {
@@ -100,7 +100,7 @@ int main(void) {
 
         bus_set_tx_mode();
         bus_idle();
-        sleep_ms(BIT_PERIOD_US / 2u);
+        sleep_us(BIT_PERIOD_US / 2u);
 
         if (cmd.transmit) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
