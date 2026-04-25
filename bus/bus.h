@@ -14,7 +14,11 @@ extern "C" {
 
 // Periodo de bit total (ms).
 #define BIT_PERIOD_MS 500u
+#define SYNC_CMD_STATUS 0xF0u
+#define SYNC_DATA       0x0Fu
 
+#define BUS_SYNC_TYPE_CMD_STATUS 1u
+#define BUS_SYNC_TYPE_DATA       2u
 // Inicializa GPIO del bus.
 void bus_init(void);
 
