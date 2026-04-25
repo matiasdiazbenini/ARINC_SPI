@@ -4,6 +4,7 @@
 
 #define BUS_PIN_P 2
 #define BUS_PIN_N 3
+#define BIT_PERIOD_MS 500
 
 void bus_idle(void) {
     gpio_put(BUS_PIN_P, 0);
@@ -23,7 +24,7 @@ void send_bit(bool bit) {
 void send_byte(uint8_t byte) {
     for (int i = 7; i >= 0; i--) {
         send_bit((byte >> i) & 1);
-        sleep_ms(500);
+        sleep_ms(BIT_PERIOD_MS);
     }
 }
 
@@ -36,17 +37,21 @@ int main(void) {
     gpio_set_dir(BUS_PIN_P, GPIO_OUT);
     gpio_set_dir(BUS_PIN_N, GPIO_OUT);
 
-    printf("MASTER SYNC TEST\n");
-
     while (true) {
-
         bus_idle();
         sleep_ms(1000);
 
         printf("---- FRAME ----\n");
 
-        send_byte(0b11110000);  // SYNC
-        send_byte(0b10101010);  // DATA
+        send_byte(0xF0);
+        send_byte(0x18);
+        send_byte(0x21);
+        send_byte(0xA5);
+
+        printf("TX_SYNC=0xF0\n");
+        printf("TX_CMD=0x1821\n");
+        printf("TX_DATA=0xA5\n");
+
         bus_idle();
 
         sleep_ms(2000);
