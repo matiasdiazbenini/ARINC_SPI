@@ -98,6 +98,32 @@ int main(void) {
                        status.service_request ? 1 : 0,
                        status.busy ? 1 : 0,
                        status.terminal_flag ? 1 : 0);
+
+                bool has_action = false;
+
+                if (status.message_error) {
+                    printf("STATUS_ACTION|MESSAGE_ERROR\n");
+                    has_action = true;
+                }
+
+                if (status.busy) {
+                    printf("STATUS_ACTION|RT_BUSY\n");
+                    has_action = true;
+                }
+
+                if (status.service_request) {
+                    printf("STATUS_ACTION|SERVICE_REQUEST\n");
+                    has_action = true;
+                }
+
+                if (status.terminal_flag) {
+                    printf("STATUS_ACTION|TERMINAL_FLAG\n");
+                    has_action = true;
+                }
+
+                if (!has_action) {
+                    printf("STATUS_ACTION|OK\n");
+                }
             } else {
                 printf("STATUS_DECODE_ERROR\n");
             }
