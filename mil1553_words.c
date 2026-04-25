@@ -1,68 +1,64 @@
 #include "mil1553_words.h"
 
-#define BIT_MASK_5 0x1Fu
+#define MIL1553_MASK_5BITS 0x1Fu
 
-uint16_t mil1553_logic_build_command_word(uint8_t rt_address,
-                                          bool transmit,
-                                          uint8_t subaddress,
-                                          uint8_t word_count) {
+uint16_t mil1553_build_command(uint8_t rt,
+                               bool transmit,
+                               uint8_t subaddress,
+                               uint8_t word_count) {
     uint16_t word = 0;
 
-    word |= ((uint16_t)(rt_address & BIT_MASK_5)) << 11;
-    word |= ((uint16_t)(transmit ? 1u : 0u)) << 10;
-    word |= ((uint16_t)(subaddress & BIT_MASK_5)) << 5;
-    word |= (uint16_t)(word_count & BIT_MASK_5);
+    word |= (uint16_t)((rt & MIL1553_MASK_5BITS) << 11);
+    word |= (uint16_t)((transmit ? 1u : 0u) << 10);
+    word |= (uint16_t)((subaddress & MIL1553_MASK_5BITS) << 5);
+    word |= (uint16_t)(word_count & MIL1553_MASK_5BITS);
 
     return word;
 }
 
-void mil1553_logic_decode_command_word(uint16_t word,
-                                       mil1553_command_word_t *out) {
-    if (!out) {
-        return;
+bool mil1553_decode_command(uint16_t word, mil1553_command_t *cmd) {
+    if (cmd == NULL) {
+        return false;
     }
 
-    out->rt_address = (uint8_t)((word >> 11) & BIT_MASK_5);
-    out->transmit = ((word >> 10) & 0x01u) != 0u;
-    out->subaddress = (uint8_t)((word >> 5) & BIT_MASK_5);
-    out->word_count = (uint8_t)(word & BIT_MASK_5);
+    cmd->rt_address = (uint8_t)((word >> 11) & MIL1553_MASK_5BITS);
+    cmd->transmit = ((word >> 10) & 0x01u) != 0u;
+    cmd->subaddress = (uint8_t)((word >> 5) & MIL1553_MASK_5BITS);
+    cmd->word_count = (uint8_t)(word & MIL1553_MASK_5BITS);
+
+    return true;
 }
 
-uint16_t mil1553_logic_build_status_word(const mil1553_status_word_t *status) {
-    if (!status) {
+uint16_t mil1553_build_status(const mil1553_status_t *status) {
+    uint16_t word = 0;
+
+    if (status == NULL) {
         return 0;
     }
 
-    uint16_t word = 0;
-    word |= ((uint16_t)(status->rt_address & BIT_MASK_5)) << 11;
-    word |= ((uint16_t)(status->message_error ? 1u : 0u)) << 10;
-    word |= ((uint16_t)(status->service_request ? 1u : 0u)) << 8;
-    word |= ((uint16_t)(status->broadcast_command_received ? 1u : 0u)) << 5;
-    word |= ((uint16_t)(status->busy ? 1u : 0u)) << 4;
-    word |= ((uint16_t)(status->subsystem_flag ? 1u : 0u)) << 3;
-    word |= ((uint16_t)(status->dynamic_bus_control_acceptance ? 1u : 0u)) << 2;
-    word |= ((uint16_t)(status->terminal_flag ? 1u : 0u)) << 1;
+    word |= (uint16_t)((status->rt_address & MIL1553_MASK_5BITS) << 11);
+    word |= (uint16_t)((status->message_error ? 1u : 0u) << 10);
+    word |= (uint16_t)((status->service_request ? 1u : 0u) << 8);
+    word |= (uint16_t)((status->busy ? 1u : 0u) << 4);
+    word |= (uint16_t)((status->terminal_flag ? 1u : 0u) << 1);
 
-    // Bits reservados [9], [7:6] y [0] se mantienen en cero.
     return word;
 }
 
-void mil1553_logic_decode_status_word(uint16_t word,
-                                      mil1553_status_word_t *out) {
-    if (!out) {
-        return;
+bool mil1553_decode_status(uint16_t word, mil1553_status_t *status) {
+    if (status == NULL) {
+        return false;
     }
 
-    out->rt_address = (uint8_t)((word >> 11) & BIT_MASK_5);
-    out->message_error = ((word >> 10) & 0x01u) != 0u;
-    out->service_request = ((word >> 8) & 0x01u) != 0u;
-    out->broadcast_command_received = ((word >> 5) & 0x01u) != 0u;
-    out->busy = ((word >> 4) & 0x01u) != 0u;
-    out->subsystem_flag = ((word >> 3) & 0x01u) != 0u;
-    out->dynamic_bus_control_acceptance = ((word >> 2) & 0x01u) != 0u;
-    out->terminal_flag = ((word >> 1) & 0x01u) != 0u;
+    status->rt_address = (uint8_t)((word >> 11) & MIL1553_MASK_5BITS);
+    status->message_error = ((word >> 10) & 0x01u) != 0u;
+    status->service_request = ((word >> 8) & 0x01u) != 0u;
+    status->busy = ((word >> 4) & 0x01u) != 0u;
+    status->terminal_flag = ((word >> 1) & 0x01u) != 0u;
+
+    return true;
 }
 
-uint16_t mil1553_logic_build_data_word(uint16_t data) {
+uint16_t mil1553_build_data(uint16_t data) {
     return data;
 }
