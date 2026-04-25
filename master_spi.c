@@ -28,6 +28,13 @@ void send_byte(uint8_t byte) {
     }
 }
 
+void send_word(uint16_t word) {
+    for (int i = 15; i >= 0; i--) {
+        send_bit((word >> i) & 1);
+        sleep_ms(BIT_PERIOD_MS);
+    }
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -44,13 +51,11 @@ int main(void) {
         printf("---- FRAME ----\n");
 
         send_byte(0xF0);
-        send_byte(0x18);
-        send_byte(0x21);
-        send_byte(0xA5);
+        send_word(0x1821);
+        send_word(0xA5A5);
 
-        printf("TX_SYNC=0xF0\n");
-        printf("TX_CMD=0x1821\n");
-        printf("TX_DATA=0xA5\n");
+        printf("CMD=0x1821\n");
+        printf("DATA=0xA5A5\n");
 
         bus_idle();
 
