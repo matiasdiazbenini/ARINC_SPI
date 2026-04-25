@@ -3,9 +3,8 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 
+#include "mil1553_words.h"
 #include "bus/bus.h"
-
-#define STATUS_WORD 0x1800u
 
 static bool has_valid_start(void) {
     const int p = gpio_get(BUS_PIN_P);
@@ -21,12 +20,16 @@ int main(void) {
     bus_set_rx_mode();
 
     while (true) {
+
+        // Espera inicio de señal
         while (!has_valid_start()) {
             sleep_ms(10);
         }
 
+        // Alineación Manchester
         sleep_ms(BIT_PERIOD_MS / 4u);
 
+        // ===== SYNC =====
         uint8_t sync = 0;
         if (!bus_read_byte(&sync) || sync != 0xF0u) {
             printf("SYNC_ERROR|SYNC=0x%02X\n", sync);
@@ -35,28 +38,58 @@ int main(void) {
 
         printf("SYNC DETECTADO\n");
 
-        uint16_t cmd = 0;
-        uint16_t data = 0;
-        if (!bus_read_word16_parity(&cmd)) {
+        // ===== COMMAND =====
+        uint16_t cmd_word = 0;
+        if (!bus_read_word16_parity(&cmd_word)) {
             printf("CMD_PARITY_OR_READ_ERROR\n");
             continue;
         }
 
+        mil1553_command_t cmd = {0};
+
+        if (!mil1553_decode_command(cmd_word, &cmd)) {
+            printf("CMD_DECODE_ERROR\n");
+            continue;
+        }
+
+        printf("CMD=0x%04X\n", cmd_word);
+        printf("CMD_DECODED|RT=%u|TR=%u|SA=%u|WC=%u\n",
+               cmd.rt_address,
+               cmd.transmit ? 1u : 0u,
+               cmd.subaddress,
+               cmd.word_count);
+
+        // ===== DATA =====
+        uint16_t data = 0;
         if (!bus_read_word16_parity(&data)) {
             printf("DATA_PARITY_OR_READ_ERROR\n");
             continue;
         }
 
-        printf("CMD=0x%04X\n", cmd);
         printf("DATA=0x%04X\n", data);
+
+        // ===== STATUS RESPONSE =====
+        mil1553_status_t status = {
+            .rt_address = cmd.rt_address,
+            .message_error = false,
+            .service_request = false,
+            .busy = false,
+            .terminal_flag = false,
+        };
+
+        uint16_t status_word = mil1553_build_status(&status);
 
         bus_set_tx_mode();
         bus_idle();
         sleep_ms(BIT_PERIOD_MS / 2u);
-        bus_send_word16_parity(STATUS_WORD);
-        printf("TX_STATUS=0x%04X\n", STATUS_WORD);
+
+        bus_send_word16_parity(status_word);
+
+        printf("TX_STATUS=0x%04X\n", status_word);
+
         bus_idle();
         sleep_ms(1000);
+
         bus_set_rx_mode();
     }
 }

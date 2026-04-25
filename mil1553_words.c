@@ -1,5 +1,5 @@
 #include "mil1553_words.h"
-
+#include <stddef.h>
 #define MIL1553_MASK_5BITS 0x1Fu
 
 uint16_t mil1553_build_command(uint8_t rt,
