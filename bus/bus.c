@@ -40,26 +40,26 @@ void bus_idle(void) {
 }
 
 void bus_send_bit(bool bit) {
-    const uint32_t half_period_ms = BIT_PERIOD_MS / 2u;
+    const uint32_t half_period_us = BIT_PERIOD_US / 2u;
 
     if (bit) {
         // bit 1: HIGH -> LOW
         gpio_put(BUS_PIN_P, 1);
         gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half_period_ms);
+        sleep_us(half_period_us);
 
         gpio_put(BUS_PIN_P, 0);
         gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half_period_ms);
+        sleep_us(half_period_us);
     } else {
         // bit 0: LOW -> HIGH
         gpio_put(BUS_PIN_P, 0);
         gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half_period_ms);
+        sleep_us(half_period_us);
 
         gpio_put(BUS_PIN_P, 1);
         gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half_period_ms);
+        sleep_us(half_period_us);
     }
 }
 
@@ -76,7 +76,7 @@ bool bus_read_bit(bool *bit) {
         return false;
     }
 
-    sleep_ms(BIT_PERIOD_MS / 2u);
+    sleep_us(BIT_PERIOD_US / 2u);
 
     second_half = bus_read_diff_level();
     if (second_half < 0) {
@@ -91,7 +91,7 @@ bool bus_read_bit(bool *bit) {
         return false;
     }
 
-    sleep_ms(BIT_PERIOD_MS / 2u);
+    sleep_us(BIT_PERIOD_US / 2u);
     return true;
 }
 
