@@ -95,6 +95,7 @@ int main(void) {
         bus_idle();
         sleep_ms(BIT_PERIOD_MS / 2u);
 
+        bus_send_byte(0xF0);
         if (cmd.transmit) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 const uint16_t tx_data = (uint16_t)(0x1000u + i);
