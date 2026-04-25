@@ -5,6 +5,22 @@
 #define BUS_PIN_P 2
 #define BUS_PIN_N 3
 #define BIT_PERIOD_MS 500
+#define STATUS_WORD 0x1800
+
+static void bus_idle(void) {
+    gpio_put(BUS_PIN_P, 0);
+    gpio_put(BUS_PIN_N, 0);
+}
+
+static void set_bus_input(void) {
+    gpio_set_dir(BUS_PIN_P, GPIO_IN);
+    gpio_set_dir(BUS_PIN_N, GPIO_IN);
+}
+
+static void set_bus_output(void) {
+    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
+    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
+}
 
 static bool read_bit(bool *bit) {
     int p = gpio_get(BUS_PIN_P);
@@ -21,6 +37,16 @@ static bool read_bit(bool *bit) {
     }
 
     return false;
+}
+
+static void send_bit(bool bit) {
+    if (bit) {
+        gpio_put(BUS_PIN_P, 1);
+        gpio_put(BUS_PIN_N, 0);
+    } else {
+        gpio_put(BUS_PIN_P, 0);
+        gpio_put(BUS_PIN_N, 1);
+    }
 }
 
 static bool read_byte(uint8_t *value) {
@@ -57,14 +83,20 @@ static bool read_word16(uint16_t *value) {
     return true;
 }
 
+static void send_word(uint16_t word) {
+    for (int i = 15; i >= 0; i--) {
+        send_bit(((word >> i) & 1u) != 0u);
+        sleep_ms(BIT_PERIOD_MS);
+    }
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
     gpio_init(BUS_PIN_P);
     gpio_init(BUS_PIN_N);
-    gpio_set_dir(BUS_PIN_P, GPIO_IN);
-    gpio_set_dir(BUS_PIN_N, GPIO_IN);
+    set_bus_input();
 
     while (true) {
         while (true) {
@@ -98,5 +130,13 @@ int main(void) {
 
         printf("CMD=0x%04X\n", cmd);
         printf("DATA=0x%04X\n", data);
+
+        set_bus_output();
+        bus_idle();
+        sleep_ms(BIT_PERIOD_MS / 2);
+        send_word(STATUS_WORD);
+        printf("TX_STATUS=0x%04X\n", STATUS_WORD);
+        bus_idle();
+        set_bus_input();
     }
 }
