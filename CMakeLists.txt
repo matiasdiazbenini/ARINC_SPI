@@ -15,7 +15,7 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 add_executable(sniffer_mil
-    sniffer_main.c
+    main.c
     bus/bus.c
     mil1553_words.c
 )
