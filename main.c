@@ -61,26 +61,29 @@ int main(void) {
 
         const bool cmd_valid = (cmd.rt_address == 3u) &&
                                (cmd.subaddress == 1u) &&
-                               (cmd.word_count == 1u);
+                               (cmd.word_count > 0u);
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
-        const uint16_t fixed_tx_data = 0xBEEFu;
+        bool data_error = false;
 
         // ===== DATA =====
         if (!cmd.transmit) {
-            uint16_t data = 0;
-            if (!bus_read_word16_parity(&data)) {
-                printf("DATA_PARITY_OR_READ_ERROR\n");
-                continue;
-            }
+            for (uint8_t i = 0; i < cmd.word_count; ++i) {
+                uint16_t data = 0;
+                if (!bus_read_word16_parity(&data)) {
+                    printf("DATA_PARITY_OR_READ_ERROR\n");
+                    data_error = true;
+                    break;
+                }
 
-            printf("DATA=0x%04X\n", data);
+                printf("RX_DATA[%u]=0x%04X\n", (unsigned)i, data);
+            }
         }
 
         // ===== STATUS RESPONSE =====
         mil1553_status_t status = {
             .rt_address = 3u,
-            .message_error = !cmd_valid,
+            .message_error = (!cmd_valid) || data_error,
             .service_request = false,
             .busy = false,
             .terminal_flag = false,
@@ -93,8 +96,11 @@ int main(void) {
         sleep_ms(BIT_PERIOD_MS / 2u);
 
         if (cmd.transmit) {
-            bus_send_word16_parity(fixed_tx_data);
-            printf("TX_DATA=0x%04X\n", fixed_tx_data);
+            for (uint8_t i = 0; i < cmd.word_count; ++i) {
+                const uint16_t tx_data = (uint16_t)(0x1000u + i);
+                bus_send_word16_parity(tx_data);
+                printf("TX_DATA[%u]=0x%04X\n", (unsigned)i, tx_data);
+            }
         }
 
         bus_send_word16_parity(status_word);
