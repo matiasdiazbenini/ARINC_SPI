@@ -146,3 +146,44 @@ bool bus_read_word16(uint16_t *word) {
     *word = value;
     return true;
 }
+
+uint8_t bus_compute_odd_parity(uint16_t word) {
+    uint8_t parity = 0u;
+
+    for (int i = 0; i < 16; i++) {
+        parity ^= (uint8_t)((word >> i) & 1u);
+    }
+
+    // Si la palabra tiene paridad par (parity=0), el bit de paridad debe ser 1.
+    // Si la palabra tiene paridad impar (parity=1), el bit de paridad debe ser 0.
+    return (uint8_t)(parity ^ 1u);
+}
+
+void bus_send_word16_parity(uint16_t word) {
+    bus_send_word16(word);
+    bus_send_bit(bus_compute_odd_parity(word) != 0u);
+}
+
+bool bus_read_word16_parity(uint16_t *word) {
+    uint16_t value = 0;
+    bool parity_bit = false;
+
+    if (word == NULL) {
+        return false;
+    }
+
+    if (!bus_read_word16(&value)) {
+        return false;
+    }
+
+    if (!bus_read_bit(&parity_bit)) {
+        return false;
+    }
+
+    if ((parity_bit ? 1u : 0u) != bus_compute_odd_parity(value)) {
+        return false;
+    }
+
+    *word = value;
+    return true;
+}

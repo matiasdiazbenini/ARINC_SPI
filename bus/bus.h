@@ -43,6 +43,17 @@ bool bus_read_byte(uint8_t *byte);
 void bus_send_word16(uint16_t word);
 bool bus_read_word16(uint16_t *word);
 
+// Calcula bit de paridad impar para una palabra de 16 bits.
+// Devuelve 0 o 1 tal que (word + parity) tenga cantidad impar de unos.
+uint8_t bus_compute_odd_parity(uint16_t word);
+
+// Envia 16 bits MSB primero y luego 1 bit de paridad impar.
+void bus_send_word16_parity(uint16_t word);
+
+// Lee 16 bits + 1 bit de paridad y valida paridad impar.
+// Devuelve false si hay error de lectura o paridad invalida.
+bool bus_read_word16_parity(uint16_t *word);
+
 #ifdef __cplusplus
 }
 #endif
