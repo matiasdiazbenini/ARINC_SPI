@@ -1,156 +1,34 @@
 #include <stdio.h>
-#include "pico/stdlib.h"
+
 #include "hardware/gpio.h"
+#include "pico/stdlib.h"
 
-#define BUS_PIN_P 2
-#define BUS_PIN_N 3
-#define BIT_PERIOD_MS 500
-#define STATUS_WORD 0x1800
+#include "bus/bus.h"
 
-static void bus_idle(void) {
-    gpio_put(BUS_PIN_P, 0);
-    gpio_put(BUS_PIN_N, 0);
-}
+#define STATUS_WORD 0x1800u
 
-static void set_bus_input(void) {
-    gpio_set_dir(BUS_PIN_P, GPIO_IN);
-    gpio_set_dir(BUS_PIN_N, GPIO_IN);
-}
-
-static void set_bus_output(void) {
-    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
-    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
-}
-
-static int read_diff_level(void) {
-    int p = gpio_get(BUS_PIN_P);
-    int n = gpio_get(BUS_PIN_N);
-
-    if (p == 1 && n == 0) {
-        return 1; // HIGH
-    }
-
-    if (p == 0 && n == 1) {
-        return 0; // LOW
-    }
-
-    return -1; // invalid or idle
-}
-
-static bool read_bit(bool *bit) {
-    int first_half = read_diff_level();
-    if (first_half < 0) {
-        return false;
-    }
-
-    sleep_ms(BIT_PERIOD_MS / 2);
-
-    int second_half = read_diff_level();
-    if (second_half < 0) {
-        return false;
-    }
-
-    if (first_half == 1 && second_half == 0) {
-        *bit = true;
-    } else if (first_half == 0 && second_half == 1) {
-        *bit = false;
-    } else {
-        return false;
-    }
-
-    // Completa el periodo del bit antes de leer el siguiente.
-    sleep_ms(BIT_PERIOD_MS / 2);
-
-    return true;
-}
-
-static void send_bit(bool bit) {
-    const uint32_t half = BIT_PERIOD_MS / 2;
-
-    if (bit) {
-        // Manchester: 1 = HIGH -> LOW
-        gpio_put(BUS_PIN_P, 1);
-        gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half);
-
-        gpio_put(BUS_PIN_P, 0);
-        gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half);
-    } else {
-        // Manchester: 0 = LOW -> HIGH
-        gpio_put(BUS_PIN_P, 0);
-        gpio_put(BUS_PIN_N, 1);
-        sleep_ms(half);
-
-        gpio_put(BUS_PIN_P, 1);
-        gpio_put(BUS_PIN_N, 0);
-        sleep_ms(half);
-    }
-}
-
-static bool read_byte(uint8_t *value) {
-    uint8_t byte = 0;
-
-    for (int i = 0; i < 8; i++) {
-        bool bit = false;
-        if (!read_bit(&bit)) {
-            return false;
-        }
-
-        byte = (uint8_t)((byte << 1) | (bit ? 1 : 0));
-    }
-
-    *value = byte;
-    return true;
-}
-
-static bool read_word16(uint16_t *value) {
-    uint16_t word = 0;
-
-    for (int i = 0; i < 16; i++) {
-        bool bit = false;
-        if (!read_bit(&bit)) {
-            return false;
-        }
-
-        word = (uint16_t)((word << 1) | (bit ? 1u : 0u));
-    }
-
-    *value = word;
-    return true;
-}
-
-static void send_word(uint16_t word) {
-    for (int i = 15; i >= 0; i--) {
-        send_bit(((word >> i) & 1u) != 0u);
-    }
+static bool has_valid_start(void) {
+    const int p = gpio_get(BUS_PIN_P);
+    const int n = gpio_get(BUS_PIN_N);
+    return (p == 1 && n == 0) || (p == 0 && n == 1);
 }
 
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    gpio_init(BUS_PIN_P);
-    gpio_init(BUS_PIN_N);
-    set_bus_input();
+    bus_init();
+    bus_set_rx_mode();
 
     while (true) {
-        while (true) {
-            int p = gpio_get(BUS_PIN_P);
-            int n = gpio_get(BUS_PIN_N);
-            bool valid_start = (p == 1 && n == 0) || (p == 0 && n == 1);
-
-            if (valid_start) {
-                break;
-            }
-
+        while (!has_valid_start()) {
             sleep_ms(10);
         }
 
-        sleep_ms(BIT_PERIOD_MS / 4);
+        sleep_ms(BIT_PERIOD_MS / 4u);
 
         uint8_t sync = 0;
-        if (!read_byte(&sync) || sync != 0xF0) {
+        if (!bus_read_byte(&sync) || sync != 0xF0u) {
             printf("SYNC_ERROR|SYNC=0x%02X\n", sync);
             continue;
         }
@@ -159,21 +37,20 @@ int main(void) {
 
         uint16_t cmd = 0;
         uint16_t data = 0;
-
-        if (!read_word16(&cmd) || !read_word16(&data)) {
+        if (!bus_read_word16(&cmd) || !bus_read_word16(&data)) {
             continue;
         }
 
         printf("CMD=0x%04X\n", cmd);
         printf("DATA=0x%04X\n", data);
 
-        set_bus_output();
+        bus_set_tx_mode();
         bus_idle();
-        sleep_ms(BIT_PERIOD_MS / 2);
-        send_word(STATUS_WORD);
+        sleep_ms(BIT_PERIOD_MS / 2u);
+        bus_send_word16(STATUS_WORD);
         printf("TX_STATUS=0x%04X\n", STATUS_WORD);
         bus_idle();
         sleep_ms(1000);
-        set_bus_input();
+        bus_set_rx_mode();
     }
 }
