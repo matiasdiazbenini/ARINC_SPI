@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/usuario/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_clib_interface
+# Install script for directory: C:/Users/User/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_clib_interface
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -34,12 +34,12 @@ endif()
 
 # Set path to fallback-tool for dependency-resolution.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "C:/Users/usuario/.pico-sdk/toolchain/14_2_Rel1/bin/arm-none-eabi-objdump.exe")
+  set(CMAKE_OBJDUMP "C:/Users/User/.pico-sdk/toolchain/14_2_Rel1/bin/arm-none-eabi-objdump.exe")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/usuario/RASPI PICO/PAMPA/ARINC_SNIFFER/build/pico-sdk/src/rp2_common/pico_clib_interface/install_local_manifest.txt"
+  file(WRITE "C:/Users/User/ARINC_SPI/build/pico-sdk/src/rp2_common/pico_clib_interface/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
