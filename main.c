@@ -9,19 +9,26 @@ int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    printf("SLAVE RAW BUS MONITOR\n");
-
     gpio_init(BUS_PIN_P);
     gpio_init(BUS_PIN_N);
-
     gpio_set_dir(BUS_PIN_P, GPIO_IN);
     gpio_set_dir(BUS_PIN_N, GPIO_IN);
 
-    while (true) {
-        int p = gpio_get(BUS_PIN_P) ? 1 : 0;
-        int n = gpio_get(BUS_PIN_N) ? 1 : 0;
+    printf("SLAVE BIT TEST\n");
 
-        printf("RX_RAW|P=%d|N=%d\n", p, n);
-        sleep_ms(100);
+    while (true) {
+        int p = gpio_get(BUS_PIN_P);
+        int n = gpio_get(BUS_PIN_N);
+
+        int bit = (p == 1 && n == 0) ? 1 :
+                  (p == 0 && n == 1) ? 0 : -1;
+
+        if (bit != -1) {
+            printf("RX_BIT=%d\n", bit);
+        } else {
+            printf("RX_INVALID\n");
+        }
+
+        sleep_us(100);
     }
 }
