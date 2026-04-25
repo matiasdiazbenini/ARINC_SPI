@@ -13,7 +13,7 @@ extern "C" {
 #define BUS_PIN_N 3u
 
 // Periodo de bit total (ms).
-#define BIT_PERIOD_MS 20u
+#define BIT_PERIOD_MS 30u
 #define SYNC_CMD_STATUS 0xF0u
 #define SYNC_DATA       0x0Fu
 
