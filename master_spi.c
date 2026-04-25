@@ -15,6 +15,14 @@ void send_bit(bool bit) {
     }
 }
 
+void send_byte(uint8_t byte) {
+    for (int i = 7; i >= 0; i--) {
+        bool bit = (byte >> i) & 1;
+        send_bit(bit);
+        sleep_ms(500);
+    }
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -24,19 +32,14 @@ int main(void) {
     gpio_set_dir(BUS_PIN_P, GPIO_OUT);
     gpio_set_dir(BUS_PIN_N, GPIO_OUT);
 
-    printf("MASTER BIT TEST\n");
+    printf("MASTER SYNC TEST\n");
 
     while (true) {
-        uint8_t pattern = 0b10101010;
+        printf("---- FRAME ----\n");
 
-        for (int i = 7; i >= 0; i--) {
-            bool bit = (pattern >> i) & 1;
-            send_bit(bit);
+        send_byte(0b11110000);  // SYNC
+        send_byte(0b10101010);  // DATA
 
-            printf("TX_BIT=%d\n", bit);
-            sleep_us(1000);  // tiempo de bit
-        }
-
-        sleep_ms(1000);
+        sleep_ms(2000);
     }
 }
