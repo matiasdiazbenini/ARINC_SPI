@@ -16,18 +16,18 @@ int main(void) {
         sleep_ms(1000);
 
         bus_send_byte(0xF0);
-        bus_send_word16(0x1821);
-        bus_send_word16(0xA5A5);
+        bus_send_word16_parity(0x1821);
+        bus_send_word16_parity(0xA5A5);
 
         bus_idle();
         bus_set_rx_mode();
         sleep_ms(BIT_PERIOD_MS);
 
         uint16_t status = 0;
-        if (bus_read_word16(&status)) {
+        if (bus_read_word16_parity(&status)) {
             printf("RX_STATUS=0x%04X\n", status);
         } else {
-            printf("Failed to read status\n");
+            printf("STATUS_PARITY_OR_READ_ERROR\n");
         }
 
         bus_set_tx_mode();
