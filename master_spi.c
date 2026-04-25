@@ -7,7 +7,7 @@
 
 
 int main(void) {
-    const bool tr = false;
+    const bool tr = true;
     const uint8_t word_count = 3u;
 
     stdio_init_all();
@@ -37,28 +37,27 @@ int main(void) {
         bus_set_rx_mode();
         sleep_ms(BIT_PERIOD_MS);
 
+        uint8_t response_sync = 0;
         bool data_ok = true;
         uint16_t status_word = 0;
 
-        if (tr) {
-            for (uint8_t i = 0; i < word_count; ++i) {
-                uint16_t rx_data = 0;
-                if (!bus_read_word16_parity(&rx_data)) {
-                    printf("DATA_PARITY_OR_READ_ERROR\n");
-                    data_ok = false;
-                    break;
+        if (!bus_read_byte(&response_sync) || response_sync != 0xF0u) {
+            printf("RESPONSE_SYNC_ERROR|SYNC=0x%02X\n", response_sync);
+        } else {
+            if (tr) {
+                for (uint8_t i = 0; i < word_count; ++i) {
+                    uint16_t rx_data = 0;
+                    if (!bus_read_word16_parity(&rx_data)) {
+                        printf("DATA_PARITY_OR_READ_ERROR\n");
+                        data_ok = false;
+                        break;
+                    }
+
+                    printf("RX_DATA[%u]=0x%04X\n", (unsigned)i, rx_data);
                 }
-
-                printf("RX_DATA[%u]=0x%04X\n", (unsigned)i, rx_data);
             }
-        }
 
-        if (data_ok) {
-            uint8_t status_sync = 0;
-
-            if (!bus_read_byte(&status_sync) || status_sync != 0xF0u) {
-                printf("STATUS_SYNC_ERROR|SYNC=0x%02X\n", status_sync);
-            } else if (bus_read_word16_parity(&status_word)) {
+            if (data_ok && bus_read_word16_parity(&status_word)) {
                 printf("RX_STATUS=0x%04X\n", status_word);
 
                 mil1553_status_t status = {0};
@@ -73,7 +72,7 @@ int main(void) {
                 } else {
                     printf("STATUS_DECODE_ERROR\n");
                 }
-            } else {
+            } else if (data_ok) {
                 printf("STATUS_PARITY_OR_READ_ERROR\n");
             }
         }
