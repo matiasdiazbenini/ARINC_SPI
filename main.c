@@ -88,11 +88,15 @@ int main(void) {
             }
         }
 
+        const bool message_error = (!cmd_valid) || data_error;
+        const bool busy = (cmd.word_count == RT_MAX_WORD_COUNT);
+        const bool service_request = (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) && cmd.transmit;
+
         mil1553_status_t status = {
             .rt_address = RT_LOCAL_ADDRESS,
-            .message_error = (!cmd_valid) || data_error,
-            .service_request = false,
-            .busy = false,
+            .message_error = message_error,
+            .service_request = service_request,
+            .busy = busy,
             .terminal_flag = false,
         };
 
@@ -112,6 +116,12 @@ int main(void) {
                 printf("TX_DATA[%u]=0x%04X\n", (unsigned)i, tx_data);
             }
         }
+
+        printf("RT_FLAGS|ME=%u|BUSY=%u|SR=%u|TF=%u\n",
+               message_error ? 1u : 0u,
+               busy ? 1u : 0u,
+               service_request ? 1u : 0u,
+               0u);
 
         bus_send_sync_cmd_status();
         bus_send_word16_parity(status_word);
