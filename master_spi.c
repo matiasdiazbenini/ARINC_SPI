@@ -48,32 +48,43 @@ void send_bit(bool bit) {
 void send_byte(uint8_t byte) {
     for (int i = 7; i >= 0; i--) {
         send_bit((byte >> i) & 1);
-        sleep_ms(BIT_PERIOD_MS);
     }
 }
 
 void send_word(uint16_t word) {
     for (int i = 15; i >= 0; i--) {
         send_bit((word >> i) & 1);
-        sleep_ms(BIT_PERIOD_MS);
     }
 }
 
-bool read_bit(bool *bit) {
+static int read_diff_level(void) {
     int p = gpio_get(BUS_PIN_P);
     int n = gpio_get(BUS_PIN_N);
 
-    if (p == 1 && n == 0) {
+    if (p == 1 && n == 0) return 1;
+    if (p == 0 && n == 1) return 0;
+    return -1;
+}
+
+bool read_bit(bool *bit) {
+    int first_half = read_diff_level();
+    if (first_half < 0) return false;
+
+    sleep_ms(BIT_PERIOD_MS / 2);
+
+    int second_half = read_diff_level();
+    if (second_half < 0) return false;
+
+    if (first_half == 1 && second_half == 0) {
         *bit = true;
-        return true;
-    }
-
-    if (p == 0 && n == 1) {
+    } else if (first_half == 0 && second_half == 1) {
         *bit = false;
-        return true;
+    } else {
+        return false;
     }
 
-    return false;
+    sleep_ms(BIT_PERIOD_MS / 2);
+    return true;
 }
 
 bool read_word(uint16_t *word) {
@@ -86,7 +97,6 @@ bool read_word(uint16_t *word) {
         }
 
         value = (uint16_t)((value << 1) | (bit ? 1u : 0u));
-        sleep_ms(BIT_PERIOD_MS);
     }
 
     *word = value;
@@ -110,7 +120,7 @@ int main(void) {
         send_word(0xA5A5);
 
         set_bus_input();
-        sleep_ms(BIT_PERIOD_MS / 2);
+        sleep_ms(BIT_PERIOD_MS / 4);
         uint16_t status = 0;
         if (read_word(&status)) {
             printf("RX_STATUS=0x%04X\n", status);
