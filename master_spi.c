@@ -5,11 +5,12 @@
 #include "bus/bus.h"
 #include "mil1553_words.h"
 
+#define TEST_RT_ADDRESS     3u
+#define TEST_SUBADDRESS     1u
+#define TEST_WORD_COUNT     3u
+#define TEST_TR             true
 
 int main(void) {
-    const bool tr = true;
-    const uint8_t word_count = 3u;
-
     stdio_init_all();
     sleep_ms(1200);
 
@@ -20,13 +21,23 @@ int main(void) {
         bus_idle();
         sleep_ms(1000);
 
+        printf("---- FRAME ----\n");
+        printf("MODE=%s|RT=%u|SA=%u|WC=%u\n",
+               TEST_TR ? "RT_TO_BC" : "BC_TO_RT",
+               TEST_RT_ADDRESS,
+               TEST_SUBADDRESS,
+               TEST_WORD_COUNT);
+
         bus_send_byte(0xF0);
-        uint16_t cmd = mil1553_build_command(3, tr, 1, word_count);
+        uint16_t cmd = mil1553_build_command(TEST_RT_ADDRESS,
+                                             TEST_TR,
+                                             TEST_SUBADDRESS,
+                                             TEST_WORD_COUNT);
 
         bus_send_word16_parity(cmd);
 
-        if (!tr) {
-            for (uint8_t i = 0; i < word_count; ++i) {
+        if (!TEST_TR) {
+            for (uint8_t i = 0; i < TEST_WORD_COUNT; ++i) {
                 const uint16_t tx_data = mil1553_build_data((uint16_t)(0xA000u + i));
                 bus_send_word16_parity(tx_data);
                 printf("TX_DATA[%u]=0x%04X\n", (unsigned)i, tx_data);
@@ -44,8 +55,8 @@ int main(void) {
         if (!bus_read_byte(&response_sync) || response_sync != 0xF0u) {
             printf("RESPONSE_SYNC_ERROR|SYNC=0x%02X\n", response_sync);
         } else {
-            if (tr) {
-                for (uint8_t i = 0; i < word_count; ++i) {
+            if (TEST_TR) {
+                for (uint8_t i = 0; i < TEST_WORD_COUNT; ++i) {
                     uint16_t rx_data = 0;
                     if (!bus_read_word16_parity(&rx_data)) {
                         printf("DATA_PARITY_OR_READ_ERROR\n");
