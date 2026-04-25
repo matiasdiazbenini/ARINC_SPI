@@ -64,14 +64,18 @@ int main(void) {
                                (cmd.word_count == 1u);
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
-        // ===== DATA =====
-        uint16_t data = 0;
-        if (!bus_read_word16_parity(&data)) {
-            printf("DATA_PARITY_OR_READ_ERROR\n");
-            continue;
-        }
+        const uint16_t fixed_tx_data = 0xBEEFu;
 
-        printf("DATA=0x%04X\n", data);
+        // ===== DATA =====
+        if (!cmd.transmit) {
+            uint16_t data = 0;
+            if (!bus_read_word16_parity(&data)) {
+                printf("DATA_PARITY_OR_READ_ERROR\n");
+                continue;
+            }
+
+            printf("DATA=0x%04X\n", data);
+        }
 
         // ===== STATUS RESPONSE =====
         mil1553_status_t status = {
@@ -87,6 +91,11 @@ int main(void) {
         bus_set_tx_mode();
         bus_idle();
         sleep_ms(BIT_PERIOD_MS / 2u);
+
+        if (cmd.transmit) {
+            bus_send_word16_parity(fixed_tx_data);
+            printf("TX_DATA=0x%04X\n", fixed_tx_data);
+        }
 
         bus_send_word16_parity(status_word);
 
