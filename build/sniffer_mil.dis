@@ -340,7 +340,7 @@ Disassembly of section .text:
 100002d6:	2b00      	cmp	r3, #0
 100002d8:	f040 808e 	bne.w	100003f8 <main+0x14c>
 100002dc:	2400      	movs	r4, #0
-100002de:	200c      	movs	r0, #12
+100002de:	200a      	movs	r0, #10
 100002e0:	f001 f8aa 	bl	10001438 <sleep_ms>
 100002e4:	a803      	add	r0, sp, #12
 100002e6:	f88d 400c 	strb.w	r4, [sp, #12]
@@ -407,7 +407,7 @@ Disassembly of section .text:
 100003a2:	495b      	ldr	r1, [pc, #364]	@ (10000510 <main+0x264>)
 100003a4:	485b      	ldr	r0, [pc, #364]	@ (10000514 <main+0x268>)
 100003a6:	f003 faad 	bl	10003904 <__wrap_printf>
-100003aa:	2064      	movs	r0, #100	@ 0x64
+100003aa:	2050      	movs	r0, #80	@ 0x50
 100003ac:	f001 f844 	bl	10001438 <sleep_ms>
 100003b0:	f04f 4450 	mov.w	r4, #3489660928	@ 0xd0000000
 100003b4:	6862      	ldr	r2, [r4, #4]
@@ -417,7 +417,7 @@ Disassembly of section .text:
 100003be:	d538      	bpl.n	10000432 <main+0x186>
 100003c0:	2b00      	cmp	r3, #0
 100003c2:	d138      	bne.n	10000436 <main+0x18a>
-100003c4:	200c      	movs	r0, #12
+100003c4:	200a      	movs	r0, #10
 100003c6:	f001 f837 	bl	10001438 <sleep_ms>
 100003ca:	2300      	movs	r3, #0
 100003cc:	f10d 000a 	add.w	r0, sp, #10
@@ -440,7 +440,7 @@ Disassembly of section .text:
 10000400:	4945      	ldr	r1, [pc, #276]	@ (10000518 <main+0x26c>)
 10000402:	4844      	ldr	r0, [pc, #272]	@ (10000514 <main+0x268>)
 10000404:	f003 fa7e 	bl	10003904 <__wrap_printf>
-10000408:	2064      	movs	r0, #100	@ 0x64
+10000408:	2050      	movs	r0, #80	@ 0x50
 1000040a:	f001 f815 	bl	10001438 <sleep_ms>
 1000040e:	e759      	b.n	100002c4 <main+0x18>
 10000410:	4941      	ldr	r1, [pc, #260]	@ (10000518 <main+0x26c>)
@@ -453,7 +453,7 @@ Disassembly of section .text:
 10000422:	e7c2      	b.n	100003aa <main+0xfe>
 10000424:	483e      	ldr	r0, [pc, #248]	@ (10000520 <main+0x274>)
 10000426:	f003 f9ed 	bl	10003804 <__wrap_puts>
-1000042a:	2064      	movs	r0, #100	@ 0x64
+1000042a:	2050      	movs	r0, #80	@ 0x50
 1000042c:	f001 f804 	bl	10001438 <sleep_ms>
 10000430:	e748      	b.n	100002c4 <main+0x18>
 10000432:	2b00      	cmp	r3, #0
@@ -472,7 +472,7 @@ Disassembly of section .text:
 10000454:	d53a      	bpl.n	100004cc <main+0x220>
 10000456:	2b00      	cmp	r3, #0
 10000458:	d13a      	bne.n	100004d0 <main+0x224>
-1000045a:	200c      	movs	r0, #12
+1000045a:	200a      	movs	r0, #10
 1000045c:	f000 ffec 	bl	10001438 <sleep_ms>
 10000460:	f89d 300f 	ldrb.w	r3, [sp, #15]
 10000464:	2b00      	cmp	r3, #0
@@ -506,7 +506,7 @@ Disassembly of section .text:
 100004b2:	4917      	ldr	r1, [pc, #92]	@ (10000510 <main+0x264>)
 100004b4:	4817      	ldr	r0, [pc, #92]	@ (10000514 <main+0x268>)
 100004b6:	f003 fa25 	bl	10003904 <__wrap_printf>
-100004ba:	2064      	movs	r0, #100	@ 0x64
+100004ba:	2050      	movs	r0, #80	@ 0x50
 100004bc:	f000 ffbc 	bl	10001438 <sleep_ms>
 100004c0:	e783      	b.n	100003ca <main+0x11e>
 100004c2:	4913      	ldr	r1, [pc, #76]	@ (10000510 <main+0x264>)
@@ -585,7 +585,7 @@ Disassembly of section .text:
 1000058c:	2a00      	cmp	r2, #0
 1000058e:	d0fa      	beq.n	10000586 <bus_read_sync+0x22>
 10000590:	461c      	mov	r4, r3
-10000592:	2019      	movs	r0, #25
+10000592:	2014      	movs	r0, #20
 10000594:	f000 ff50 	bl	10001438 <sleep_ms>
 10000598:	f8d8 2004 	ldr.w	r2, [r8, #4]
 1000059c:	f8d8 3004 	ldr.w	r3, [r8, #4]
@@ -596,7 +596,7 @@ Disassembly of section .text:
 100005aa:	d1ec      	bne.n	10000586 <bus_read_sync+0x22>
 100005ac:	2c00      	cmp	r4, #0
 100005ae:	d1ea      	bne.n	10000586 <bus_read_sync+0x22>
-100005b0:	2019      	movs	r0, #25
+100005b0:	2014      	movs	r0, #20
 100005b2:	f000 ff41 	bl	10001438 <sleep_ms>
 100005b6:	0076      	lsls	r6, r6, #1
 100005b8:	b2f6      	uxtb	r6, r6
@@ -618,7 +618,7 @@ Disassembly of section .text:
 100005da:	2c00      	cmp	r4, #0
 100005dc:	d0d3      	beq.n	10000586 <bus_read_sync+0x22>
 100005de:	0076      	lsls	r6, r6, #1
-100005e0:	2019      	movs	r0, #25
+100005e0:	2014      	movs	r0, #20
 100005e2:	f046 0601 	orr.w	r6, r6, #1
 100005e6:	f000 ff27 	bl	10001438 <sleep_ms>
 100005ea:	b2f6      	uxtb	r6, r6
@@ -649,7 +649,7 @@ Disassembly of section .text:
 10000626:	2a00      	cmp	r2, #0
 10000628:	d0fa      	beq.n	10000620 <bus_read_word16_parity+0x28>
 1000062a:	461c      	mov	r4, r3
-1000062c:	2019      	movs	r0, #25
+1000062c:	2014      	movs	r0, #20
 1000062e:	f000 ff03 	bl	10001438 <sleep_ms>
 10000632:	f8d8 2004 	ldr.w	r2, [r8, #4]
 10000636:	f8d8 3004 	ldr.w	r3, [r8, #4]
@@ -660,7 +660,7 @@ Disassembly of section .text:
 10000644:	d1ec      	bne.n	10000620 <bus_read_word16_parity+0x28>
 10000646:	2c00      	cmp	r4, #0
 10000648:	d1ea      	bne.n	10000620 <bus_read_word16_parity+0x28>
-1000064a:	2019      	movs	r0, #25
+1000064a:	2014      	movs	r0, #20
 1000064c:	f000 fef4 	bl	10001438 <sleep_ms>
 10000650:	0076      	lsls	r6, r6, #1
 10000652:	b2b6      	uxth	r6, r6
@@ -674,7 +674,7 @@ Disassembly of section .text:
 10000666:	d424      	bmi.n	100006b2 <bus_read_word16_parity+0xba>
 10000668:	2b00      	cmp	r3, #0
 1000066a:	d0d9      	beq.n	10000620 <bus_read_word16_parity+0x28>
-1000066c:	2019      	movs	r0, #25
+1000066c:	2014      	movs	r0, #20
 1000066e:	f000 fee3 	bl	10001438 <sleep_ms>
 10000672:	f04f 4350 	mov.w	r3, #3489660928	@ 0xd0000000
 10000676:	685a      	ldr	r2, [r3, #4]
@@ -686,7 +686,7 @@ Disassembly of section .text:
 10000684:	d1cc      	bne.n	10000620 <bus_read_word16_parity+0x28>
 10000686:	2d00      	cmp	r5, #0
 10000688:	d1ca      	bne.n	10000620 <bus_read_word16_parity+0x28>
-1000068a:	2019      	movs	r0, #25
+1000068a:	2014      	movs	r0, #20
 1000068c:	f000 fed4 	bl	10001438 <sleep_ms>
 10000690:	e01b      	b.n	100006ca <bus_read_word16_parity+0xd2>
 10000692:	2401      	movs	r4, #1
@@ -696,7 +696,7 @@ Disassembly of section .text:
 1000069a:	2c00      	cmp	r4, #0
 1000069c:	d0c0      	beq.n	10000620 <bus_read_word16_parity+0x28>
 1000069e:	0076      	lsls	r6, r6, #1
-100006a0:	2019      	movs	r0, #25
+100006a0:	2014      	movs	r0, #20
 100006a2:	f046 0601 	orr.w	r6, r6, #1
 100006a6:	f000 fec7 	bl	10001438 <sleep_ms>
 100006aa:	b2b6      	uxth	r6, r6
@@ -711,7 +711,7 @@ Disassembly of section .text:
 100006bc:	d0b0      	beq.n	10000620 <bus_read_word16_parity+0x28>
 100006be:	2d00      	cmp	r5, #0
 100006c0:	d0ae      	beq.n	10000620 <bus_read_word16_parity+0x28>
-100006c2:	2019      	movs	r0, #25
+100006c2:	2014      	movs	r0, #20
 100006c4:	f000 feb8 	bl	10001438 <sleep_ms>
 100006c8:	462c      	mov	r4, r5
 100006ca:	ea86 0356 	eor.w	r3, r6, r6, lsr #1
