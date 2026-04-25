@@ -173,6 +173,7 @@ int main(void) {
         send_word(STATUS_WORD);
         printf("TX_STATUS=0x%04X\n", STATUS_WORD);
         bus_idle();
+        sleep_ms(1000);
         set_bus_input();
     }
 }
