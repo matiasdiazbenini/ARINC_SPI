@@ -33,6 +33,7 @@ add_executable(slave_spi
 target_link_libraries(slave_spi
     pico_stdlib
     hardware_clocks
+    hardware/pio.h
 )
 
 pico_enable_stdio_usb(slave_spi 1)
