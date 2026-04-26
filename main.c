@@ -65,6 +65,34 @@ static bool read_and_print_status(void) {
            status.busy ? 1u : 0u,
            status.terminal_flag ? 1u : 0u);
 
+    bool has_flag = false;
+
+    if (status.message_error) {
+        printf("STATUS_FLAG|MESSAGE_ERROR\n");
+        has_flag = true;
+    }
+
+    if (status.busy) {
+        printf("STATUS_FLAG|RT_BUSY\n");
+        has_flag = true;
+    }
+
+    if (status.service_request) {
+        printf("STATUS_FLAG|SERVICE_REQUEST\n");
+        has_flag = true;
+    }
+
+    if (status.terminal_flag) {
+        printf("STATUS_FLAG|TERMINAL_FLAG\n");
+        has_flag = true;
+    }
+
+    if (!has_flag) {
+        printf("STATUS_FLAG|OK\n");
+    }
+
+    printf("---- MESSAGE END ----\n");
+
     return true;
 }
 
@@ -101,12 +129,14 @@ int main(void) {
             continue;
         }
 
+        printf("---- MESSAGE START ----\n");
         printf("CMD=0x%04X\n", cmd_word);
         printf("CMD_DECODED|RT=%u|TR=%u|SA=%u|WC=%u\n",
                cmd.rt_address,
                cmd.transmit ? 1u : 0u,
                cmd.subaddress,
                cmd.word_count);
+        printf("MSG_TYPE=%s\n", cmd.transmit ? "RT_TO_BC" : "BC_TO_RT");
 
         if (!cmd.transmit) {
             /*
