@@ -37,7 +37,8 @@ static void bus_tx_pio_init(void) {
     if (clkdiv > 65535.0f) {
         clkdiv = 65535.0f;
     }
-    sm_config_set_clkdiv(&c, clkdiv);
+    
+    sm_config_set_clkdiv(&c, 50000.0f);
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
