@@ -10,7 +10,7 @@
 #define TEST_WORD_COUNT     3u 
 #define TEST_TR             false
 #define TEST_MODE_CODE      false
-#define TEST_MODE_LAST_COMMAND true
+#define TEST_MODE_LAST_COMMAND false
 
 #define MC_TRANSMIT_STATUS       0u
 #define MC_TRANSMIT_LAST_COMMAND 2u
@@ -73,7 +73,7 @@ int main(void) {
         bus_set_rx_mode();
         sleep_us(BIT_PERIOD_US);
 
-        bool data_ok = true;
+        bool comm_error = false;
         uint16_t status_word = 0;
 
         if (mode_code_last_command) {
@@ -81,12 +81,12 @@ int main(void) {
 
             if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_DATA) {
                 printf("LAST_CMD_SYNC_ERROR\n");
-                data_ok = false;
+                comm_error = true;
             } else {
                 uint16_t last_cmd_word = 0;
                 if (!bus_read_word16_parity(&last_cmd_word)) {
                     printf("LAST_CMD_PARITY_OR_READ_ERROR\n");
-                    data_ok = false;
+                    comm_error = true;
                 } else {
                     printf("RX_LAST_CMD=0x%04X\n", last_cmd_word);
                 }
@@ -97,14 +97,14 @@ int main(void) {
 
                 if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_DATA) {
                     printf("DATA_SYNC_ERROR[%u]\n", (unsigned)i);
-                    data_ok = false;
+                    comm_error = true;
                     break;
                 }
 
                 uint16_t rx_data = 0;
                 if (!bus_read_word16_parity(&rx_data)) {
                     printf("DATA_PARITY_OR_READ_ERROR[%u]\n", (unsigned)i);
-                    data_ok = false;
+                    comm_error = true;
                     break;
                 }
 
@@ -112,18 +112,26 @@ int main(void) {
             }
         }
 
-        if (data_ok) {
+        if (!comm_error) {
             uint8_t sync_type = 0;
 
             if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_CMD_STATUS) {
                 printf("STATUS_SYNC_ERROR\n");
-                data_ok = false;
+                comm_error = true;
             }
         }
 
-        if (data_ok && bus_read_word16_parity(&status_word)) {
-            printf("RX_STATUS=0x%04X\n", status_word);
+        if (!comm_error) {
+            if (!bus_read_word16_parity(&status_word)) {
+                printf("STATUS_PARITY_OR_READ_ERROR\n");
+                comm_error = true;
+            }
+        }
 
+        if (comm_error) {
+            printf("BC_EVENT|TIMEOUT_OR_SYNC_ERROR\n");
+        } else {
+            printf("RX_STATUS=0x%04X\n", status_word);
             mil1553_status_t status = {0};
 
             if (mil1553_decode_status(status_word, &status)) {
@@ -138,16 +146,20 @@ int main(void) {
 
                 if (status.message_error) {
                     printf("STATUS_ACTION|MESSAGE_ERROR\n");
+                    printf("BC_EVENT|ERROR_DETECTED\n");
                     has_action = true;
                 }
 
                 if (status.busy) {
                     printf("STATUS_ACTION|RT_BUSY\n");
+                    printf("BC_EVENT|RETRYING\n");
+                    sleep_ms(200);
                     has_action = true;
                 }
 
                 if (status.service_request) {
                     printf("STATUS_ACTION|SERVICE_REQUEST\n");
+                    printf("BC_EVENT|SR_HANDLED\n");
                     has_action = true;
                 }
 
@@ -162,8 +174,6 @@ int main(void) {
             } else {
                 printf("STATUS_DECODE_ERROR\n");
             }
-        } else if (data_ok) {
-            printf("STATUS_PARITY_OR_READ_ERROR\n");
         }
 
         bus_set_tx_mode();
