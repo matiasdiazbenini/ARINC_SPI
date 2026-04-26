@@ -7,7 +7,7 @@
 
 #define TEST_RT_ADDRESS     3u
 #define TEST_SUBADDRESS     1u
-#define TEST_WORD_COUNT     3u
+#define TEST_WORD_COUNT     3u 
 #define TEST_TR             true
 
 int main(void) {
