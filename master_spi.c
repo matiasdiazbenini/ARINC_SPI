@@ -8,8 +8,12 @@
 #define TEST_RT_ADDRESS     3u
 #define TEST_SUBADDRESS     1u
 #define TEST_WORD_COUNT     3u 
-#define TEST_TR             true
-#define TEST_MODE_CODE      true
+#define TEST_TR             false
+#define TEST_MODE_CODE      false
+#define TEST_MODE_LAST_COMMAND true
+
+#define MC_TRANSMIT_STATUS       0u
+#define MC_TRANSMIT_LAST_COMMAND 2u
 
 int main(void) {
     stdio_init_all();
@@ -22,9 +26,14 @@ int main(void) {
         bus_idle();
         sleep_ms(1000);
 
-        const bool cmd_tr = TEST_MODE_CODE ? false : TEST_TR;
-        const uint8_t cmd_subaddress = TEST_MODE_CODE ? 0u : TEST_SUBADDRESS;
-        const uint8_t cmd_word_count = TEST_MODE_CODE ? 0u : TEST_WORD_COUNT;
+        const bool mode_code_last_command = TEST_MODE_LAST_COMMAND;
+        const bool mode_code_status = TEST_MODE_CODE && !mode_code_last_command;
+        const bool use_mode_code = mode_code_status || mode_code_last_command;
+
+        const bool cmd_tr = mode_code_last_command ? true : (mode_code_status ? false : TEST_TR);
+        const uint8_t cmd_subaddress = use_mode_code ? 0u : TEST_SUBADDRESS;
+        const uint8_t cmd_word_count = mode_code_last_command ? MC_TRANSMIT_LAST_COMMAND :
+                                       (mode_code_status ? MC_TRANSMIT_STATUS : TEST_WORD_COUNT);
 
         printf("---- FRAME ----\n");
         printf("MODE=%s|RT=%u|SA=%u|WC=%u\n",
@@ -33,7 +42,9 @@ int main(void) {
                cmd_subaddress,
                cmd_word_count);
 
-        if (TEST_MODE_CODE) {
+        if (mode_code_last_command) {
+            printf("MODE_CODE_REQUEST|Transmit_Last_Command\n");
+        } else if (mode_code_status) {
             printf("MODE_CODE_REQUEST|Transmit_Status\n");
         }
 
@@ -47,7 +58,7 @@ int main(void) {
         bus_send_sync_cmd_status();
         bus_send_word16_parity(cmd);
 
-        if (!TEST_MODE_CODE && !TEST_TR) {
+        if (!use_mode_code && !TEST_TR) {
             for (uint8_t i = 0; i < cmd_word_count; ++i) {
                 const uint16_t tx_data = mil1553_build_data((uint16_t)(0xA000u + i));
 
@@ -65,7 +76,22 @@ int main(void) {
         bool data_ok = true;
         uint16_t status_word = 0;
 
-        if (!TEST_MODE_CODE && TEST_TR) {
+        if (mode_code_last_command) {
+            uint8_t sync_type = 0;
+
+            if (!bus_read_sync(&sync_type) || sync_type != BUS_SYNC_TYPE_DATA) {
+                printf("LAST_CMD_SYNC_ERROR\n");
+                data_ok = false;
+            } else {
+                uint16_t last_cmd_word = 0;
+                if (!bus_read_word16_parity(&last_cmd_word)) {
+                    printf("LAST_CMD_PARITY_OR_READ_ERROR\n");
+                    data_ok = false;
+                } else {
+                    printf("RX_LAST_CMD=0x%04X\n", last_cmd_word);
+                }
+            }
+        } else if (!use_mode_code && TEST_TR) {
             for (uint8_t i = 0; i < cmd_word_count; ++i) {
                 uint8_t sync_type = 0;
 
