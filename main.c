@@ -74,11 +74,13 @@ int main(void) {
                                       (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) &&
                                       (cmd.word_count > 0u) &&
                                       (cmd.word_count <= RT_MAX_WORD_COUNT);
-        const bool mode_code_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
-                                     is_mode_code &&
-                                     (!cmd.transmit) &&
-                                     ((cmd.word_count == MC_TRANSMIT_STATUS) ||
-                                      (cmd.word_count == MC_TRANSMIT_LAST_COMMAND));
+        const bool mode_code_valid =
+                                        (cmd.rt_address == RT_LOCAL_ADDRESS) &&
+                                        is_mode_code &&
+                                        (
+                                            ((!cmd.transmit) && (cmd.word_count == MC_TRANSMIT_STATUS)) ||
+                                            ((cmd.transmit) && (cmd.word_count == MC_TRANSMIT_LAST_COMMAND))
+                                        );
         const bool cmd_valid = normal_cmd_valid || mode_code_valid;
 
         if (normal_cmd_valid) {
