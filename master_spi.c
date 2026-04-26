@@ -11,6 +11,10 @@
 #define TEST_TR             false
 #define TEST_MODE_CODE      false
 #define TEST_MODE_LAST_COMMAND false
+// Modo temporal para aislar PIO TX bit a bit.
+// true  -> envia 1,0,1,0 con bus_send_bit()
+// false -> flujo normal del protocolo
+#define TEST_PIO_TX_BIT_MODE true
 
 #define MC_TRANSMIT_STATUS       0u
 #define MC_TRANSMIT_LAST_COMMAND 2u
@@ -25,6 +29,17 @@ int main(void) {
     while (true) {
         bus_idle();
         sleep_ms(1000);
+
+        if (TEST_PIO_TX_BIT_MODE) {
+            const bool test_bits[4] = {true, false, true, false};
+            for (uint i = 0; i < 4u; ++i) {
+                bus_send_bit(test_bits[i]);
+                printf("TX_BIT=%u\n", test_bits[i] ? 1u : 0u);
+                sleep_ms(500);
+            }
+            bus_idle();
+            continue;
+        }
 
         const bool mode_code_last_command = TEST_MODE_LAST_COMMAND;
         const bool mode_code_status = TEST_MODE_CODE && !mode_code_last_command;
