@@ -58,16 +58,26 @@ int main(void) {
                cmd.subaddress,
                cmd.word_count);
 
-        const bool cmd_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
-                               (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) &&
-                               (cmd.word_count > 0u) &&
-                               (cmd.word_count <= RT_MAX_WORD_COUNT);
+        const bool is_mode_code = (cmd.subaddress == 0u);
+        if (is_mode_code) {
+            printf("MODE_CODE|MC=Transmit_Status\n");
+        }
+
+        const bool normal_cmd_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
+                                      (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) &&
+                                      (cmd.word_count > 0u) &&
+                                      (cmd.word_count <= RT_MAX_WORD_COUNT);
+        const bool mode_code_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
+                                     is_mode_code &&
+                                     (!cmd.transmit) &&
+                                     (cmd.word_count == 0u);
+        const bool cmd_valid = normal_cmd_valid || mode_code_valid;
 
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
         bool data_error = false;
 
-        if (!cmd.transmit) {
+        if ((!is_mode_code) && (!cmd.transmit)) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 uint8_t data_sync_type = 0;
 
@@ -106,7 +116,7 @@ int main(void) {
         bus_idle();
         sleep_us(BIT_PERIOD_US / 2u);
 
-        if (cmd.transmit) {
+        if ((!is_mode_code) && cmd.transmit) {
             for (uint8_t i = 0; i < cmd.word_count; ++i) {
                 const uint16_t tx_data = (uint16_t)(0x1000u + i);
 
