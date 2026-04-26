@@ -126,7 +126,7 @@ void bus_set_rx_mode(void) {
 
 void bus_idle(void) {
 #if BUS_USE_PIO_TX
-    if (bus_tx_pio_initialized && pio_sm_is_enabled(bus_tx_pio, bus_tx_sm)) {
+    if (bus_tx_pio_initialized) {
         pio_sm_exec(bus_tx_pio, bus_tx_sm, pio_encode_set(pio_pins, 0u));
     }
 #endif
