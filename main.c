@@ -9,6 +9,11 @@
 #define RT_LOCAL_ADDRESS        3u
 #define RT_SUPPORTED_SUBADDRESS 1u
 #define RT_MAX_WORD_COUNT       3u
+#define MC_TRANSMIT_STATUS       0u
+#define MC_TRANSMIT_LAST_COMMAND 2u
+
+static uint16_t last_command_word = 0;
+static bool last_command_valid = false;
 
 static bool has_valid_start(void) {
     const int p = gpio_get(BUS_PIN_P);
@@ -59,8 +64,10 @@ int main(void) {
                cmd.word_count);
 
         const bool is_mode_code = (cmd.subaddress == 0u);
-        if (is_mode_code) {
+        if (is_mode_code && (cmd.word_count == MC_TRANSMIT_STATUS)) {
             printf("MODE_CODE|MC=Transmit_Status\n");
+        } else if (is_mode_code && (cmd.word_count == MC_TRANSMIT_LAST_COMMAND)) {
+            printf("MODE_CODE|MC=Transmit_Last_Command\n");
         }
 
         const bool normal_cmd_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
@@ -70,8 +77,14 @@ int main(void) {
         const bool mode_code_valid = (cmd.rt_address == RT_LOCAL_ADDRESS) &&
                                      is_mode_code &&
                                      (!cmd.transmit) &&
-                                     (cmd.word_count == 0u);
+                                     ((cmd.word_count == MC_TRANSMIT_STATUS) ||
+                                      (cmd.word_count == MC_TRANSMIT_LAST_COMMAND));
         const bool cmd_valid = normal_cmd_valid || mode_code_valid;
+
+        if (normal_cmd_valid) {
+            last_command_word = cmd_word;
+            last_command_valid = true;
+        }
 
         printf("%s\n", cmd_valid ? "CMD_VALID" : "CMD_INVALID");
 
@@ -98,9 +111,22 @@ int main(void) {
             }
         }
 
-        const bool message_error = (!cmd_valid) || data_error;
+        bool message_error = (!cmd_valid) || data_error;
         const bool busy = (cmd.word_count == RT_MAX_WORD_COUNT);
         const bool service_request = (cmd.subaddress == RT_SUPPORTED_SUBADDRESS) && cmd.transmit;
+        bool send_last_command = false;
+
+        if (is_mode_code &&
+            (cmd.word_count == MC_TRANSMIT_LAST_COMMAND) &&
+            cmd_valid) {
+            if (last_command_valid) {
+                send_last_command = true;
+                message_error = false;
+            } else {
+                printf("LAST_CMD_NOT_AVAILABLE\n");
+                message_error = true;
+            }
+        }
 
         mil1553_status_t status = {
             .rt_address = RT_LOCAL_ADDRESS,
@@ -125,6 +151,12 @@ int main(void) {
 
                 printf("TX_DATA[%u]=0x%04X\n", (unsigned)i, tx_data);
             }
+        }
+
+        if (send_last_command) {
+            bus_send_sync_data();
+            bus_send_word16_parity(last_command_word);
+            printf("TX_LAST_CMD=0x%04X\n", last_command_word);
         }
 
         printf("RT_FLAGS|ME=%u|BUSY=%u|SR=%u|TF=%u\n",
