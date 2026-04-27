@@ -1,5 +1,5 @@
 #include "bus.h"
-
+#include <stdio.h>
 #include "hardware/gpio.h"
 #if BUS_USE_PIO_TX
 #include "hardware/clocks.h"
@@ -34,7 +34,7 @@ static void bus_tx_pio_init(void) {
 
     pio_sm_config c = manchester_tx_program_get_default_config(bus_tx_offset);
 
-    sm_config_set_set_pins(&c, BUS_PIN_P, 2u);
+    sm_config_set_sideset_pins(&c, BUS_PIN_P);
 
     /*
      * MSB first.
@@ -196,6 +196,7 @@ bool bus_read_bit(bool *bit) {
 
     first_half = bus_read_diff_level();
     if (first_half < 0) {
+        printf("BIT_ERR_FIRST\n");
         return false;
     }
 
@@ -203,14 +204,18 @@ bool bus_read_bit(bool *bit) {
 
     second_half = bus_read_diff_level();
     if (second_half < 0) {
+        printf("BIT_ERR_SECOND\n");
         return false;
     }
+
+    printf("BIT_READ=%d, %d\n", first_half, second_half);
 
     if (first_half == 1 && second_half == 0) {
         *bit = true;
     } else if (first_half == 0 && second_half == 1) {
         *bit = false;
     } else {
+        printf("BIT_ERR_LEVELS\n");
         return false;
     }
 
@@ -266,6 +271,9 @@ bool bus_read_sync(uint8_t *type) {
         if(!bus_read_byte(&byte)){
             return false;
         }
+
+        printf("SYNC_SCAN_BYTE=%02X\n", byte);
+
         if(byte == SYNC_PREAMBLE_BYTE){
             if(preamble_seen < SYNC_PREAMBLE_COUNT){
                 preamble_seen++;
