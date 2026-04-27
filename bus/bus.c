@@ -1,5 +1,5 @@
 #include "bus.h"
-
+#include <stdio.h>
 #include "hardware/gpio.h"
 #if BUS_USE_PIO_TX
 #include "hardware/clocks.h"
@@ -237,7 +237,7 @@ bool bus_read_byte(uint8_t *byte) {
         if (!bus_read_bit(&bit)) {
             return false;
         }
-        printf("SYNC_SCAN_BYTE=0x%02X\n", byte);
+
         value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
     }
 
@@ -266,6 +266,9 @@ bool bus_read_sync(uint8_t *type) {
         if(!bus_read_byte(&byte)){
             return false;
         }
+
+        printf("SYNC_SCAN_BYTE=%02X\n", byte);
+
         if(byte == SYNC_PREAMBLE_BYTE){
             if(preamble_seen < SYNC_PREAMBLE_COUNT){
                 preamble_seen++;
