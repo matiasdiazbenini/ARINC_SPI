@@ -1,14 +1,7 @@
 .program manchester_tx
-; Manchester TX sobre 2 pines (P,N) -> GP2/GP3.
-; Convencion:
-;   bit 1: P=1,N=0 -> P=0,N=1
-;   bit 0: P=0,N=1 -> P=1,N=0
-;
-; Este paso es de integracion inicial: solo agrega el programa PIO.
-; La temporizacion final y el uso desde C se conectaran en pasos siguientes.
-;
-; El programa consume 1 bit por iteracion usando OUT X, 1.
-; Para MSB-first, configurar el SM en C con shift adecuado al empuje de datos.
+
+; Cada bit:
+; 2 mitades con delay controlado
 
 .wrap_target
 next_bit:
@@ -16,13 +9,17 @@ next_bit:
     jmp !x bit_zero
 
 bit_one:
-    set pins, 1
-    set pins, 2
+    ; HIGH
+    set pins, 1 [15]
+    ; LOW
+    set pins, 2 [15]
     jmp next_bit
 
 bit_zero:
-    set pins, 2
-    set pins, 1
+    ; LOW
+    set pins, 2 [15]
+    ; HIGH
+    set pins, 1 [15]
     jmp next_bit
 
 .wrap
