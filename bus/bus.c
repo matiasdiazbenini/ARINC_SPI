@@ -34,7 +34,7 @@ static void bus_tx_pio_init(void) {
 
     pio_sm_config c = manchester_tx_program_get_default_config(bus_tx_offset);
 
-    sm_config_set_set_pins(&c, BUS_PIN_P, 2u);
+    sm_config_set_sideset_pins(&c, BUS_PIN_P);
 
     /*
      * MSB first.
@@ -237,7 +237,7 @@ bool bus_read_byte(uint8_t *byte) {
         if (!bus_read_bit(&bit)) {
             return false;
         }
-
+        printf("SYNC_SCAN_BYTE=0x%02X\n", byte);
         value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
     }
 
