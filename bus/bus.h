@@ -14,7 +14,7 @@ extern "C" {
 #define BIT_PERIOD_US 40000u
 // 1 = TX por PIO (reversible); 0 = TX por software original.
 // RX se mantiene en software en ambos casos.
-#define BUS_USE_PIO_TX 0
+#define BUS_USE_PIO_TX 1
 
 #define SYNC_CMD_STATUS 0xF0u
 #define SYNC_DATA       0x0Fu

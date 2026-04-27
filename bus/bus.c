@@ -14,6 +14,17 @@ static const uint bus_tx_sm = 0u;
 static uint bus_tx_offset = 0u;
 static bool bus_tx_pio_initialized = false;
 
+static void bus_pio_take_tx_pins(void) {
+    gpio_set_function(BUS_PIN_P, GPIO_FUNC_PIO0);
+    gpio_set_function(BUS_PIN_N, GPIO_FUNC_PIO0);
+    pio_sm_set_consecutive_pindirs(bus_tx_pio, bus_tx_sm, BUS_PIN_P, 2u, true);
+}
+
+static void bus_release_pins_to_sio(void) {
+    gpio_set_function(BUS_PIN_P, GPIO_FUNC_SIO);
+    gpio_set_function(BUS_PIN_N, GPIO_FUNC_SIO);
+}
+
 static void bus_tx_pio_init(void) {
     if (bus_tx_pio_initialized) {
         return;
@@ -42,7 +53,7 @@ static void bus_tx_pio_init(void) {
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
-    pio_sm_set_consecutive_pindirs(bus_tx_pio, bus_tx_sm, BUS_PIN_P, 2u, true);
+    bus_pio_take_tx_pins();
     pio_sm_init(bus_tx_pio, bus_tx_sm, bus_tx_offset, &c);
     pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
 
@@ -103,9 +114,7 @@ void bus_init(void) {
 void bus_set_tx_mode(void) {
 #if BUS_USE_PIO_TX
     bus_tx_pio_init();
-    pio_gpio_init(bus_tx_pio, BUS_PIN_P);
-    pio_gpio_init(bus_tx_pio, BUS_PIN_N);
-    pio_sm_set_consecutive_pindirs(bus_tx_pio, bus_tx_sm, BUS_PIN_P, 2u, true);
+    bus_pio_take_tx_pins();
     pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
 #else
     gpio_set_dir(BUS_PIN_P, GPIO_OUT);
@@ -118,8 +127,7 @@ void bus_set_rx_mode(void) {
     if (bus_tx_pio_initialized) {
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
-    gpio_set_function(BUS_PIN_P, GPIO_FUNC_SIO);
-    gpio_set_function(BUS_PIN_N, GPIO_FUNC_SIO);
+    bus_release_pins_to_sio();
 #endif
     gpio_set_dir(BUS_PIN_P, GPIO_IN);
     gpio_set_dir(BUS_PIN_N, GPIO_IN);
@@ -128,8 +136,12 @@ void bus_set_rx_mode(void) {
 void bus_idle(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
-        pio_sm_exec(bus_tx_pio, bus_tx_sm, pio_encode_set(pio_pins, 0u));
+        pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
+    // Si se fuerza IDLE por GPIO, primero devolver control de pines a SIO.
+    bus_release_pins_to_sio();
+    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
+    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
 #endif
     gpio_put(BUS_PIN_P, 0);
     gpio_put(BUS_PIN_N, 0);
@@ -138,6 +150,15 @@ void bus_idle(void) {
 void bus_send_bit(bool bit) {
 #if BUS_USE_PIO_TX
     // TX por PIO (FIFO). RX sigue en software.
+    bus_tx_pio_init();
+
+    if (gpio_get_function(BUS_PIN_P) != GPIO_FUNC_PIO0 ||
+        gpio_get_function(BUS_PIN_N) != GPIO_FUNC_PIO0) {
+        bus_pio_take_tx_pins();
+    }
+
+    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
+
     const uint32_t tx_word = bit ? 0x80000000u : 0u;
     pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, tx_word);
 #else

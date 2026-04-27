@@ -14,7 +14,7 @@
 // Modo temporal para aislar PIO TX bit a bit.
 // true  -> envia 1,0,1,0 con bus_send_bit()
 // false -> flujo normal del protocolo
-#define TEST_PIO_TX_BIT_MODE true
+#define TEST_PIO_TX_BIT_MODE false
 
 #define MC_TRANSMIT_STATUS       0u
 #define MC_TRANSMIT_LAST_COMMAND 2u
