@@ -21,13 +21,17 @@ int main(void) {
             sleep_ms(100);
         }
 
-        sleep_us(BIT_PERIOD_US / 4u);
+        sleep_us(BIT_PERIOD_US / 2u);
 
-        uint8_t byte = 0;
-        if (bus_read_byte(&byte)) {
-            printf("RX_BYTE=0x%02X\n", byte);
-        } else {
-            printf("RX_BYTE_ERROR\n");
+        for(int i = 0; i < 8; i++){
+            bool bit = false;
+
+            if(bus_read_bit(&bit)){
+                printf("RX_BIT[%d]: %d\n", i, bit ? 1u : 0u);
+            }else{
+                printf("RX_BIT[%d]: ERROR\n", i);
+                break; 
+            }
         }
 
         sleep_ms(200);

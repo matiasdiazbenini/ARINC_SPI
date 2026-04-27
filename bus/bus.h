@@ -19,6 +19,8 @@ extern "C" {
 #define SYNC_CMD_STATUS 0xF0u
 #define SYNC_DATA       0x0Fu
 
+#define SYNC_PREAMBLE_BYTE 0xAAu
+#define SYNC_PREAMBLE_COUNT 2u
 #define BUS_SYNC_TYPE_CMD_STATUS 1u
 #define BUS_SYNC_TYPE_DATA       2u
 
