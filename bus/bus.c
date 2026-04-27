@@ -46,7 +46,7 @@ static void bus_tx_pio_init(void) {
      * Valor conservador inicial. La temporización efectiva todavía se
      * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
      */
-    sm_config_set_clkdiv(&c, 65535.0f);
+    sm_config_set_clkdiv(&c, 20000.0f);
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
