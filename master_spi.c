@@ -1,4 +1,5 @@
 #include <stdio.h>
+
 #include "pico/stdlib.h"
 #include "bus/bus.h"
 
@@ -13,8 +14,10 @@ int main(void){
         bus_idle();
         sleep_ms(1000);
 
-        printf("TX_BYTE=0XF0\n");
-        bus_send_byte(0xAA);
+        printf("PROBANDO\n");
+        
+        bus_set_tx_mode();
+        bus_send_sync_cmd_status();
 
         bus_idle();
         sleep_ms(2000);
