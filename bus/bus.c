@@ -40,13 +40,13 @@ static void bus_tx_pio_init(void) {
      * MSB first.
      * bus_send_bit() carga 0x80000000 para bit=1 y 0x00000000 para bit=0.
      */
-    sm_config_set_out_shift(&c, false, true, 1u);
+    sm_config_set_out_shift(&c, false, true, 32);
 
     /*
      * Valor conservador inicial. La temporización efectiva todavía se
      * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
      */
-    sm_config_set_clkdiv(&c, 20000.0f);
+    sm_config_set_clkdiv(&c, 65535.0f);
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
@@ -277,11 +277,12 @@ bool bus_read_sync(uint8_t *type) {
     return false;
 }
 
-void bus_send_word16(uint16_t word) {
-    for (int i = 15; i >= 0; i--) {
-        bus_send_bit(((word >> i) & 1u) != 0u);
-    }
+#if BUS_USE_PIO_TX
+void bus_send_word16_pio(uint16_t word) {
+    uint32_t v = ((uint32_t)word) << 16u;
+    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
 }
+#endif
 
 bool bus_read_word16(uint16_t *word) {
     uint16_t value = 0;
@@ -313,7 +314,11 @@ uint8_t bus_compute_odd_parity(uint16_t word) {
 
     return (uint8_t)(parity ^ 1u);
 }
-
+void bus_send_word16(uint16_t word) {
+    for (int i = 15; i >= 0; i--) {
+        bus_send_bit(((word >> i) & 1u) != 0u);
+    }
+}
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
     bus_send_bit(bus_compute_odd_parity(word) != 0u);
