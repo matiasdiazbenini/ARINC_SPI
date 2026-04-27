@@ -26,8 +26,10 @@ pico_sdk_init()
 
 add_executable(slave_spi
     main.c
-    mil1553_words.c
-    bus/bus.c
+)
+
+pico_generate_pio_header(slave_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
 )
 
 target_link_libraries(slave_spi

@@ -1,38 +1,41 @@
 #include <stdio.h>
-#include "pico/stdlib.h"
-#include "hardware/gpio.h"
-#include "bus/bus.h"
 
-static bool has_valid_start(void) {
-    int p = gpio_get(BUS_PIN_P);
-    int n = gpio_get(BUS_PIN_N);
-    return (p == 1 && n == 0) || (p == 0 && n == 1);
+#include "pico/stdlib.h"
+#include "hardware/pio.h"
+
+#include "manchester_rx.pio.h"
+
+#define RX_PIN 2u
+#define RX_PIO pio0
+#define RX_SM  0u
+
+static void manchester_rx_init(PIO pio, uint sm, uint pin) {
+    uint offset = pio_add_program(pio, &manchester_rx_program);
+    pio_sm_config c = manchester_rx_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin);
+    sm_config_set_jmp_pin(&c, pin);
+    sm_config_set_in_shift(&c, false, false, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
 }
 
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    bus_init();
-    bus_set_rx_mode();
+    manchester_rx_init(RX_PIO, RX_SM, RX_PIN);
 
     while (true) {
-        while (!has_valid_start()) {
-            sleep_ms(100);
-        }
+        const uint32_t raw = pio_sm_get_blocking(RX_PIO, RX_SM);
+        const uint8_t byte = (uint8_t)(raw & 0xFFu);
+        const uint8_t fixed = ~byte;   // invertir bits
 
-        printf("START DETECTED\n");
-
-        sleep_us((BIT_PERIOD_US * 3u) / 8u);
-
-        uint8_t sync_type = 0;
-
-        if(bus_read_sync(&sync_type)){
-            printf("SYNC_OK | TYPE: %u\n", sync_type);
-        }else{
-            printf("SYNC_ERROR\n");
-        }
-
-        sleep_ms(200);
+        printf("RX_PIO_BYTE=0x%02X\n", fixed);
     }
 }

@@ -1,0 +1,31 @@
+.program manchester_rx
+
+; RX Manchester basico para prueba aislada en GP2.
+; Esta version asume flujo continuo con transiciones de medio bit
+; (por ejemplo, 0xAA repetido), sin logica de protocolo MIL.
+
+.wrap_target
+    set x, 1
+
+byte_loop:
+    set y, 7
+    mov isr, null
+
+bit_loop:
+    jmp pin line_high
+
+line_low:
+    ; Transicion low->high: bit Manchester = 0
+    wait 1 pin 0
+    in null, 1
+    jmp y-- bit_loop
+
+line_high:
+    ; Transicion high->low: bit Manchester = 1
+    wait 0 pin 0
+    in x, 1
+    jmp y-- bit_loop
+
+    push block
+    jmp byte_loop
+.wrap
