@@ -14,10 +14,10 @@ int main(void){
         bus_idle();
         sleep_ms(1000);
 
-        printf("PROBANDO\n");
+        printf("TX_BYTE_F0_TEST\n");
         
         bus_set_tx_mode();
-        bus_send_sync_cmd_status();
+        bus_send_byte(0xF0);
 
         bus_idle();
         sleep_ms(2000);
