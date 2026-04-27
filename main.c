@@ -6,29 +6,30 @@
 static bool has_valid_start(void) {
     int p = gpio_get(BUS_PIN_P);
     int n = gpio_get(BUS_PIN_N);
-
     return (p == 1 && n == 0) || (p == 0 && n == 1);
 }
-int main(void){
+
+int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
     bus_init();
-    bus_set_tx_mode();
+    bus_set_rx_mode();
 
-    while(true){
-        while(!has_valid_start()) {
-            sleep_ms(10);
+    while (true) {
+        while (!has_valid_start()) {
+            sleep_ms(100);
         }
 
         sleep_us(BIT_PERIOD_US / 4u);
 
         uint8_t byte = 0;
-        if(bus_read_byte(&byte)) {
-            printf("Received byte: 0x%02X\n", byte);
+        if (bus_read_byte(&byte)) {
+            printf("RX_BYTE=0x%02X\n", byte);
         } else {
-            printf("Failed to read byte\n");
+            printf("RX_BYTE_ERROR\n");
         }
+
         sleep_ms(200);
     }
 }
