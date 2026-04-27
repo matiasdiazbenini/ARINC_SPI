@@ -32,10 +32,12 @@ int main(void) {
     manchester_rx_init(RX_PIO, RX_SM, RX_PIN);
 
     while (true) {
-        const uint32_t raw = pio_sm_get_blocking(RX_PIO, RX_SM);
-        const uint8_t byte = (uint8_t)(raw & 0xFFu);
-        const uint8_t fixed = ~byte;   // invertir bits
+        for (int i = 0; i < 3; i++) {
+            const uint32_t raw = pio_sm_get_blocking(RX_PIO, RX_SM);
+            const uint8_t byte = (uint8_t)(raw & 0xFFu);
+            const uint8_t fixed = ~byte;
 
-        printf("RX_PIO_BYTE=0x%02X\n", fixed);
+            printf("RX_PIO_BYTE[%d]=0x%02X\n", i, fixed);
+        }
     }
 }
