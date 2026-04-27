@@ -46,7 +46,7 @@ static void bus_tx_pio_init(void) {
      * Valor conservador inicial. La temporización efectiva todavía se
      * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
      */
-    sm_config_set_clkdiv(&c, 50000.0f);
+    sm_config_set_clkdiv(&c, 20000.0f);
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
@@ -124,6 +124,11 @@ void bus_set_tx_mode(void) {
 void bus_set_rx_mode(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
+        // 🔥 Esperar a que termine la transmisión
+        pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
+        sleep_us(BIT_PERIOD_US);
+
+        // 🔻 recién ahora deshabilitar
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
 
@@ -137,10 +142,15 @@ void bus_set_rx_mode(void) {
 void bus_idle(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
+        // 🔥 esperar fin de transmisión
+        pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
+        sleep_us(BIT_PERIOD_US);
+
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
 
     bus_release_pins_to_sio();
+
     gpio_set_dir(BUS_PIN_P, GPIO_OUT);
     gpio_set_dir(BUS_PIN_N, GPIO_OUT);
 #else
@@ -171,8 +181,6 @@ void bus_send_bit(bool bit) {
      * evita que el código pase a RX/IDLE o cargue el siguiente bit antes
      * de que el PIO termine de consumir el bit actual.
      */
-    pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-    sleep_us(BIT_PERIOD_US);
 #else
     bus_send_bit_software(bit);
 #endif
