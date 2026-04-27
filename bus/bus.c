@@ -35,6 +35,7 @@ static void bus_tx_pio_init(void) {
     pio_sm_config c = manchester_tx_program_get_default_config(bus_tx_offset);
 
     sm_config_set_set_pins(&c, BUS_PIN_P, 2u);
+    sm_config_set_sideset_pins(&c, BUS_PIN_P);
 
     /*
      * MSB first.
