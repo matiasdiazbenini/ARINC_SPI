@@ -23,7 +23,7 @@ int main(void) {
 
         printf("START DETECTED\n");
 
-        sleep_us(BIT_PERIOD_US / 4u);
+        sleep_us((BIT_PERIOD_US * 3u) / 8u);
 
         uint8_t sync_type = 0;
 
