@@ -35,7 +35,6 @@ static void bus_tx_pio_init(void) {
     pio_sm_config c = manchester_tx_program_get_default_config(bus_tx_offset);
 
     sm_config_set_set_pins(&c, BUS_PIN_P, 2u);
-    sm_config_set_sideset_pins(&c, BUS_PIN_P);
 
     /*
      * MSB first.
@@ -246,36 +245,49 @@ bool bus_read_byte(uint8_t *byte) {
     return true;
 }
 
+static void bus_send_preamble(void){
+    for(uint8_t i = 0; i < SYNC_PREAMBLE_COUNT; i++){
+        bus_send_byte(SYNC_PREAMBLE_BYTE);
+    }
+}
 void bus_send_sync_cmd_status(void) {
+    bus_send_preamble();
     bus_send_byte(SYNC_CMD_STATUS);
 }
-
 void bus_send_sync_data(void) {
+    bus_send_preamble();
     bus_send_byte(SYNC_DATA);
 }
-
 bool bus_read_sync(uint8_t *type) {
-    uint8_t sync = 0;
+    uint8_t byte = 0;
+    uint8_t preamble_seen = 0;
 
-    if (!bus_read_byte(&sync)) {
-        return false;
-    }
-
-    if (sync == SYNC_CMD_STATUS) {
-        if (type != NULL) {
-            *type = BUS_SYNC_TYPE_CMD_STATUS;
+    while(true){
+        if(!bus_read_byte(&byte)){
+            return false;
         }
-        return true;
-    }
-
-    if (sync == SYNC_DATA) {
-        if (type != NULL) {
-            *type = BUS_SYNC_TYPE_DATA;
+        if(byte == SYNC_PREAMBLE_BYTE){
+            if(preamble_seen < SYNC_PREAMBLE_COUNT){
+                preamble_seen++;
+            }
+            continue;
         }
-        return true;
+        if(preamble_seen >= SYNC_PREAMBLE_COUNT){
+            if(byte == SYNC_CMD_STATUS){
+                if(type != NULL){
+                    *type = BUS_SYNC_TYPE_CMD_STATUS;
+                }
+                return true;
+            }
+            if(byte == SYNC_DATA){
+                if(type != NULL){
+                    *type = BUS_SYNC_TYPE_DATA;
+                }
+                return true;
+            }
+        }
+        preamble_seen = 0;
     }
-
-    return false;
 }
 
 #if BUS_USE_PIO_TX
