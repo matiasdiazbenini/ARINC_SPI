@@ -14,7 +14,7 @@ int main(void){
         sleep_ms(1000);
 
         printf("TX_BYTE=0XF0\n");
-        bus_send_byte(0xF0);
+        bus_send_byte(0xAA);
 
         bus_idle();
         sleep_ms(2000);
