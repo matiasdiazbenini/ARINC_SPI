@@ -21,17 +21,16 @@ int main(void) {
             sleep_ms(100);
         }
 
-        sleep_us(BIT_PERIOD_US / 2u);
+        printf("START DETECTED\n");
 
-        for(int i = 0; i < 8; i++){
-            bool bit = false;
+        sleep_us(BIT_PERIOD_US / 4u);
 
-            if(bus_read_bit(&bit)){
-                printf("RX_BIT[%d]: %d\n", i, bit ? 1u : 0u);
-            }else{
-                printf("RX_BIT[%d]: ERROR\n", i);
-                break; 
-            }
+        uint8_t sync_type = 0;
+
+        if(bus_read_sync(&sync_type)){
+            printf("SYNC_OK | TYPE: %u\n", sync_type);
+        }else{
+            printf("SYNC_ERROR\n");
         }
 
         sleep_ms(200);
