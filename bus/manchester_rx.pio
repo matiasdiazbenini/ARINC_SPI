@@ -15,15 +15,15 @@ byte_loop:
 
 bit_loop:
     ; Esperar mitad de bit
-    nop [31]
-    nop [31]
+    nop [20]
+    nop [20]
 
     ; SAMPLE en mitad de bit
     in pins, 1
 
     ; Esperar segunda mitad
-    nop [31]
-    nop [31]
+    nop [20]
+    nop [20]
 
     jmp y-- bit_loop
 
