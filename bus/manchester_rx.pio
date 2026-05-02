@@ -1,33 +1,13 @@
 .program manchester_rx
 
-; RX Manchester robusto por transición + muestreo
-; Lee GP2 (pin 0 del SM)
+; Lee 2 pines: GP2=P y GP3=N
+; Entrada esperada:
+; 01 = HIGH
+; 10 = LOW
+;
+; Para prueba inicial solo captura pares P,N crudos.
 
 .wrap_target
-wait_edge:
-    ; Esperar cualquier transición inicial
-    wait 0 pin 0
-    wait 1 pin 0
-
-byte_loop:
-    set y, 7
-    mov isr, null
-
-bit_loop:
-    ; Esperar mitad de bit
-    nop [20]
-    nop [20]
-
-    ; SAMPLE en mitad de bit
-    in pins, 1
-
-    ; Esperar segunda mitad
-    nop [20]
-    nop [20]
-
-    jmp y-- bit_loop
-
+    in pins, 2
     push block
-    jmp wait_edge
-
 .wrap
