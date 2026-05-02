@@ -34,10 +34,10 @@ int main(void) {
     while (true) {
         for (int i = 0; i < 3; i++) {
             const uint32_t raw = pio_sm_get_blocking(RX_PIO, RX_SM);
-            const uint8_t byte = (uint8_t)(raw & 0xFFu);
-            const uint8_t fixed = ~byte;
+            const uint8_t byte = (uint8_t)(raw & 0xFFu);    
+            const uint8_t fixed = (uint8_t)(~byte);
 
-            printf("RX_PIO_BYTE[%d]=0x%02X\n", i, fixed);
+            printf("RAW=0x%02X FIXED=0x%02X\n", byte, fixed);
         }
     }
 }
