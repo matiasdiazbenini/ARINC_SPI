@@ -40,13 +40,13 @@ static void bus_tx_pio_init(void) {
      * MSB first.
      * bus_send_bit() carga 0x80000000 para bit=1 y 0x00000000 para bit=0.
      */
-    sm_config_set_out_shift(&c, false, true, 32);
+    sm_config_set_out_shift(&c, false, true, 8);
 
     /*
      * Valor conservador inicial. La temporización efectiva todavía se
      * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
      */
-    sm_config_set_clkdiv(&c, 65535.0f);
+    sm_config_set_clkdiv(&c, 20000.0f);
 
     pio_gpio_init(bus_tx_pio, BUS_PIN_P);
     pio_gpio_init(bus_tx_pio, BUS_PIN_N);
@@ -196,7 +196,6 @@ bool bus_read_bit(bool *bit) {
 
     first_half = bus_read_diff_level();
     if (first_half < 0) {
-        printf("BIT_ERR_FIRST\n");
         return false;
     }
 
@@ -204,18 +203,14 @@ bool bus_read_bit(bool *bit) {
 
     second_half = bus_read_diff_level();
     if (second_half < 0) {
-        printf("BIT_ERR_SECOND\n");
         return false;
     }
-
-    printf("BIT_READ=%d, %d\n", first_half, second_half);
 
     if (first_half == 1 && second_half == 0) {
         *bit = true;
     } else if (first_half == 0 && second_half == 1) {
         *bit = false;
     } else {
-        printf("BIT_ERR_LEVELS\n");
         return false;
     }
 
@@ -224,9 +219,14 @@ bool bus_read_bit(bool *bit) {
 }
 
 void bus_send_byte(uint8_t byte) {
+#if BUS_USE_PIO_TX
+    uint32_t v = ((uint32_t)byte) << 24u;
+    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
+#else
     for (int i = 7; i >= 0; i--) {
         bus_send_bit(((byte >> i) & 1u) != 0u);
     }
+#endif
 }
 
 bool bus_read_byte(uint8_t *byte) {
@@ -298,12 +298,16 @@ bool bus_read_sync(uint8_t *type) {
     }
 }
 
-#if BUS_USE_PIO_TX
 void bus_send_word16_pio(uint16_t word) {
+#if BUS_USE_PIO_TX
     uint32_t v = ((uint32_t)word) << 16u;
     pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
-}
+#else
+    for (int i = 15; i >= 0; i--) {
+        bus_send_bit(((word >> i) & 1u) != 0u);
+    }
 #endif
+}
 
 bool bus_read_word16(uint16_t *word) {
     uint16_t value = 0;
