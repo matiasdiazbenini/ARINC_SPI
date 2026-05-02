@@ -13,8 +13,11 @@ int main(void) {
         bus_idle();
         sleep_ms(500);
 
-        printf("TX_BYTE=0xF0\n");
+        printf("TX_PREAMBLE_SYNC\n");
         bus_set_tx_mode();
+
+        bus_send_byte(0xAA);
+        bus_send_byte(0xAA);
         bus_send_byte(0xF0);
 
         bus_idle();
