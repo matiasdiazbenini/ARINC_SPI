@@ -66,20 +66,57 @@ static bool read_manchester_bit(bool *bit) {
     printf("BIT_ERROR|PREV=0x%02X|CURR=0x%02X\n", prev, curr);
     return false;
 }
+static bool read_manchester_byte(uint8_t *byte) {
+    uint8_t value = 0;
 
+    for (int i = 0; i < 8; i++) {
+        bool bit = false;
+
+        if (!read_manchester_bit(&bit)) {
+            return false;
+        }
+
+        value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
+    }
+
+    *byte = value;
+    return true;
+}
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
     rx_diff_init(RX_PIO, RX_SM, RX_PIN_BASE);
 
-    while (true) {
-        bool bit = false;
+    uint8_t b = 0;
+    uint8_t state = 0;
 
-        if (read_manchester_bit(&bit)) {
-            printf("RX_BIT=%u\n", bit ? 1u : 0u);
-        } else {
-            sleep_ms(100);
+    while (true) {
+        if (!read_manchester_byte(&b)) {
+            state = 0;
+            continue;
+        }
+
+        printf("RX_BYTE=0x%02X\n", b);
+
+        if (state == 0) {
+            if (b == 0xAAu) {
+                state = 1;
+            }
+        } else if (state == 1) {
+            if (b == 0xAAu) {
+                state = 2;
+            } else {
+                state = 0;
+            }
+        } else if (state == 2) {
+            if (b == 0xF0u) {
+                printf("SYNC_FOUND|AA AA F0\n");
+            } else {
+                printf("SYNC_EXPECTED_F0_GOT=0x%02X\n", b);
+            }
+
+            state = 0;
         }
     }
 }
