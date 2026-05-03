@@ -40,7 +40,7 @@ static void bus_tx_pio_init(void) {
      * MSB first.
      * bus_send_bit() carga 0x80000000 para bit=1 y 0x00000000 para bit=0.
      */
-    sm_config_set_out_shift(&c, false, true, 8);
+    sm_config_set_out_shift(&c, false, false, 32);
 
     /*
      * Valor conservador inicial. La temporización efectiva todavía se
@@ -220,7 +220,11 @@ bool bus_read_bit(bool *bit) {
 
 void bus_send_byte(uint8_t byte) {
 #if BUS_USE_PIO_TX
-    uint32_t v = ((uint32_t)byte) << 24u;
+    bus_tx_pio_init();
+    bus_pio_take_tx_pins();
+    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
+
+    uint32_t v = ((uint32_t)byte) << 24u;  // MSB first
     pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
 #else
     for (int i = 7; i >= 0; i--) {

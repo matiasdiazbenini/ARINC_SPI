@@ -1,13 +1,13 @@
 .program manchester_rx
 
-; Lee 2 pines: GP2=P y GP3=N
-; Entrada esperada:
+; Sampler diferencial P/N.
+; Lee 2 pines consecutivos: GP2=P, GP3=N.
+; Cada muestra entrega:
 ; 01 = HIGH
 ; 10 = LOW
-;
-; Para prueba inicial solo captura pares P,N crudos.
+; 00 = IDLE
+; 11 = INVALID
 
 .wrap_target
     in pins, 2
-    push block
 .wrap
