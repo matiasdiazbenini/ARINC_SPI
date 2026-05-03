@@ -13,10 +13,12 @@ int main(void) {
         bus_idle();
         sleep_ms(500);
 
-        printf("TX_PREAMBLE_SYNC\n");
+        printf("TX_STREAM_AA\n");
         bus_set_tx_mode();
 
-        bus_send_byte(0xF0);
+        for(int i = 0; i < 200; i++){
+            bus_send_byte(0xAAu);
+        }
 
         bus_idle();
         sleep_ms(500);
