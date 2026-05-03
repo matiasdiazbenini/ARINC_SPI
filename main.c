@@ -41,33 +41,36 @@ static bool read_manchester_bit(bool *bit) {
     uint8_t prev = read_pn_gpio();
     uint8_t curr = prev;
 
-    while (true){
+    uint32_t timeout = 200000u;
+
+    while (timeout--) {
         curr = read_pn_gpio();
 
-        //Ignorar IDLE
-        if(prev == 0x00u && curr == 0x00u) {
-            prev = curr;
-            continue;
-        }
-        //Ignorar invalidos
-        if(curr == 0x03u) {
-            prev = curr;
-            continue;
-        }
-        //Detectar transicion
-        if(prev != curr) {
+        if (prev != 0x00u &&
+            curr != 0x00u &&
+            curr != 0x03u &&
+            curr != prev) {
             break;
         }
+
         prev = curr;
     }
-    if(prev == 0x01u && curr == 0x02u) {
+
+    if (timeout == 0) {
+        printf("BIT_TIMEOUT\n");
+        return false;
+    }
+
+    if (prev == 0x01u && curr == 0x02u) {
         *bit = true;
         return true;
     }
-    if(prev == 0x02u && curr == 0x01u) {
+
+    if (prev == 0x02u && curr == 0x01u) {
         *bit = false;
         return true;
     }
+
     printf("BIT_ERROR|PREV=0x%02X|CURR=0x%02X\n", prev, curr);
     return false;
 }
