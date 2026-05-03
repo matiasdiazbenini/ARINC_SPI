@@ -17,7 +17,7 @@ int main(void) {
         bus_set_tx_mode();
 
         for(int i = 0; i < 200; i++){
-            bus_send_byte(0xAAu);
+            bus_send_byte(0xF0u);
         }
 
         bus_idle();
