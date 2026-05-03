@@ -45,7 +45,10 @@ static bool read_manchester_bit(bool *bit) {
     while (true) {
         curr = read_pn_gpio();
 
-        if (curr != prev && curr != 0x00u) {
+        if (prev != 0x00u &&
+            curr != 0x00u &&
+            curr != 0x03u &&
+            curr != prev) {
             break;
         }
 
