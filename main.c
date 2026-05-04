@@ -16,7 +16,7 @@
 #define SAMPLES_PER_BIT      12u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
-#define RX_PHASE 7u
+#define RX_PHASE 5u
 
 #define PN_IDLE    0x00u
 #define PN_HIGH    0x01u   // P=1, N=0
@@ -154,52 +154,42 @@ int main(void) {
     rx_sampler_init(RX_PIO, RX_SM, RX_PIN_BASE);
 
     while (true) {
-         uint8_t samples[CAPTURE_SAMPLES];
+        uint8_t samples[CAPTURE_SAMPLES];
 
         capture_samples(samples, CAPTURE_SAMPLES);
 
-        int best_phase = -1;
-        int best_sync_count = -1;
-        int best_decoded_count = -1;
+        int sync_count = 0;
+        int decoded_count = 0;
+        int first_sync_offset = -1;
 
-        for (int phase = 0; phase < SAMPLES_PER_BIT; phase++) {
-            int sync_count = 0;
-            int decoded_count = 0;
+        for (int offset = 0;
+            offset + (8 * SAMPLES_PER_BIT) < CAPTURE_SAMPLES;
+            offset++) {
 
-            for (int offset = phase;
-                offset + (8 * SAMPLES_PER_BIT) < CAPTURE_SAMPLES;
-                offset += (8 * SAMPLES_PER_BIT)) {
+            uint8_t byte = 0;
 
-                uint8_t byte = 0;
+            if (decode_byte_at_phase(samples, offset, &byte)) {
+                decoded_count++;
 
-                if (decode_byte_at_phase(samples, offset, &byte)) {
-                    decoded_count++;
+                if (byte == 0xF0u) {
+                    sync_count++;
 
-                    if (byte == 0xF0u) {
-                        sync_count++;
+                    if (first_sync_offset < 0) {
+                        first_sync_offset = offset;
                     }
                 }
             }
-
-            if (sync_count > best_sync_count ||
-                (sync_count == best_sync_count && decoded_count > best_decoded_count)) {
-                best_phase = phase;
-                best_sync_count = sync_count;
-                best_decoded_count = decoded_count;
-            }
         }
 
-        printf("BEST_PHASE=%d | DECODED=%d | SYNC_COUNT=%d\n",
-            best_phase,
-            best_decoded_count,
-            best_sync_count);
+        printf("SLIDING_SCAN | DECODED=%d | SYNC_COUNT=%d",
+            decoded_count,
+            sync_count);
 
-        if (best_sync_count > 0) {
-            printf("SYNC_LOCKED\n");
+        if (sync_count >= 2 && first_sync_offset >= 0) {
+            printf(" | SYNC_LOCKED | OFFSET=%d\n", first_sync_offset);
         } else {
-            printf("SYNC_NOT_FOUND\n");
+            printf(" | SYNC_NOT_FOUND\n");
         }
-
 
         sleep_ms(100);
     }
