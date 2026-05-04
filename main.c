@@ -114,7 +114,42 @@ static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte
     *byte = value;
     return true;
 }
+static bool find_byte_near(const uint8_t *samples,
+                           int center,
+                           int radius,
+                           uint8_t target,
+                           uint8_t *found_byte,
+                           int *found_offset) {
+    for (int delta = -radius; delta <= radius; delta++) {
+        int pos = center + delta;
 
+        if (pos < 0) {
+            continue;
+        }
+
+        if (pos + (8 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+            continue;
+        }
+
+        uint8_t b = 0;
+
+        if (decode_byte_at_phase(samples, pos, &b)) {
+            if (b == target) {
+                if (found_byte != NULL) {
+                    *found_byte = b;
+                }
+
+                if (found_offset != NULL) {
+                    *found_offset = pos;
+                }
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     uint offset = pio_add_program(pio, &manchester_rx_program);
     pio_sm_config c = manchester_rx_program_get_default_config(offset);
@@ -161,75 +196,83 @@ int main(void) {
         int sync_count = 0;
         int decoded_count = 0;
         int first_sync_offset = -1;
+        int bad_prints = 0;
 
         const int byte_samples = 8 * SAMPLES_PER_BIT;
-        int bad_prints = 0;
-        int incomplete_prints = 0;
+
         for (int offset = 0;
-        offset + (9 * byte_samples) < CAPTURE_SAMPLES;
-        offset++) {
+            offset + (5 * byte_samples) < CAPTURE_SAMPLES;
+            offset++) {
 
-            uint8_t byte = 0;
+            uint8_t sync = 0;
 
-            if (decode_byte_at_phase(samples, offset, &byte)) {
+            if (decode_byte_at_phase(samples, offset, &sync)) {
                 decoded_count++;
 
-                if (byte == 0xF0u) {
+                if (sync == 0xF0u) {
+                    sync_count++;
+
+                    const int search_radius = 12;
+
                     uint8_t b1 = 0;
                     uint8_t b2 = 0;
                     uint8_t d0h = 0;
                     uint8_t d0l = 0;
-                    uint8_t d1h = 0;
-                    uint8_t d1l = 0;
-                    uint8_t d2h = 0;
-                    uint8_t d2l = 0;
 
-                    sync_count++;
+                    int off_b1 = -1;
+                    int off_b2 = -1;
+                    int off_d0h = -1;
+                    int off_d0l = -1;
 
-                    if (first_sync_offset < 0) {
-                        first_sync_offset = offset;
-                    }
+                    bool ok_b1 = find_byte_near(samples,
+                                                offset + 1 * byte_samples,
+                                                search_radius,
+                                                0x18u,
+                                                &b1,
+                                                &off_b1);
 
-                    bool ok_b1  = decode_byte_at_phase(samples, offset + 1 * byte_samples, &b1);
-                    bool ok_b2  = decode_byte_at_phase(samples, offset + 2 * byte_samples, &b2);
-                    bool ok_d0h = decode_byte_at_phase(samples, offset + 3 * byte_samples, &d0h);
-                    bool ok_d0l = decode_byte_at_phase(samples, offset + 4 * byte_samples, &d0l);
-                    bool ok_d1h = decode_byte_at_phase(samples, offset + 5 * byte_samples, &d1h);
-                    bool ok_d1l = decode_byte_at_phase(samples, offset + 6 * byte_samples, &d1l);
-                    bool ok_d2h = decode_byte_at_phase(samples, offset + 7 * byte_samples, &d2h);
-                    bool ok_d2l = decode_byte_at_phase(samples, offset + 8 * byte_samples, &d2l);
+                    bool ok_b2 = find_byte_near(samples,
+                                                offset + 2 * byte_samples,
+                                                search_radius,
+                                                0x23u,
+                                                &b2,
+                                                &off_b2);
 
-                    if (ok_b1 && ok_b2 && ok_d0h && ok_d0l && ok_d1h && ok_d1l && ok_d2h && ok_d2l) {
+                    bool ok_d0h = find_byte_near(samples,
+                                                offset + 3 * byte_samples,
+                                                search_radius,
+                                                0xA0u,
+                                                &d0h,
+                                                &off_d0h);
+
+                    bool ok_d0l = find_byte_near(samples,
+                                                offset + 4 * byte_samples,
+                                                search_radius,
+                                                0x00u,
+                                                &d0l,
+                                                &off_d0l);
+
+                    if (ok_b1 && ok_b2 && ok_d0h && ok_d0l) {
                         uint16_t cmd = ((uint16_t)b1 << 8) | b2;
                         uint16_t d0 = ((uint16_t)d0h << 8) | d0l;
-                        uint16_t d1 = ((uint16_t)d1h << 8) | d1l;
-                        uint16_t d2 = ((uint16_t)d2h << 8) | d2l;
 
-                        if (cmd == 0x1823u &&
-                            d0 == 0xA000u &&
-                            d1 == 0xA001u &&
-                            d2 == 0xA002u) {
-
-                            printf("FRAME_OK|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
-                                cmd, d0, d1, d2);
-
-                        } else {
-                            printf("FRAME_BAD|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
-                                cmd, d0, d1, d2);
-                        }
-                    } else if(incomplete_prints < 5) {
-                        incomplete_prints++;
-                        printf("FRAME_INCOMPLETE|ok=%u%u%u%u%u%u%u%u|B=%02X %02X|D=%02X %02X %02X %02X %02X %02X\n",
+                        printf("FRAME_OK|CMD=0x%04X|D0=0x%04X|OFF=%d,%d,%d,%d\n",
+                            cmd,
+                            d0,
+                            off_b1,
+                            off_b2,
+                            off_d0h,
+                            off_d0l);
+                    } else {
+                        printf("FRAME_SEARCH_FAIL|ok=%u%u%u%u|B=%02X %02X|D0=%02X %02X\n",
                             ok_b1 ? 1u : 0u,
                             ok_b2 ? 1u : 0u,
                             ok_d0h ? 1u : 0u,
                             ok_d0l ? 1u : 0u,
-                            ok_d1h ? 1u : 0u,
-                            ok_d1l ? 1u : 0u,
-                            ok_d2h ? 1u : 0u,
-                            ok_d2l ? 1u : 0u,
-                            b1, b2,
-                            d0h, d0l, d1h, d1l, d2h, d2l);
+                            b1,
+                            b2,
+                            d0h,
+                            d0l);
                     }
                 }
             }
