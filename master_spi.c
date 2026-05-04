@@ -16,11 +16,13 @@ int main(void) {
         printf("TX_BITS_1\n");
         bus_set_tx_mode();
 
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 5; i++) {
             bus_send_byte(0xAA);
         }
 
-        bus_send_byte(0xF0);
+        for (int i = 0; i < 100; i++) {
+            bus_send_byte(0xF0);
+        }
 
         bus_idle();
         sleep_ms(500);
