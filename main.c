@@ -13,7 +13,7 @@
 #define RX_SM       0u
 
 #define BIT_PERIOD_US        1000u
-#define SAMPLES_PER_BIT      16u
+#define SAMPLES_PER_BIT      12u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
 #define PN_IDLE    0x00u
