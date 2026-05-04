@@ -23,7 +23,7 @@
 #define PN_LOW     0x02u   // P=0, N=1
 #define PN_INVALID 0x03u
 
-#define CAPTURE_SAMPLES 512u
+#define CAPTURE_SAMPLES 2048u
 
 static uint32_t sample_word = 0;
 static int sample_index = 16;
@@ -163,10 +163,11 @@ int main(void) {
         int first_sync_offset = -1;
 
         const int byte_samples = 8 * SAMPLES_PER_BIT;
-
+        int bad_prints = 0;
+        int incomplete_prints = 0;
         for (int offset = 0;
-            offset + (3 * byte_samples) < CAPTURE_SAMPLES;
-            offset++) {
+        offset + (9 * byte_samples) < CAPTURE_SAMPLES;
+        offset++) {
 
             uint8_t byte = 0;
 
@@ -176,6 +177,12 @@ int main(void) {
                 if (byte == 0xF0u) {
                     uint8_t b1 = 0;
                     uint8_t b2 = 0;
+                    uint8_t d0h = 0;
+                    uint8_t d0l = 0;
+                    uint8_t d1h = 0;
+                    uint8_t d1l = 0;
+                    uint8_t d2h = 0;
+                    uint8_t d2l = 0;
 
                     sync_count++;
 
@@ -183,16 +190,46 @@ int main(void) {
                         first_sync_offset = offset;
                     }
 
-                    if (decode_byte_at_phase(samples, offset + byte_samples, &b1) &&
-                        decode_byte_at_phase(samples, offset + 2 * byte_samples, &b2)) {
+                    bool ok_b1  = decode_byte_at_phase(samples, offset + 1 * byte_samples, &b1);
+                    bool ok_b2  = decode_byte_at_phase(samples, offset + 2 * byte_samples, &b2);
+                    bool ok_d0h = decode_byte_at_phase(samples, offset + 3 * byte_samples, &d0h);
+                    bool ok_d0l = decode_byte_at_phase(samples, offset + 4 * byte_samples, &d0l);
+                    bool ok_d1h = decode_byte_at_phase(samples, offset + 5 * byte_samples, &d1h);
+                    bool ok_d1l = decode_byte_at_phase(samples, offset + 6 * byte_samples, &d1l);
+                    bool ok_d2h = decode_byte_at_phase(samples, offset + 7 * byte_samples, &d2h);
+                    bool ok_d2l = decode_byte_at_phase(samples, offset + 8 * byte_samples, &d2l);
 
-                        uint16_t word = ((uint16_t)b1 << 8) | b2;
+                    if (ok_b1 && ok_b2 && ok_d0h && ok_d0l && ok_d1h && ok_d1l && ok_d2h && ok_d2l) {
+                        uint16_t cmd = ((uint16_t)b1 << 8) | b2;
+                        uint16_t d0 = ((uint16_t)d0h << 8) | d0l;
+                        uint16_t d1 = ((uint16_t)d1h << 8) | d1l;
+                        uint16_t d2 = ((uint16_t)d2h << 8) | d2l;
 
-                        if (word == 0x1823u) {
-                            printf("FRAME_OK|SYNC=0xF0|WORD=0x%04X\n", word);
+                        if (cmd == 0x1823u &&
+                            d0 == 0xA000u &&
+                            d1 == 0xA001u &&
+                            d2 == 0xA002u) {
+
+                            printf("FRAME_OK|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
+                                cmd, d0, d1, d2);
+
                         } else {
-                            printf("FRAME_BAD|SYNC=0xF0|WORD=0x%04X\n", word);
+                            printf("FRAME_BAD|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
+                                cmd, d0, d1, d2);
                         }
+                    } else if(incomplete_prints < 5) {
+                        incomplete_prints++;
+                        printf("FRAME_INCOMPLETE|ok=%u%u%u%u%u%u%u%u|B=%02X %02X|D=%02X %02X %02X %02X %02X %02X\n",
+                            ok_b1 ? 1u : 0u,
+                            ok_b2 ? 1u : 0u,
+                            ok_d0h ? 1u : 0u,
+                            ok_d0l ? 1u : 0u,
+                            ok_d1h ? 1u : 0u,
+                            ok_d1l ? 1u : 0u,
+                            ok_d2h ? 1u : 0u,
+                            ok_d2l ? 1u : 0u,
+                            b1, b2,
+                            d0h, d0l, d1h, d1l, d2h, d2l);
                     }
                 }
             }
