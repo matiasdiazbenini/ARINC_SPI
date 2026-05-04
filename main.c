@@ -16,6 +16,8 @@
 #define SAMPLES_PER_BIT      12u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
+#define RX_PHASE 3u
+
 #define PN_IDLE    0x00u
 #define PN_HIGH    0x01u   // P=1, N=0
 #define PN_LOW     0x02u   // P=0, N=1
@@ -27,12 +29,6 @@ static uint32_t sample_word = 0;
 static int sample_index = 16;
 
 static uint8_t get_sample_from_word(uint32_t raw, int index) {
-    /*
-     * Con shift_left, tomamos las muestras desde MSB:
-     * index 0 -> bits 31..30
-     * index 1 -> bits 29..28
-     * ...
-     */
     const int shift = 30 - (index * 2);
     return (uint8_t)((raw >> shift) & 0x03u);
 }
@@ -67,8 +63,14 @@ static uint8_t majority_range(const uint8_t *buffer, int start, int count) {
         }
     }
 
-    if (h > l) return PN_HIGH;
-    if (l > h) return PN_LOW;
+    if (h > l) {
+        return PN_HIGH;
+    }
+
+    if (l > h) {
+        return PN_LOW;
+    }
+
     return PN_INVALID;
 }
 
@@ -94,6 +96,10 @@ static bool decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit) {
 static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte) {
     uint8_t value = 0;
 
+    if (byte == NULL) {
+        return false;
+    }
+
     for (int b = 0; b < 8; b++) {
         bool bit = false;
         int bit_start = start + b * SAMPLES_PER_BIT;
@@ -109,20 +115,6 @@ static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte
     return true;
 }
 
-static void print_sample_line(const uint8_t *buffer, int start, int count) {
-    for (int i = start; i < start + count; i++) {
-        if (buffer[i] == PN_HIGH) {
-            printf("H");
-        } else if (buffer[i] == PN_LOW) {
-            printf("L");
-        } else if (buffer[i] == PN_IDLE) {
-            printf("_");
-        } else {
-            printf("X");
-        }
-    }
-}
-
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     uint offset = pio_add_program(pio, &manchester_rx_program);
     pio_sm_config c = manchester_rx_program_get_default_config(offset);
@@ -130,10 +122,8 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     sm_config_set_in_pins(&c, pin_base);
 
     /*
-     * shift_right = false:
-     * las muestras van quedando hacia MSB.
-     * autopush = true cada 32 bits.
-     * Cada muestra usa 2 bits, entonces cada palabra trae 16 muestras.
+     * Cada muestra usa 2 bits: P,N.
+     * Autopush cada 32 bits => 16 muestras por palabra FIFO.
      */
     sm_config_set_in_shift(&c, false, true, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
@@ -142,10 +132,6 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     pio_gpio_init(pio, pin_base + 1u);
     pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
 
-    /*
-     * Programa: 1 instrucción por muestra.
-     * Frecuencia de muestreo = SAMPLES_PER_BIT / BIT_PERIOD.
-     */
     const float sample_hz = 1000000.0f / (float)RX_SAMPLE_PERIOD_US;
     const float clkdiv = (float)clock_get_hz(clk_sys) / sample_hz;
 
@@ -159,60 +145,30 @@ int main(void) {
     stdio_init_all();
     sleep_ms(1200);
 
-    printf("RX PIO DIFFERENTIAL PHASE SCAN\n");
-    printf("BIT_PERIOD_US=%u | SAMPLES_PER_BIT=%u | SAMPLE_PERIOD_US=%u\n",
+    printf("RX PIO FIXED PHASE DECODER\n");
+    printf("BIT_PERIOD_US=%u | SAMPLES_PER_BIT=%u | RX_PHASE=%u\n",
            BIT_PERIOD_US,
            SAMPLES_PER_BIT,
-           RX_SAMPLE_PERIOD_US);
+           RX_PHASE);
 
     rx_sampler_init(RX_PIO, RX_SM, RX_PIN_BASE);
 
     while (true) {
         uint8_t samples[CAPTURE_SAMPLES];
 
-        printf("CAPTURING...\n");
         capture_samples(samples, CAPTURE_SAMPLES);
 
-        for (int phase = 0; phase < SAMPLES_PER_BIT; phase++) {
-            int ok_count = 0;
-            int f0_count = 0;
-            int inv_f0_count = 0;
+        for (int offset = RX_PHASE;
+             offset + (8 * SAMPLES_PER_BIT) < CAPTURE_SAMPLES;
+             offset += (8 * SAMPLES_PER_BIT)) {
 
-            printf("PHASE=%02d ", phase);
+            uint8_t byte = 0;
 
-            for (int offset = phase;
-                 offset + (8 * SAMPLES_PER_BIT) < CAPTURE_SAMPLES;
-                 offset += (8 * SAMPLES_PER_BIT)) {
-                uint8_t byte = 0;
-
-                if (decode_byte_at_phase(samples, offset, &byte)) {
-                    uint8_t inv = (uint8_t)(~byte);
-
-                    ok_count++;
-
-                    if (byte == 0xF0u) {
-                        f0_count++;
-                    }
-
-                    if (inv == 0xF0u) {
-                        inv_f0_count++;
-                    }
-
-                    printf("0x%02X ", byte);
-                } else {
-                    printf("-- ");
-                }
+            if (decode_byte_at_phase(samples, offset, &byte)) {
+                printf("RX_BYTE=0x%02X\n", byte);
             }
-
-            printf("| OK=%d F0=%d INV_F0=%d | ",
-                   ok_count,
-                   f0_count,
-                   inv_f0_count);
-
-            print_sample_line(samples, phase, 64);
-            printf("\n");
         }
 
-        sleep_ms(500);
+        sleep_ms(100);
     }
 }

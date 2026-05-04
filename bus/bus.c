@@ -46,7 +46,7 @@ static void bus_tx_pio_init(void) {
      * Valor conservador inicial. La temporización efectiva todavía se
      * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
      */
-    const float pio_cycles_per_bit = 22.0f;
+    const float pio_cycles_per_bit = 16.0f;
     const float clkdiv =
         ((float)clock_get_hz(clk_sys) * ((float)BIT_PERIOD_US / 1000000.0f)) /
         pio_cycles_per_bit;
