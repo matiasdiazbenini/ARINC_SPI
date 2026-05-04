@@ -10,17 +10,13 @@ int main(void) {
     bus_set_tx_mode();
 
     while (true) {
-        //bus_idle();
-        sleep_ms(500);
-
-        printf("TX_BITS_1\n");
         bus_set_tx_mode();
 
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 200; i++) {
             bus_send_byte(0xF0);
+            bus_send_byte(0x18);
+            bus_send_byte(0x23);
         }
-
-        //bus_idle();
-        sleep_ms(500);
     }
+
 }
