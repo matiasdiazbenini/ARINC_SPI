@@ -11,7 +11,7 @@ int main(void) {
     while (true) {
         bus_set_tx_mode();
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 200; i++) {
             bus_send_byte(0xF0);
 
             bus_send_byte(0x18);
@@ -19,12 +19,6 @@ int main(void) {
 
             bus_send_byte(0xA0);
             bus_send_byte(0x00);
-
-            bus_send_byte(0xA0);
-            bus_send_byte(0x01);
-
-            bus_send_byte(0xA0);
-            bus_send_byte(0x02);
         }
     }
 }
