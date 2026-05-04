@@ -181,8 +181,18 @@ int main(void) {
          * Después del lock descartamos algunas muestras para caer más cerca
          * del límite de byte siguiente. Esto se ajusta si hace falta.
          */
-        for (int i = 0; i < 8; i++) {
-            (void)read_sample();
+        for (int phase = 0; phase < 16; phase++) {
+            for (int i = 0; i < phase; i++) {
+                (void)read_sample();
+            }
+
+            uint8_t sync = 0;
+
+            if (read_byte_windowed(&sync)) {
+                printf("PHASE=%d|RX=0x%02X\n", phase, sync);
+            } else {
+                printf("PHASE=%d|READ_ERROR\n", phase);
+            }
         }
 
         uint8_t sync = 0;
