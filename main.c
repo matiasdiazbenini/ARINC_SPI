@@ -162,8 +162,10 @@ int main(void) {
         int decoded_count = 0;
         int first_sync_offset = -1;
 
+        const int byte_samples = 8 * SAMPLES_PER_BIT;
+
         for (int offset = 0;
-            offset + (8 * SAMPLES_PER_BIT) < CAPTURE_SAMPLES;
+            offset + (3 * byte_samples) < CAPTURE_SAMPLES;
             offset++) {
 
             uint8_t byte = 0;
@@ -172,10 +174,25 @@ int main(void) {
                 decoded_count++;
 
                 if (byte == 0xF0u) {
+                    uint8_t b1 = 0;
+                    uint8_t b2 = 0;
+
                     sync_count++;
 
                     if (first_sync_offset < 0) {
                         first_sync_offset = offset;
+                    }
+
+                    if (decode_byte_at_phase(samples, offset + byte_samples, &b1) &&
+                        decode_byte_at_phase(samples, offset + 2 * byte_samples, &b2)) {
+
+                        uint16_t word = ((uint16_t)b1 << 8) | b2;
+
+                        if (word == 0x1823u) {
+                            printf("FRAME_OK|SYNC=0xF0|WORD=0x%04X\n", word);
+                        } else {
+                            printf("FRAME_BAD|SYNC=0xF0|WORD=0x%04X\n", word);
+                        }
                     }
                 }
             }
