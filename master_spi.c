@@ -7,16 +7,24 @@ int main(void) {
     sleep_ms(1200);
 
     bus_init();
-    bus_set_tx_mode();
 
     while (true) {
         bus_set_tx_mode();
 
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 100; i++) {
             bus_send_byte(0xF0);
+
             bus_send_byte(0x18);
             bus_send_byte(0x23);
+
+            bus_send_byte(0xA0);
+            bus_send_byte(0x00);
+
+            bus_send_byte(0xA0);
+            bus_send_byte(0x01);
+
+            bus_send_byte(0xA0);
+            bus_send_byte(0x02);
         }
     }
-
 }
