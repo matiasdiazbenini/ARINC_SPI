@@ -16,7 +16,7 @@
 #define SAMPLES_PER_BIT      12u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
-#define RX_PHASE 3u
+#define RX_PHASE 5u
 
 #define PN_IDLE    0x00u
 #define PN_HIGH    0x01u   // P=1, N=0
