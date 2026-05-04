@@ -307,16 +307,6 @@ bool bus_read_sync(uint8_t *type) {
     }
 }
 
-void bus_send_word16_pio(uint16_t word) {
-#if BUS_USE_PIO_TX
-    uint32_t v = ((uint32_t)word) << 16u;
-    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
-#else
-    for (int i = 15; i >= 0; i--) {
-        bus_send_bit(((word >> i) & 1u) != 0u);
-    }
-#endif
-}
 
 bool bus_read_word16(uint16_t *word) {
     uint16_t value = 0;
@@ -349,9 +339,18 @@ uint8_t bus_compute_odd_parity(uint16_t word) {
     return (uint8_t)(parity ^ 1u);
 }
 void bus_send_word16(uint16_t word) {
+#if BUS_USE_PIO_TX
+    bus_tx_pio_init();
+    bus_pio_take_tx_pins();
+    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
+
+    uint32_t v = ((uint32_t)word) << 16u;  // MSB first
+    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
+#else
     for (int i = 15; i >= 0; i--) {
         bus_send_bit(((word >> i) & 1u) != 0u);
     }
+#endif
 }
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
