@@ -1388,8 +1388,14 @@ void bus_send_status_data_checked(uint8_t rt_addr,
     bus_send_word16(status);
 
     /*
-     * DATA SYNC + DATA WORDS
-     */
+    * Separación entre STATUS y DATA SYNC.
+    * No pertenece al paquete; solo estabiliza la búsqueda del 0x0F.
+    */
+    bus_send_byte(0x00);
+
+    /*
+    * DATA SYNC + DATA WORDS
+    */
     bus_send_byte(0x0F);
 
     for (uint8_t i = 0; i < wc; i++) {
