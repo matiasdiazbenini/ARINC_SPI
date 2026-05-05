@@ -11,18 +11,18 @@ int main(void) {
     bus_init();
     bus_set_rx_mode();
 
-    printf("SLAVE RX PIO TEST\n");
+    printf("SLAVE RX CHECKED PACKET TEST\n");
 
     while (true) {
         uint16_t cmd = 0;
         uint16_t data[3] = {0};
 
-        if (bus_read_test_packet_pio(&cmd, data, 3)) {
+        if (bus_read_packet_checked_pio(&cmd, data, 3)) {
             printf("PACKET_OK|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
-            cmd,
-            data[0],
-            data[1],
-            data[2]);
+                   cmd,
+                   data[0],
+                   data[1],
+                   data[2]);
         } else {
             printf("PACKET_NOT_FOUND\n");
         }

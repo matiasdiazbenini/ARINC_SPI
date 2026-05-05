@@ -27,6 +27,11 @@ static int sample_index = 16;
 
 static bool rx_pio_initialized = false;
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
+static bool find_any_word16_near(const uint8_t *samples,
+                                 int center,
+                                 int radius,
+                                 uint16_t *word,
+                                 int *found_offset);
 
 static uint8_t get_sample_from_word(uint32_t raw, int index) {
     const int shift = 30 - (index * 2);
@@ -496,6 +501,167 @@ bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
 
     return false;
 }
+bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_samples = 16 * SAMPLES_PER_BIT;
+    const int search_radius = 20;
+
+    /*
+     * F0 + CMD(2B) + 0F + DATA(wc*2B) + CHK(2B)
+     */
+    const int total_bytes = 1 + 2 + 1 + (wc * 2) + 2;
+
+    int dbg_sync_f0 = 0;
+    int dbg_cmd_ok = 0;
+    int dbg_sync_data_ok = 0;
+    int dbg_data_ok = 0;
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_cmd = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
+            continue;
+        }
+
+        if (sync_cmd != 0xF0u) {
+            continue;
+        }
+        dbg_sync_f0++;
+        uint8_t cmd_hi = 0;
+        uint8_t cmd_lo = 0;
+
+        int off_cmd_hi = -1;
+        int off_cmd_lo = -1;
+
+        bool ok_cmd_hi = find_byte_near(samples,
+                                        offset + 1 * byte_samples,
+                                        search_radius,
+                                        0x18u,
+                                        &cmd_hi,
+                                        &off_cmd_hi);
+
+        bool ok_cmd_lo = find_byte_near(samples,
+                                        offset + 2 * byte_samples,
+                                        search_radius,
+                                        0x23u,
+                                        &cmd_lo,
+                                        &off_cmd_lo);
+
+        if (!ok_cmd_hi || !ok_cmd_lo) {
+            continue;
+        }
+
+        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
+
+        dbg_cmd_ok++;
+
+        uint8_t sync_data = 0;
+        int off_sync_data = -1;
+
+        /*
+        * Buscar el 0x0F después del byte bajo real del CMD.
+        * off_cmd_lo es la posición real donde encontró 0x23.
+        */
+        if (!find_byte_near(samples,
+                            off_cmd_lo + byte_samples,
+                            search_radius,
+                            0x0Fu,
+                            &sync_data,
+                            &off_sync_data)) {
+            continue;
+        }
+
+        dbg_sync_data_ok++;
+        uint16_t temp_data[16] = {0};
+
+        if (wc > 16) {
+            return false;
+        }
+
+        bool data_ok = true;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            int center = off_sync_data + (1 + i * 2) * byte_samples;
+            int off_word = -1;
+
+            if (!find_any_word16_near(samples,
+                                      center,
+                                      search_radius,
+                                      &temp_data[i],
+                                      &off_word)) {
+                data_ok = false;
+                break;
+            }
+        }
+
+        if (!data_ok) {
+            continue;
+        }
+        dbg_data_ok++;
+        uint16_t rx_chk = 0;
+        int off_chk = -1;
+
+        int chk_center = off_sync_data + (1 + wc * 2) * byte_samples;
+
+        if (!find_any_word16_near(samples,
+                                  chk_center,
+                                  search_radius,
+                                  &rx_chk,
+                                  &off_chk)) {
+            continue;
+        }
+
+        uint16_t calc = rx_cmd;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            calc ^= temp_data[i];
+        }
+
+        static int dbg_count = 0;
+
+        if (dbg_count < 20) {
+            dbg_count++;
+
+            printf("CHK_TEST|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X\n",
+                rx_cmd,
+                temp_data[0],
+                temp_data[1],
+                temp_data[2],
+                rx_chk,
+                calc);
+        }
+
+        if (calc != rx_chk) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        if (data != NULL) {
+            for (uint8_t i = 0; i < wc; i++) {
+                data[i] = temp_data[i];
+            }
+        }
+
+        return true;
+    }
+    printf("DBG|F0=%d|CMD=%d|DATA_SYNC=%d|DATA=%d\n",
+       dbg_sync_f0,
+       dbg_cmd_ok,
+       dbg_sync_data_ok,
+       dbg_data_ok);
+    return false;
+}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     if (rx_pio_initialized) {
         return;
@@ -856,12 +1022,11 @@ uint8_t bus_compute_odd_parity(uint16_t word) {
 }
 void bus_send_word16(uint16_t word) {
 #if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-    bus_pio_take_tx_pins();
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
+    uint8_t hi = (uint8_t)((word >> 8) & 0xFFu);
+    uint8_t lo = (uint8_t)(word & 0xFFu);
 
-    uint32_t v = ((uint32_t)word) << 16u;  // MSB first
-    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
+    bus_send_byte(hi);
+    bus_send_byte(lo);
 #else
     for (int i = 15; i >= 0; i--) {
         bus_send_bit(((word >> i) & 1u) != 0u);
@@ -895,4 +1060,40 @@ bool bus_read_word16_parity(uint16_t *word) {
 
     *word = value;
     return true;
+}
+static bool find_any_word16_near(const uint8_t *samples,
+                                 int center,
+                                 int radius,
+                                 uint16_t *word,
+                                 int *found_offset) {
+    for (int delta = -radius; delta <= radius; delta++) {
+        int pos = center + delta;
+
+        if (pos < 0) {
+            continue;
+        }
+
+        uint8_t hi = 0;
+        uint8_t lo = 0;
+
+        if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+            continue;
+        }
+
+        if (decode_byte_at_phase(samples, pos, &hi) &&
+            decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
+
+            if (word != NULL) {
+                *word = ((uint16_t)hi << 8) | lo;
+            }
+
+            if (found_offset != NULL) {
+                *found_offset = pos;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
 }

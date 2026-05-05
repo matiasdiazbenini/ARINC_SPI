@@ -45,6 +45,7 @@ bool bus_read_word16(uint16_t *word);
 
 bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
 bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
+bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
 
 uint8_t bus_compute_odd_parity(uint16_t word);
 void bus_send_word16_parity(uint16_t word);
