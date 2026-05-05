@@ -31,6 +31,9 @@ add_executable(master_spi
 )
 
 pico_generate_pio_header(master_spi ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio)
+pico_generate_pio_header(master_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
+)
 
 target_link_libraries(master_spi
     pico_stdlib

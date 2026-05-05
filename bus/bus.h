@@ -69,6 +69,8 @@ bool bus_read_sync(uint8_t *type);
 void bus_send_word16(uint16_t word);
 bool bus_read_word16(uint16_t *word);
 
+bool bus_read_status_word_pio(uint16_t *status);
+
 void bus_send_status_word(uint8_t rt_addr, bool msg_error);
 bool bus_read_status_word_pio(uint16_t *status);
 

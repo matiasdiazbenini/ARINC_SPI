@@ -30,16 +30,37 @@ int main(void) {
     while (true) {
         bus_set_tx_mode();
 
+        uint16_t chk_test = cmd;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            chk_test ^= data[i];
+        }
+
+        printf("BC_TX|CMD=0x%04X|WC=%u|CHK=0x%04X\n", cmd, wc, chk_test);
+
         bus_send_packet_checked(cmd, data, wc);
+
         sleep_us(30 * BIT_PERIOD_US);
+
         bus_idle();
+        bus_set_rx_mode();
 
         printf("BC_SENT|CMD=0x%04X\n", cmd);
 
-        /*
-         * Dejamos tiempo para que el RT responda status.
-         * Todavía no lo leemos en el BC.
-         */
+        uint16_t status = 0;
+
+        if (bus_read_status_word_pio(&status)) {
+            uint8_t st_rt = BUS_1553_STATUS_RT(status);
+            uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
+
+            printf("STATUS_OK|RAW=0x%04X|RT=%u|MSG_ERROR=%u\n",
+                status,
+                st_rt,
+                msg_error);
+        } else {
+            printf("STATUS_NOT_FOUND\n");
+        }
+
         sleep_ms(100);
     }
 }

@@ -5,6 +5,7 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "manchester_tx.pio.h"
+#include "manchester_rx.pio.h"
 #endif
 #include "pico/stdlib.h"
 
@@ -14,6 +15,282 @@ static const uint bus_tx_sm = 0u;
 static uint bus_tx_offset = 0u;
 static bool bus_tx_pio_initialized = false;
 
+#define RX_PIO pio0
+#define RX_SM  1u
+
+#define SAMPLES_PER_BIT      12u
+#define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
+
+#define PN_IDLE    0x00u
+#define PN_HIGH    0x01u
+#define PN_LOW     0x02u
+#define PN_INVALID 0x03u
+
+#define STATUS_CAPTURE_SAMPLES 2048u
+
+static uint32_t rx_sample_word = 0;
+static int rx_sample_index = 16;
+static bool rx_pio_initialized = false;
+
+static uint8_t rx_get_sample_from_word(uint32_t raw, int index) {
+    const int shift = 30 - (index * 2);
+    return (uint8_t)((raw >> shift) & 0x03u);
+}
+
+static uint8_t rx_read_sample(void) {
+    if (rx_sample_index >= 16) {
+        rx_sample_word = pio_sm_get_blocking(RX_PIO, RX_SM);
+        rx_sample_index = 0;
+    }
+
+    uint8_t sample = rx_get_sample_from_word(rx_sample_word, rx_sample_index);
+    rx_sample_index++;
+
+    return sample;
+}
+
+static void rx_capture_samples(uint8_t *buffer, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        buffer[i] = rx_read_sample();
+    }
+}
+
+static uint8_t rx_majority_range(const uint8_t *buffer, int start, int count) {
+    int h = 0;
+    int l = 0;
+
+    for (int i = start; i < start + count; i++) {
+        if (buffer[i] == PN_HIGH) {
+            h++;
+        } else if (buffer[i] == PN_LOW) {
+            l++;
+        }
+    }
+
+    if (h > l) {
+        return PN_HIGH;
+    }
+
+    if (l > h) {
+        return PN_LOW;
+    }
+
+    return PN_INVALID;
+}
+
+static bool rx_decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit) {
+    const int half = SAMPLES_PER_BIT / 2;
+
+    uint8_t first = rx_majority_range(buffer, start, half);
+    uint8_t second = rx_majority_range(buffer, start + half, half);
+
+    if (first == PN_HIGH && second == PN_LOW) {
+        *bit = true;
+        return true;
+    }
+
+    if (first == PN_LOW && second == PN_HIGH) {
+        *bit = false;
+        return true;
+    }
+
+    return false;
+}
+
+static bool rx_decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte) {
+    uint8_t value = 0;
+
+    if (byte == NULL) {
+        return false;
+    }
+
+    for (int b = 0; b < 8; b++) {
+        bool bit = false;
+        int bit_start = start + b * SAMPLES_PER_BIT;
+
+        if (!rx_decode_bit_at_phase(buffer, bit_start, &bit)) {
+            return false;
+        }
+
+        value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
+    }
+
+    *byte = value;
+    return true;
+}
+
+static bool rx_find_byte_near(const uint8_t *samples,
+                              int center,
+                              int radius,
+                              uint8_t target,
+                              uint8_t *found_byte,
+                              int *found_offset) {
+    for (int delta = -radius; delta <= radius; delta++) {
+        int pos = center + delta;
+
+        if (pos < 0) {
+            continue;
+        }
+
+        if (pos + (8 * SAMPLES_PER_BIT) >= STATUS_CAPTURE_SAMPLES) {
+            continue;
+        }
+
+        uint8_t b = 0;
+
+        if (rx_decode_byte_at_phase(samples, pos, &b)) {
+            if (b == target) {
+                if (found_byte != NULL) {
+                    *found_byte = b;
+                }
+
+                if (found_offset != NULL) {
+                    *found_offset = pos;
+                }
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool rx_find_any_word16_near(const uint8_t *samples,
+                                    int center,
+                                    int radius,
+                                    uint16_t *word,
+                                    int *found_offset) {
+    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
+        for (int s = 0; s < 2; s++) {
+            int delta;
+
+            if (abs_delta == 0) {
+                if (s == 1) {
+                    continue;
+                }
+                delta = 0;
+            } else {
+                delta = (s == 0) ? -abs_delta : abs_delta;
+            }
+
+            int pos = center + delta;
+
+            if (pos < 0) {
+                continue;
+            }
+
+            if (pos + (16 * SAMPLES_PER_BIT) >= STATUS_CAPTURE_SAMPLES) {
+                continue;
+            }
+
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            if (rx_decode_byte_at_phase(samples, pos, &hi) &&
+                rx_decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
+
+                if (word != NULL) {
+                    *word = ((uint16_t)hi << 8) | lo;
+                }
+
+                if (found_offset != NULL) {
+                    *found_offset = pos;
+                }
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
+    if (rx_pio_initialized) {
+        return;
+    }
+
+    uint offset = pio_add_program(pio, &manchester_rx_program);
+    pio_sm_config c = manchester_rx_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin_base);
+    sm_config_set_in_shift(&c, false, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    pio_gpio_init(pio, pin_base);
+    pio_gpio_init(pio, pin_base + 1u);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
+
+    const float sample_hz = 1000000.0f / (float)RX_SAMPLE_PERIOD_US;
+    const float clkdiv = (float)clock_get_hz(clk_sys) / sample_hz;
+
+    sm_config_set_clkdiv(&c, clkdiv);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+
+    rx_pio_initialized = true;
+}
+bool bus_read_status_word_pio(uint16_t *status) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[STATUS_CAPTURE_SAMPLES];
+    rx_capture_samples(samples, STATUS_CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 12;
+
+    /*
+     * Status esperado:
+     * F0 + STATUS_WORD(2 bytes)
+     */
+    const int total_bytes = 1 + 2;
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < STATUS_CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync = 0;
+
+        if (!rx_decode_byte_at_phase(samples, offset, &sync)) {
+            continue;
+        }
+
+        if (sync != 0xF0u) {
+            continue;
+        }
+
+        uint16_t rx_status = 0;
+        int off_status = -1;
+
+        if (!rx_find_any_word16_near(samples,
+                                     offset + byte_samples,
+                                     search_radius,
+                                     &rx_status,
+                                     &off_status)) {
+            continue;
+        }
+
+        uint8_t rt = BUS_1553_STATUS_RT(rx_status);
+
+        /*
+         * Filtro básico: status válido de RT 1..31.
+         * Para tu prueba esperamos RT=3, pero lo dejamos general.
+         */
+        if (rt == 0 || rt > 31) {
+            continue;
+        }
+
+        if (status != NULL) {
+            *status = rx_status;
+        }
+
+        return true;
+    }
+
+    return false;
+}
 static void bus_pio_take_tx_pins(void) {
     gpio_set_function(BUS_PIN_P, GPIO_FUNC_PIO0);
     gpio_set_function(BUS_PIN_N, GPIO_FUNC_PIO0);
@@ -363,8 +640,15 @@ void bus_send_word16(uint16_t word) {
 }
 void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
     uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+
     bus_send_byte(0xF0);
     bus_send_word16(status);
+
+    /*
+     * Postámbulo neutro para no cortar el status al pasar a idle.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
 }
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
@@ -388,11 +672,13 @@ void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc) {
     bus_send_word16(chk);
 
     /*
-     * Postámbulo de margen.
-     * No pertenece al paquete. Solo evita que el checksum quede pegado
-     * al idle cuando el maestro suelta el bus.
+     * Postámbulo neutro de margen.
+     * No pertenece al paquete.
+     * Evita que el último bit del checksum quede contaminado
+     * cuando el maestro suelta el bus.
      */
-    bus_send_byte(0xAA);
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
 }
 
 bool bus_read_word16_parity(uint16_t *word) {
