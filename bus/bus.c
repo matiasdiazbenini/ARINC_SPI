@@ -1124,11 +1124,18 @@ void bus_set_tx_mode(void) {
 void bus_set_rx_mode(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
-        // 🔥 Esperar a que termine la transmisión
+        /*
+         * Esperar a que la FIFO se vacíe.
+         * Ojo: esto no garantiza que el último byte ya terminó físicamente.
+         */
         pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-        sleep_us(BIT_PERIOD_US);
 
-        // 🔻 recién ahora deshabilitar
+        /*
+         * Espera extra para que termine de salir el último byte.
+         * Cada byte son 8 bits, usamos margen de 10 bits.
+         */
+        sleep_us(10 * BIT_PERIOD_US);
+
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
 
@@ -1142,9 +1149,15 @@ void bus_set_rx_mode(void) {
 void bus_idle(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
-        // 🔥 esperar fin de transmisión
+        /*
+         * Esperar a que la FIFO se vacíe.
+         */
         pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-        sleep_us(BIT_PERIOD_US);
+
+        /*
+         * Espera extra para no cortar el último byte.
+         */
+        sleep_us(10 * BIT_PERIOD_US);
 
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
