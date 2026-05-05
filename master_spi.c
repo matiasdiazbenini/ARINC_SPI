@@ -10,19 +10,19 @@ int main(void) {
 
     bus_init();
 
-    const uint16_t cmd = 0x1803;
-
-    const uint16_t data[3] = {
-        0xBEEF,
-        0xCAFE,
-        0x55AA
+    const uint16_t data[2] = {
+        0x1234,
+        0xABCD
     };
+
+    const uint8_t wc = 2;
+    const uint16_t cmd = BUS_CMD_MAKE(BUS_PKT_TYPE_DATA, 8, wc);
 
     while (true) {
         bus_set_tx_mode();
 
         for (int i = 0; i < 100; i++) {
-            bus_send_packet_checked(cmd, data, 3);
+            bus_send_packet_checked(cmd, data, wc);
         }
     }
 }

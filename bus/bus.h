@@ -25,6 +25,17 @@ extern "C" {
 #define BUS_SYNC_TYPE_CMD_STATUS 1u
 #define BUS_SYNC_TYPE_DATA       2u
 
+#define BUS_CMD_MAKE(type, id, wc) \
+    (uint16_t)((((uint16_t)(type) & 0x0Fu) << 12) | \
+               (((uint16_t)(id)   & 0x0Fu) << 8)  | \
+               ((uint16_t)(wc)    & 0xFFu))
+
+#define BUS_CMD_TYPE(cmd)  (uint8_t)(((cmd) >> 12) & 0x0Fu)
+#define BUS_CMD_ID(cmd)    (uint8_t)(((cmd) >> 8)  & 0x0Fu)
+#define BUS_CMD_WC(cmd)    (uint8_t)((cmd) & 0xFFu)
+
+#define BUS_PKT_TYPE_DATA  0x1u
+
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);
