@@ -51,13 +51,13 @@ int main(void) {
 
         bool status_ok = false;
 
-        for (int attempt = 0; attempt < 10; attempt++) {
+        for (int attempt = 0; attempt < 20; attempt++) {
             if (bus_read_status_word_pio(&status)) {
                 status_ok = true;
                 break;
             }
 
-            sleep_ms(20);
+            sleep_ms(10);
         }
 
         if (status_ok) {
@@ -68,8 +68,6 @@ int main(void) {
                 status,
                 st_rt,
                 msg_error);
-        } else {
-            printf("STATUS_NOT_FOUND\n");
         }
 
         sleep_ms(100);
