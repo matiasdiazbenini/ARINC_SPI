@@ -24,6 +24,22 @@ extern "C" {
 #define BUS_SYNC_TYPE_CMD_STATUS 1u
 #define BUS_SYNC_TYPE_DATA       2u
 
+#define BUS_1553_CMD_MAKE(rt, tr, sub, wc) \
+    (uint16_t)((((uint16_t)(rt)  & 0x1Fu) << 11) | \
+               (((uint16_t)(tr)  & 0x01u) << 10) | \
+               (((uint16_t)(sub) & 0x1Fu) << 5)  | \
+               ((uint16_t)(wc)   & 0x1Fu))
+
+#define BUS_1553_CMD_RT(cmd)   (uint8_t)(((cmd) >> 11) & 0x1Fu)
+#define BUS_1553_CMD_TR(cmd)   (uint8_t)(((cmd) >> 10) & 0x01u)
+#define BUS_1553_CMD_SUB(cmd)  (uint8_t)(((cmd) >> 5)  & 0x1Fu)
+#define BUS_1553_CMD_WC(cmd)   (uint8_t)((cmd) & 0x1Fu)
+
+#define BUS_1553_TR_BC_TO_RT   0u
+#define BUS_1553_TR_RT_TO_BC   1u
+
+#define BUS_1553_MAX_DATA_WORDS 31u
+
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);
