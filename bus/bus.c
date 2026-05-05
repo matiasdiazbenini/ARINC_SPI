@@ -27,6 +27,7 @@ static int sample_index = 16;
 
 static bool rx_pio_initialized = false;
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
+bool bus_read_command_word_pio(uint16_t *cmd);
 static bool find_any_word16_near(const uint8_t *samples,
                                  int center,
                                  int radius,
@@ -1373,6 +1374,42 @@ void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
     bus_send_byte(0x00);
     bus_send_byte(0x00);
 }
+void bus_send_status_data_checked(uint8_t rt_addr,
+                                  bool msg_error,
+                                  const uint16_t data[],
+                                  uint8_t wc) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+    uint16_t chk = status;
+
+    /*
+     * STATUS SYNC + STATUS WORD
+     */
+    bus_send_byte(0xF0);
+    bus_send_word16(status);
+
+    /*
+     * DATA SYNC + DATA WORDS
+     */
+    bus_send_byte(0x0F);
+
+    for (uint8_t i = 0; i < wc; i++) {
+        uint16_t word = data[i];
+
+        bus_send_word16(word);
+        chk ^= word;
+    }
+
+    /*
+     * CHECKSUM
+     */
+    bus_send_word16(chk);
+
+    /*
+     * Postámbulo neutro.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
     bus_send_bit(bus_compute_odd_parity(word) != 0u);
@@ -1513,4 +1550,75 @@ void bus_send_command_word(uint16_t cmd) {
      */
     bus_send_byte(0x00);
     bus_send_byte(0x00);
+}
+bool bus_read_command_word_pio(uint16_t *cmd) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 12;
+
+    /*
+     * Comando esperado:
+     * F0 + CMD(2 bytes)
+     */
+    const int total_bytes = 1 + 2;
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync)) {
+            continue;
+        }
+
+        if (sync != 0xF0u) {
+            continue;
+        }
+
+        uint16_t rx_cmd = 0;
+        int off_cmd = -1;
+
+        if (!find_any_word16_near(samples,
+                                  offset + byte_samples,
+                                  search_radius,
+                                  &rx_cmd,
+                                  &off_cmd)) {
+            continue;
+        }
+
+        uint8_t rt  = BUS_1553_CMD_RT(rx_cmd);
+        uint8_t tr  = BUS_1553_CMD_TR(rx_cmd);
+        uint8_t wc  = BUS_1553_CMD_WC(rx_cmd);
+
+        /*
+         * Filtro básico de comando 1553-like.
+         */
+        if (rt == 0 || rt > 31) {
+            continue;
+        }
+
+        if (wc == 0 || wc > BUS_1553_MAX_DATA_WORDS) {
+            continue;
+        }
+
+        /*
+         * Para esta prueba queremos TR=1.
+         */
+        if (tr != BUS_1553_TR_RT_TO_BC) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        return true;
+    }
+
+    return false;
 }

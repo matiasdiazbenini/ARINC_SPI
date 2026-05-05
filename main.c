@@ -4,8 +4,7 @@
 #include "pico/stdlib.h"
 #include "bus/bus.h"
 
-#define MAX_DATA_WORDS 8u
-#define MY_RT_ADDR     3u
+#define MY_RT_ADDR 3u
 
 int main(void) {
     stdio_init_all();
@@ -14,47 +13,65 @@ int main(void) {
     bus_init();
     bus_set_rx_mode();
 
-    printf("SLAVE RT RX 1553-LIKE TEST\n");
+    printf("SLAVE RT COMMAND RX + DATA RESPONSE TEST\n");
+
+    const uint16_t rt_data[3] = {
+        0x1111,
+        0x2222,
+        0x3333
+    };
 
     while (true) {
         uint16_t cmd = 0;
-        uint16_t data[MAX_DATA_WORDS] = {0};
-        uint8_t wc = 0;
 
-        if (bus_read_packet_checked_auto_pio(&cmd, data, MAX_DATA_WORDS, &wc)) {
+        if (bus_read_command_word_pio(&cmd)) {
             uint8_t rt  = BUS_1553_CMD_RT(cmd);
             uint8_t tr  = BUS_1553_CMD_TR(cmd);
             uint8_t sub = BUS_1553_CMD_SUB(cmd);
+            uint8_t wc  = BUS_1553_CMD_WC(cmd);
 
-            printf("CMD_OK|RAW=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
+            printf("CMD_RX|RAW=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u\n",
                    cmd,
                    rt,
                    tr,
                    sub,
                    wc);
 
-            for (uint8_t i = 0; i < wc; i++) {
-                printf("|D%u=0x%04X", i, data[i]);
-            }
+            if (rt == MY_RT_ADDR && tr == BUS_1553_TR_RT_TO_BC) {
+                printf("RT_REQUEST_DETECTED|WC=%u\n", wc);
 
-            printf("\n");
+                /*
+                 * Pequeña guarda para que el BC pueda pasar a RX.
+                 */
+                sleep_us(3000);
 
-            /*
-             * Si el comando era para este RT y era BC->RT,
-             * respondemos Status.
-             */
-            if (rt == MY_RT_ADDR && tr == BUS_1553_TR_BC_TO_RT) {
-                sleep_us(3000);      // pequeña guarda antes de responder
                 bus_set_tx_mode();
 
-                bus_send_status_word(MY_RT_ADDR, false);
+                /*
+                 * Por ahora respondemos hasta 3 palabras.
+                 */
+                uint8_t tx_wc = wc;
+
+                if (tx_wc > 3u) {
+                    tx_wc = 3u;
+                }
+
+                bus_send_status_data_checked(MY_RT_ADDR,
+                                             false,
+                                             rt_data,
+                                             tx_wc);
 
                 sleep_us(30 * BIT_PERIOD_US);
 
                 bus_idle();
                 bus_set_rx_mode();
 
-                printf("STATUS_SENT|RT=%u|MSG_ERROR=0\n", MY_RT_ADDR);
+                printf("STATUS_DATA_SENT|RT=%u|WC=%u|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
+                       MY_RT_ADDR,
+                       tx_wc,
+                       rt_data[0],
+                       rt_data[1],
+                       rt_data[2]);
             }
         }
 
