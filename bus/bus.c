@@ -26,7 +26,7 @@ static bool bus_tx_pio_initialized = false;
 #define PN_LOW     0x02u
 #define PN_INVALID 0x03u
 
-#define STATUS_CAPTURE_SAMPLES 2048u
+#define STATUS_CAPTURE_SAMPLES 4096u
 
 static uint32_t rx_sample_word = 0;
 static int rx_sample_index = 16;
@@ -207,8 +207,16 @@ static bool rx_find_any_word16_near(const uint8_t *samples,
 
     return false;
 }
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base) {
+    gpio_set_function(pin_base, GPIO_FUNC_PIO0);
+    gpio_set_function(pin_base + 1u, GPIO_FUNC_PIO0);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
+    pio_sm_set_enabled(pio, sm, true);
+}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     if (rx_pio_initialized) {
+        rx_sampler_take_pins(pio, sm, pin_base);
         return;
     }
 
@@ -233,9 +241,13 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     pio_sm_set_enabled(pio, sm, true);
 
     rx_pio_initialized = true;
+
+    rx_sampler_take_pins(pio, sm, pin_base);
 }
 bool bus_read_status_word_pio(uint16_t *status) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
     pio_sm_clear_fifos(RX_PIO, RX_SM);
     pio_sm_restart(RX_PIO, RX_SM);
@@ -310,6 +322,177 @@ bool bus_read_status_word_pio(uint16_t *status) {
         return true;
     }
 
+    return false;
+}
+bool bus_read_status_data_checked_pio(uint16_t *status,
+                                      uint16_t data[],
+                                      uint8_t expected_wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    /*
+     * Asegurar que los pines estén conectados al RX PIO.
+     * Después de bus_idle()/bus_set_rx_mode() pueden haber quedado en SIO.
+     */
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
+
+    /*
+     * Limpiar muestras viejas. El maestro pudo capturar su propio TX.
+     */
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    rx_sample_index = 16;
+
+    uint8_t samples[STATUS_CAPTURE_SAMPLES];
+    rx_capture_samples(samples, STATUS_CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_samples = 16 * SAMPLES_PER_BIT;
+    const int search_radius = 12;
+
+    /*
+     * Esperamos:
+     * F0 + STATUS(2B) + 0F + DATA(expected_wc*2B) + CHK(2B)
+     */
+    const int total_bytes = 1 + 2 + 1 + (expected_wc * 2) + 2;
+
+    int dbg_f0 = 0;
+    int dbg_st_hi = 0;
+    int dbg_st_lo = 0;
+    int dbg_sync_data = 0;
+    int dbg_data = 0;
+    int dbg_chk = 0;
+
+    if (expected_wc == 0 || expected_wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < STATUS_CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_status = 0;
+
+        if (!rx_decode_byte_at_phase(samples, offset, &sync_status)) {
+            continue;
+        }
+
+        if (sync_status != 0xF0u) {
+            continue;
+        }
+        dbg_f0++;
+        /*
+         * Para esta prueba esperamos STATUS=0x1800:
+         * RT=3, MSG_ERROR=0.
+         */
+        uint8_t st_hi = 0;
+        uint8_t st_lo = 0;
+
+        int off_st_hi = -1;
+        int off_st_lo = -1;
+
+        if (!rx_find_byte_near(samples,
+                               offset + byte_samples,
+                               search_radius,
+                               0x18u,
+                               &st_hi,
+                               &off_st_hi)) {
+            continue;
+        }
+        dbg_st_hi++;
+        if (!rx_find_byte_near(samples,
+                               off_st_hi + byte_samples,
+                               24,
+                               0x00u,
+                               &st_lo,
+                               &off_st_lo)) {
+            continue;
+        }
+        dbg_st_lo++;
+        uint16_t rx_status = ((uint16_t)st_hi << 8) | st_lo;
+
+        uint8_t sync_data = 0;
+        int off_sync_data = -1;
+
+        if (!rx_find_byte_near(samples,
+                               off_st_lo + byte_samples,
+                               24,
+                               0x0Fu,
+                               &sync_data,
+                               &off_sync_data)) {
+            continue;
+        }
+        dbg_sync_data++;
+        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+        bool data_ok = true;
+
+        int next_word_center = off_sync_data + byte_samples;
+
+        for (uint8_t i = 0; i < expected_wc; i++) {
+            int off_word = -1;
+
+            if (!rx_find_any_word16_near(samples,
+                                         next_word_center,
+                                         search_radius,
+                                         &temp_data[i],
+                                         &off_word)) {
+                data_ok = false;
+                break;
+            }
+            
+            next_word_center = off_word + word_samples;
+        }
+
+        if (!data_ok) {
+            continue;
+        }
+        dbg_data++;
+        uint16_t rx_chk = 0;
+        int off_chk = -1;
+
+        if (!rx_find_any_word16_near(samples,
+                                     next_word_center,
+                                     24,
+                                     &rx_chk,
+                                     &off_chk)) {
+            continue;
+        }
+        dbg_chk++;
+        uint16_t calc = rx_status;
+
+        for (uint8_t i = 0; i < expected_wc; i++) {
+            calc ^= temp_data[i];
+        }
+
+        if (calc != rx_chk) {
+            printf("RTDATA_CHK_DBG|STATUS=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X\n",
+                   rx_status,
+                   temp_data[0],
+                   temp_data[1],
+                   temp_data[2],
+                   rx_chk,
+                   calc);
+            continue;
+        }
+
+        if (status != NULL) {
+            *status = rx_status;
+        }
+
+        if (data != NULL) {
+            for (uint8_t i = 0; i < expected_wc; i++) {
+                data[i] = temp_data[i];
+            }
+        }
+
+        return true;
+    }
+    printf("RTDATA_DBG|F0=%d|ST_H=%d|ST_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
+       dbg_f0,
+       dbg_st_hi,
+       dbg_st_lo,
+       dbg_sync_data,
+       dbg_data,
+       dbg_chk);
     return false;
 }
 static void bus_pio_take_tx_pins(void) {
@@ -701,7 +884,42 @@ void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc) {
     bus_send_byte(0x00);
     bus_send_byte(0x00);
 }
+void bus_send_status_data_checked(uint8_t rt_addr,
+                                  bool msg_error,
+                                  const uint16_t data[],
+                                  uint8_t wc) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+    uint16_t chk = status;
 
+    /*
+     * STATUS SYNC + STATUS WORD
+     */
+    bus_send_byte(0xF0);
+    bus_send_word16(status);
+
+    /*
+     * DATA SYNC + DATA WORDS
+     */
+    bus_send_byte(0x0F);
+
+    for (uint8_t i = 0; i < wc; i++) {
+        uint16_t word = data[i];
+
+        bus_send_word16(word);
+        chk ^= word;
+    }
+
+    /*
+     * CHECKSUM
+     */
+    bus_send_word16(chk);
+
+    /*
+     * Postámbulo neutro.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
 bool bus_read_word16_parity(uint16_t *word) {
     uint16_t value = 0;
     bool parity_bit = false;

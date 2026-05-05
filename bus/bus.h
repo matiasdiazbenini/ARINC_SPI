@@ -72,6 +72,16 @@ bool bus_read_word16(uint16_t *word);
 bool bus_read_status_word_pio(uint16_t *status);
 
 void bus_send_status_word(uint8_t rt_addr, bool msg_error);
+
+void bus_send_status_data_checked(uint8_t rt_addr,
+                                  bool msg_error,
+                                  const uint16_t data[],
+                                  uint8_t wc);
+
+bool bus_read_status_data_checked_pio(uint16_t *status,
+                                      uint16_t data[],
+                                      uint8_t expected_wc);
+
 bool bus_read_status_word_pio(uint16_t *status);
 
 void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc);
