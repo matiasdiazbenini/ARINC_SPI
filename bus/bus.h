@@ -25,16 +25,21 @@ extern "C" {
 #define BUS_SYNC_TYPE_CMD_STATUS 1u
 #define BUS_SYNC_TYPE_DATA       2u
 
-#define BUS_CMD_MAKE(type, id, wc) \
-    (uint16_t)((((uint16_t)(type) & 0x0Fu) << 12) | \
-               (((uint16_t)(id)   & 0x0Fu) << 8)  | \
-               ((uint16_t)(wc)    & 0xFFu))
+#define BUS_1553_CMD_MAKE(rt, tr, sub, wc) \
+    (uint16_t)((((uint16_t)(rt)  & 0x1Fu) << 11) | \
+               (((uint16_t)(tr)  & 0x01u) << 10) | \
+               (((uint16_t)(sub) & 0x1Fu) << 5)  | \
+               ((uint16_t)(wc)   & 0x1Fu))
 
-#define BUS_CMD_TYPE(cmd)  (uint8_t)(((cmd) >> 12) & 0x0Fu)
-#define BUS_CMD_ID(cmd)    (uint8_t)(((cmd) >> 8)  & 0x0Fu)
-#define BUS_CMD_WC(cmd)    (uint8_t)((cmd) & 0xFFu)
+#define BUS_1553_CMD_RT(cmd)   (uint8_t)(((cmd) >> 11) & 0x1Fu)
+#define BUS_1553_CMD_TR(cmd)   (uint8_t)(((cmd) >> 10) & 0x01u)
+#define BUS_1553_CMD_SUB(cmd)  (uint8_t)(((cmd) >> 5)  & 0x1Fu)
+#define BUS_1553_CMD_WC(cmd)   (uint8_t)((cmd) & 0x1Fu)
 
-#define BUS_PKT_TYPE_DATA  0x1u
+#define BUS_1553_TR_BC_TO_RT   0u
+#define BUS_1553_TR_RT_TO_BC   1u
+
+#define BUS_1553_MAX_DATA_WORDS 31u
 
 void bus_init(void);
 void bus_set_tx_mode(void);
