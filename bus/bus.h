@@ -74,6 +74,8 @@ bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
 bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
 bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t max_wc, uint8_t *rx_wc);
 
+void bus_send_command_word(uint16_t cmd);
+
 void bus_send_status_word(uint8_t rt_addr, bool msg_error);
 bool bus_read_status_word_pio(uint16_t *status);
 

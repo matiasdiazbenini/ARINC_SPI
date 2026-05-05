@@ -39,6 +39,8 @@ static bool find_word16_near(const uint8_t *samples,
                              uint16_t *found_word,
                              int *found_offset);
 
+void bus_send_command_word(uint16_t cmd);
+
 static uint8_t get_sample_from_word(uint32_t raw, int index) {
     const int shift = 30 - (index * 2);
     return (uint8_t)((raw >> shift) & 0x03u);
@@ -1501,4 +1503,14 @@ static bool find_word16_near(const uint8_t *samples,
     }
 
     return false;
+}
+void bus_send_command_word(uint16_t cmd) {
+    bus_send_byte(0xF0);
+    bus_send_word16(cmd);
+
+    /*
+     * Postámbulo neutro para proteger el final del comando.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
 }
