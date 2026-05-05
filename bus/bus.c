@@ -20,7 +20,7 @@
 #define PN_LOW     0x02u
 #define PN_INVALID 0x03u
 
-#define CAPTURE_SAMPLES 4096u
+#define CAPTURE_SAMPLES 8192u
 
 static uint32_t sample_word = 0;
 static int sample_index = 16;
@@ -894,11 +894,18 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
         uint16_t rx_chk = 0;
         int off_chk = -1;
 
+        static int chk_dbg = 0;
+
+        if (chk_dbg < 10) {
+            chk_dbg++;
+            printf("CHK_SEARCH|center=%d\n", next_word_center);
+        }
+
         if (!find_any_word16_near(samples,
-                                  next_word_center,
-                                  search_radius,
-                                  &rx_chk,
-                                  &off_chk)) {
+                                next_word_center,
+                                24,
+                                &rx_chk,
+                                &off_chk)) {
             continue;
         }
 
