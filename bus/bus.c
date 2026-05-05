@@ -32,6 +32,12 @@ static bool find_any_word16_near(const uint8_t *samples,
                                  int radius,
                                  uint16_t *word,
                                  int *found_offset);
+static bool find_word16_near(const uint8_t *samples,
+                             int center,
+                             int radius,
+                             uint16_t target,
+                             uint16_t *found_word,
+                             int *found_offset);
 
 static uint8_t get_sample_from_word(uint32_t raw, int index) {
     const int shift = 30 - (index * 2);
@@ -891,15 +897,22 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
         /*
          * Checksum después del último dato.
          */
+        /*
+        * Calcular checksum esperado.
+        */
+        uint16_t calc = rx_cmd;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            calc ^= temp_data[i];
+        }
+
+       /*
+        * Debug temporal del checksum:
+        * primero leemos cualquier word16 cercano para ver qué está llegando,
+        * y comparamos contra calc.
+        */
         uint16_t rx_chk = 0;
         int off_chk = -1;
-
-        static int chk_dbg = 0;
-
-        if (chk_dbg < 10) {
-            chk_dbg++;
-            printf("CHK_SEARCH|center=%d\n", next_word_center);
-        }
 
         if (!find_any_word16_near(samples,
                                 next_word_center,
@@ -911,10 +924,21 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
 
         dbg_chk++;
 
-        uint16_t calc = rx_cmd;
+        static int chk_dbg = 0;
 
-        for (uint8_t i = 0; i < wc; i++) {
-            calc ^= temp_data[i];
+        if (chk_dbg < 30) {
+            chk_dbg++;
+
+            printf("CHK_DBG|CMD=0x%04X|WC=%u|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X|OFF_CHK=%d|CENTER=%d\n",
+                rx_cmd,
+                wc,
+                temp_data[0],
+                temp_data[1],
+                temp_data[2],
+                rx_chk,
+                calc,
+                off_chk,
+                next_word_center);
         }
 
         if (calc != rx_chk) {
@@ -1398,6 +1422,60 @@ static bool find_any_word16_near(const uint8_t *samples,
                 }
 
                 return true;
+            }
+        }
+    }
+
+    return false;
+}
+static bool find_word16_near(const uint8_t *samples,
+                             int center,
+                             int radius,
+                             uint16_t target,
+                             uint16_t *found_word,
+                             int *found_offset) {
+    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
+        for (int s = 0; s < 2; s++) {
+            int delta;
+
+            if (abs_delta == 0) {
+                if (s == 1) {
+                    continue;
+                }
+                delta = 0;
+            } else {
+                delta = (s == 0) ? -abs_delta : abs_delta;
+            }
+
+            int pos = center + delta;
+
+            if (pos < 0) {
+                continue;
+            }
+
+            if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+                continue;
+            }
+
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            if (decode_byte_at_phase(samples, pos, &hi) &&
+                decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
+
+                uint16_t w = ((uint16_t)hi << 8) | lo;
+
+                if (w == target) {
+                    if (found_word != NULL) {
+                        *found_word = w;
+                    }
+
+                    if (found_offset != NULL) {
+                        *found_offset = pos;
+                    }
+
+                    return true;
+                }
             }
         }
     }
