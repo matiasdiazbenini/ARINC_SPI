@@ -12,6 +12,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
+
 cmake_minimum_required(VERSION 3.13)
 
 set(PICO_BOARD pico2_w)
@@ -26,6 +27,11 @@ pico_sdk_init()
 
 add_executable(slave_spi
     main.c
+    bus/bus.c
+)
+
+pico_generate_pio_header(slave_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
 )
 
 pico_generate_pio_header(slave_spi
@@ -36,6 +42,7 @@ target_link_libraries(slave_spi
     pico_stdlib
     hardware_clocks
     hardware_pio
+    hardware_gpio
 )
 
 pico_enable_stdio_usb(slave_spi 1)

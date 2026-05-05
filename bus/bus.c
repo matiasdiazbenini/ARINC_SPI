@@ -5,8 +5,396 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "manchester_tx.pio.h"
+#include "manchester_rx.pio.h"
 #endif
 #include "pico/stdlib.h"
+
+#define RX_PIO pio0
+#define RX_SM  1u
+
+#define SAMPLES_PER_BIT      12u
+#define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
+
+#define PN_IDLE    0x00u
+#define PN_HIGH    0x01u
+#define PN_LOW     0x02u
+#define PN_INVALID 0x03u
+
+#define CAPTURE_SAMPLES 2048u
+
+static uint32_t sample_word = 0;
+static int sample_index = 16;
+
+static bool rx_pio_initialized = false;
+static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
+
+static uint8_t get_sample_from_word(uint32_t raw, int index) {
+    const int shift = 30 - (index * 2);
+    return (uint8_t)((raw >> shift) & 0x03u);
+}
+
+static uint8_t read_sample(void) {
+    if (sample_index >= 16) {
+        sample_word = pio_sm_get_blocking(RX_PIO, RX_SM);
+        sample_index = 0;
+    }
+
+    uint8_t sample = get_sample_from_word(sample_word, sample_index);
+    sample_index++;
+
+    return sample;
+}
+
+static void capture_samples(uint8_t *buffer, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        buffer[i] = read_sample();
+    }
+}
+
+static uint8_t majority_range(const uint8_t *buffer, int start, int count) {
+    int h = 0;
+    int l = 0;
+
+    for (int i = start; i < start + count; i++) {
+        if (buffer[i] == PN_HIGH) {
+            h++;
+        } else if (buffer[i] == PN_LOW) {
+            l++;
+        }
+    }
+
+    if (h > l) {
+        return PN_HIGH;
+    }
+
+    if (l > h) {
+        return PN_LOW;
+    }
+
+    return PN_INVALID;
+}
+
+static bool decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit) {
+    const int half = SAMPLES_PER_BIT / 2;
+
+    uint8_t first = majority_range(buffer, start, half);
+    uint8_t second = majority_range(buffer, start + half, half);
+
+    if (first == PN_HIGH && second == PN_LOW) {
+        *bit = true;
+        return true;
+    }
+
+    if (first == PN_LOW && second == PN_HIGH) {
+        *bit = false;
+        return true;
+    }
+
+    return false;
+}
+
+static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte) {
+    uint8_t value = 0;
+
+    if (byte == NULL) {
+        return false;
+    }
+
+    for (int b = 0; b < 8; b++) {
+        bool bit = false;
+        int bit_start = start + b * SAMPLES_PER_BIT;
+
+        if (!decode_bit_at_phase(buffer, bit_start, &bit)) {
+            return false;
+        }
+
+        value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
+    }
+
+    *byte = value;
+    return true;
+}
+static bool find_byte_near(const uint8_t *samples,
+                           int center,
+                           int radius,
+                           uint8_t target,
+                           uint8_t *found_byte,
+                           int *found_offset) {
+    for (int delta = -radius; delta <= radius; delta++) {
+        int pos = center + delta;
+
+        if (pos < 0) {
+            continue;
+        }
+
+        if (pos + (8 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+            continue;
+        }
+
+        uint8_t b = 0;
+
+        if (decode_byte_at_phase(samples, pos, &b)) {
+            if (b == target) {
+                if (found_byte != NULL) {
+                    *found_byte = b;
+                }
+
+                if (found_offset != NULL) {
+                    *found_offset = pos;
+                }
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+static bool find_any_byte_near(const uint8_t *samples,
+                               int center,
+                               int radius,
+                               uint8_t *found_byte,
+                               int *found_offset) {
+    for (int delta = -radius; delta <= radius; delta++) {
+        int pos = center + delta;
+
+        if (pos < 0) {
+            continue;
+        }
+
+        if (pos + (8 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+            continue;
+        }
+
+        uint8_t b = 0;
+
+        if (decode_byte_at_phase(samples, pos, &b)) {
+            if (found_byte != NULL) {
+                *found_byte = b;
+            }
+
+            if (found_offset != NULL) {
+                *found_offset = pos;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
+}
+static bool bus_pio_read_frame_any(uint16_t *cmd, uint16_t data[], uint8_t wc) {
+    uint8_t samples[CAPTURE_SAMPLES];
+
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 20;
+
+    const int total_bytes = 1 + 2 + (wc * 2); // SYNC + CMD + DATA
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync)) {
+            continue;
+        }
+
+        if (sync != 0xF0u) {
+            continue;
+        }
+
+        uint8_t cmd_hi = 0;
+        uint8_t cmd_lo = 0;
+
+        int off_cmd_hi = -1;
+        int off_cmd_lo = -1;
+
+        bool ok_cmd_hi = find_any_byte_near(samples,
+                                            offset + 1 * byte_samples,
+                                            search_radius,
+                                            &cmd_hi,
+                                            &off_cmd_hi);
+
+        bool ok_cmd_lo = find_any_byte_near(samples,
+                                            offset + 2 * byte_samples,
+                                            search_radius,
+                                            &cmd_lo,
+                                            &off_cmd_lo);
+
+        if (!ok_cmd_hi || !ok_cmd_lo) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
+        }
+
+        bool all_data_ok = true;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            int off_hi = -1;
+            int off_lo = -1;
+
+            int hi_center = offset + (3 + i * 2) * byte_samples;
+            int lo_center = offset + (4 + i * 2) * byte_samples;
+
+            bool ok_hi = find_any_byte_near(samples,
+                                            hi_center,
+                                            search_radius,
+                                            &hi,
+                                            &off_hi);
+
+            bool ok_lo = find_any_byte_near(samples,
+                                            lo_center,
+                                            search_radius,
+                                            &lo,
+                                            &off_lo);
+
+            if (!ok_hi || !ok_lo) {
+                all_data_ok = false;
+                break;
+            }
+
+            if (data != NULL) {
+                data[i] = ((uint16_t)hi << 8) | lo;
+            }
+        }
+
+        if (all_data_ok) {
+            return true;
+        }
+    }
+
+    return false;
+}
+static bool bus_pio_read_frame(uint16_t *cmd, uint16_t data[], uint8_t wc) {
+    uint8_t samples[CAPTURE_SAMPLES];
+
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 20;
+
+    for (int offset = 0;
+         offset + ((3 + wc * 2) * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync)) {
+            continue;
+        }
+
+        if (sync != 0xF0u) {
+            continue;
+        }
+
+        uint8_t cmd_hi = 0;
+        uint8_t cmd_lo = 0;
+        int off_dummy = -1;
+
+        bool ok_cmd_hi = find_byte_near(samples,
+                                        offset + 1 * byte_samples,
+                                        search_radius,
+                                        0x18u,
+                                        &cmd_hi,
+                                        &off_dummy);
+
+        bool ok_cmd_lo = find_byte_near(samples,
+                                        offset + 2 * byte_samples,
+                                        search_radius,
+                                        0x23u,
+                                        &cmd_lo,
+                                        &off_dummy);
+
+        if (!ok_cmd_hi || !ok_cmd_lo) {
+            continue;
+        }
+
+        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        bool all_data_ok = true;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            uint8_t expected_hi = 0xA0u;
+            uint8_t expected_lo = i;
+
+            bool ok_hi = find_byte_near(samples,
+                                        offset + (3 + i * 2) * byte_samples,
+                                        search_radius,
+                                        expected_hi,
+                                        &hi,
+                                        &off_dummy);
+
+            bool ok_lo = find_byte_near(samples,
+                                        offset + (4 + i * 2) * byte_samples,
+                                        search_radius,
+                                        expected_lo,
+                                        &lo,
+                                        &off_dummy);
+
+            if (!ok_hi || !ok_lo) {
+                all_data_ok = false;
+                break;
+            }
+
+            if (data != NULL) {
+                data[i] = ((uint16_t)hi << 8) | lo;
+            }
+        }
+
+        if (all_data_ok) {
+            return true;
+        }
+    }
+
+    return false;
+}
+bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    return bus_pio_read_frame(cmd, data, wc);
+}
+static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
+    if (rx_pio_initialized) {
+        return;
+    }
+
+    uint offset = pio_add_program(pio, &manchester_rx_program);
+    pio_sm_config c = manchester_rx_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin_base);
+    sm_config_set_in_shift(&c, false, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    pio_gpio_init(pio, pin_base);
+    pio_gpio_init(pio, pin_base + 1u);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
+
+    const float sample_hz = 1000000.0f / (float)RX_SAMPLE_PERIOD_US;
+    const float clkdiv = (float)clock_get_hz(clk_sys) / sample_hz;
+
+    sm_config_set_clkdiv(&c, clkdiv);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+
+    rx_pio_initialized = true;
+}
 
 #if BUS_USE_PIO_TX
 static PIO bus_tx_pio = pio0;
