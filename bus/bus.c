@@ -340,12 +340,8 @@ uint8_t bus_compute_odd_parity(uint16_t word) {
 }
 void bus_send_word16(uint16_t word) {
 #if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-    bus_pio_take_tx_pins();
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
-
-    uint32_t v = ((uint32_t)word) << 16u;  // MSB first
-    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
+    bus_send_byte((uint8_t)((word >> 8) & 0xFFu));
+    bus_send_byte((uint8_t)(word & 0xFFu));
 #else
     for (int i = 15; i >= 0; i--) {
         bus_send_bit(((word >> i) & 1u) != 0u);
