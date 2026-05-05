@@ -12,11 +12,13 @@ int main(void) {
         bus_set_tx_mode();
 
         for (int i = 0; i < 100; i++) {
+            // Command/status sync + command word
             bus_send_byte(0xF0);
-
             bus_send_byte(0x18);
             bus_send_byte(0x23);
 
+            // Data sync + data words
+            bus_send_byte(0x0F);
             bus_send_byte(0xA0);
             bus_send_byte(0x00);
 
