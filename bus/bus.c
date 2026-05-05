@@ -509,7 +509,7 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
 
     const int byte_samples = 8 * SAMPLES_PER_BIT;
     const int word_samples = 16 * SAMPLES_PER_BIT;
-    const int search_radius = 20;
+    const int search_radius = 12;
 
     /*
      * F0 + CMD(2B) + 0F + DATA(wc*2B) + CHK(2B)
@@ -588,34 +588,49 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
 
         bool data_ok = true;
 
+        /*
+        * El primer dato debería empezar después del SYNC_DATA.
+        * Pero después de encontrar cada word, usamos su offset real
+        * para buscar el siguiente. Esto evita acumulación de desfase.
+        */
+        int next_word_center = off_sync_data + byte_samples;
+
         for (uint8_t i = 0; i < wc; i++) {
-            int center = off_sync_data + (1 + i * 2) * byte_samples;
             int off_word = -1;
 
             if (!find_any_word16_near(samples,
-                                      center,
-                                      search_radius,
-                                      &temp_data[i],
-                                      &off_word)) {
+                                    next_word_center,
+                                    search_radius,
+                                    &temp_data[i],
+                                    &off_word)) {
                 data_ok = false;
                 break;
             }
+
+            /*
+            * Próxima palabra: 16 bits después del offset real encontrado.
+            */
+            next_word_center = off_word + word_samples;
         }
 
         if (!data_ok) {
             continue;
         }
+
         dbg_data_ok++;
+
         uint16_t rx_chk = 0;
         int off_chk = -1;
 
-        int chk_center = off_sync_data + (1 + wc * 2) * byte_samples;
-
+        /*
+        * El checksum va después del último data word,
+        * usando el offset real encadenado.
+        */
         if (!find_any_word16_near(samples,
-                                  chk_center,
-                                  search_radius,
-                                  &rx_chk,
-                                  &off_chk)) {
+                                next_word_center,
+                                search_radius,
+                                &rx_chk,
+                                &off_chk)) {
             continue;
         }
 
@@ -1066,32 +1081,45 @@ static bool find_any_word16_near(const uint8_t *samples,
                                  int radius,
                                  uint16_t *word,
                                  int *found_offset) {
-    for (int delta = -radius; delta <= radius; delta++) {
-        int pos = center + delta;
+    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
+        for (int s = 0; s < 2; s++) {
+            int delta;
 
-        if (pos < 0) {
-            continue;
-        }
-
-        uint8_t hi = 0;
-        uint8_t lo = 0;
-
-        if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
-            continue;
-        }
-
-        if (decode_byte_at_phase(samples, pos, &hi) &&
-            decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
-
-            if (word != NULL) {
-                *word = ((uint16_t)hi << 8) | lo;
+            if (abs_delta == 0) {
+                if (s == 1) {
+                    continue;
+                }
+                delta = 0;
+            } else {
+                delta = (s == 0) ? -abs_delta : abs_delta;
             }
 
-            if (found_offset != NULL) {
-                *found_offset = pos;
+            int pos = center + delta;
+
+            if (pos < 0) {
+                continue;
             }
 
-            return true;
+            if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
+                continue;
+            }
+
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            if (decode_byte_at_phase(samples, pos, &hi) &&
+                decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
+
+                if (word != NULL) {
+                    *word = ((uint16_t)hi << 8) | lo;
+                }
+
+                if (found_offset != NULL) {
+                    *found_offset = pos;
+                }
+
+                return true;
+            }
         }
     }
 
