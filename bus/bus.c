@@ -368,6 +368,134 @@ bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
     return bus_pio_read_frame(cmd, data, wc);
 }
+bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    uint8_t samples[CAPTURE_SAMPLES];
+
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 20;
+
+    /*
+     * Paquete esperado:
+     *
+     * 0: 0xF0  -> SYNC CMD/STATUS
+     * 1: 0x18
+     * 2: 0x23
+     * 3: 0x0F  -> SYNC DATA
+     * 4: 0xA0
+     * 5: 0x00
+     * 6: 0xA0
+     * 7: 0x01
+     * 8: 0xA0
+     * 9: 0x02
+     *
+     * Total = 4 + wc*2 bytes
+     */
+    const int total_bytes = 4 + (wc * 2);
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_cmd = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
+            continue;
+        }
+
+        if (sync_cmd != 0xF0u) {
+            continue;
+        }
+
+        uint8_t cmd_hi = 0;
+        uint8_t cmd_lo = 0;
+        uint8_t sync_data = 0;
+
+        int off_dummy = -1;
+
+        bool ok_cmd_hi = find_byte_near(samples,
+                                        offset + 1 * byte_samples,
+                                        search_radius,
+                                        0x18u,
+                                        &cmd_hi,
+                                        &off_dummy);
+
+        bool ok_cmd_lo = find_byte_near(samples,
+                                        offset + 2 * byte_samples,
+                                        search_radius,
+                                        0x23u,
+                                        &cmd_lo,
+                                        &off_dummy);
+
+        bool ok_sync_data = find_byte_near(samples,
+                                           offset + 3 * byte_samples,
+                                           search_radius,
+                                           0x0Fu,
+                                           &sync_data,
+                                           &off_dummy);
+
+        if (!ok_cmd_hi || !ok_cmd_lo || !ok_sync_data) {
+            continue;
+        }
+
+        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        bool all_data_ok = true;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+
+            uint8_t expected_hi = 0xA0u;
+            uint8_t expected_lo = i;
+
+            /*
+             * Los datos ahora empiezan después de:
+             * F0 18 23 0F
+             *
+             * DATA0_H está en índice 4
+             * DATA0_L está en índice 5
+             */
+            int hi_center = offset + (4 + i * 2) * byte_samples;
+            int lo_center = offset + (5 + i * 2) * byte_samples;
+
+            bool ok_hi = find_byte_near(samples,
+                                        hi_center,
+                                        search_radius,
+                                        expected_hi,
+                                        &hi,
+                                        &off_dummy);
+
+            bool ok_lo = find_byte_near(samples,
+                                        lo_center,
+                                        search_radius,
+                                        expected_lo,
+                                        &lo,
+                                        &off_dummy);
+
+            if (!ok_hi || !ok_lo) {
+                all_data_ok = false;
+                break;
+            }
+
+            if (data != NULL) {
+                data[i] = ((uint16_t)hi << 8) | lo;
+            }
+        }
+
+        if (all_data_ok) {
+            return true;
+        }
+    }
+
+    return false;
+}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     if (rx_pio_initialized) {
         return;

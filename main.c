@@ -17,14 +17,14 @@ int main(void) {
         uint16_t cmd = 0;
         uint16_t data[3] = {0};
 
-        if (bus_read_test_frame_pio(&cmd, data, 3)) {
-            printf("FRAME_OK|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
-                   cmd,
-                   data[0],
-                   data[1],
-                   data[2]);
+        if (bus_read_test_packet_pio(&cmd, data, 3)) {
+            printf("PACKET_OK|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X\n",
+            cmd,
+            data[0],
+            data[1],
+            data[2]);
         } else {
-            printf("FRAME_NOT_FOUND\n");
+            printf("PACKET_NOT_FOUND\n");
         }
 
         sleep_ms(100);
