@@ -672,7 +672,10 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
     }
     return false;
 }
-bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t max_wc, uint8_t *rx_wc) {
+bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
+                                      uint16_t data[],
+                                      uint8_t max_wc,
+                                      uint8_t *rx_wc) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
 
     uint8_t samples[CAPTURE_SAMPLES];
@@ -695,7 +698,12 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
     int dbg_data = 0;
     int dbg_chk = 0;
 
-    if (max_wc == 0 || max_wc > 16) {
+    /*
+     * Para esta versión:
+     * WC = 1..max_wc.
+     * En 1553 real WC usa 5 bits: 1..31. Dejamos WC=0 reservado.
+     */
+    if (max_wc == 0 || max_wc > BUS_1553_MAX_DATA_WORDS) {
         return false;
     }
 
@@ -712,80 +720,135 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
         if (sync_cmd != 0xF0u) {
             continue;
         }
+
         dbg_f0++;
+
         /*
-         * CMD con formato 0x18XX:
-         * byte alto fijo 0x18
-         * byte bajo = WC
+         * Buscar:
+         *
+         * F0 CMD_H CMD_L 0F
+         *
+         * No aceptamos CMD_H/CMD_L si después no aparece SYNC_DATA 0x0F.
+         * Esto evita agarrar bytes falsos o corridos.
          */
         uint8_t cmd_hi = 0;
         uint8_t cmd_lo = 0;
+        uint8_t sync_data = 0;
 
         int off_cmd_hi = -1;
-
-        bool ok_cmd_hi = find_byte_near(samples,
-                                        offset + 1 * byte_samples,
-                                        search_radius,
-                                        0x18u,
-                                        &cmd_hi,
-                                        &off_cmd_hi);
-
-        if (!ok_cmd_hi) {
-            continue;
-        }
-        dbg_cmd_hi++;
-        /*
-         * El byte bajo del CMD puede ser variable.
-         * Buscamos cualquier byte decodificable cerca.
-         */
-        uint8_t wc = 0;
         int off_cmd_lo = -1;
-
-        uint8_t sync_data = 0;
         int off_sync_data = -1;
 
-        bool ok_cmd_lo_and_sync = false;
+        bool ok_cmd_and_sync = false;
 
-        /*
-        * Probamos cada WC posible, pero solo aceptamos el CMD_L si,
-        * usando su offset real, también aparece el SYNC_DATA 0x0F después.
-        */
-        for (uint8_t possible_wc = 1; possible_wc <= max_wc; possible_wc++) {
-            uint8_t candidate_cmd_lo = 0;
-            int candidate_off_cmd_lo = -1;
+        for (int delta_hi = -search_radius; delta_hi <= search_radius; delta_hi++) {
+            int candidate_off_cmd_hi = offset + byte_samples + delta_hi;
 
-            if (!find_byte_near(samples,
-                                offset + 2 * byte_samples,
-                                search_radius,
-                                possible_wc,
-                                &candidate_cmd_lo,
-                                &candidate_off_cmd_lo)) {
+            if (candidate_off_cmd_hi < 0) {
                 continue;
             }
 
-            uint8_t candidate_sync_data = 0;
-            int candidate_off_sync_data = -1;
-
-            if (!find_byte_near(samples,
-                                candidate_off_cmd_lo + byte_samples,
-                                search_radius,
-                                0x0Fu,
-                                &candidate_sync_data,
-                                &candidate_off_sync_data)) {
+            if (candidate_off_cmd_hi + byte_samples >= CAPTURE_SAMPLES) {
                 continue;
             }
 
-            cmd_lo = candidate_cmd_lo;
-            wc = possible_wc;
-            off_cmd_lo = candidate_off_cmd_lo;
-            sync_data = candidate_sync_data;
-            off_sync_data = candidate_off_sync_data;
+            uint8_t candidate_cmd_hi = 0;
 
-            ok_cmd_lo_and_sync = true;
-            break;
+            if (!decode_byte_at_phase(samples, candidate_off_cmd_hi, &candidate_cmd_hi)) {
+                continue;
+            }
+
+            dbg_cmd_hi++;
+
+            /*
+             * CMD_L debería estar un byte después de CMD_H.
+             * Lo buscamos cerca de esa posición.
+             */
+            for (int delta_lo = -search_radius; delta_lo <= search_radius; delta_lo++) {
+                int candidate_off_cmd_lo =
+                    candidate_off_cmd_hi + byte_samples + delta_lo;
+
+                if (candidate_off_cmd_lo < 0) {
+                    continue;
+                }
+
+                if (candidate_off_cmd_lo + byte_samples >= CAPTURE_SAMPLES) {
+                    continue;
+                }
+
+                uint8_t candidate_cmd_lo = 0;
+
+                if (!decode_byte_at_phase(samples,
+                                          candidate_off_cmd_lo,
+                                          &candidate_cmd_lo)) {
+                    continue;
+                }
+
+                uint16_t candidate_cmd =
+                    ((uint16_t)candidate_cmd_hi << 8) | candidate_cmd_lo;
+
+                uint8_t candidate_rt  = BUS_1553_CMD_RT(candidate_cmd);
+                uint8_t candidate_tr  = BUS_1553_CMD_TR(candidate_cmd);
+                uint8_t candidate_sub = BUS_1553_CMD_SUB(candidate_cmd);
+                uint8_t candidate_wc  = BUS_1553_CMD_WC(candidate_cmd);
+
+                /*
+                 * Validaciones básicas.
+                 * Para esta prueba esperamos:
+                 * RT = 3
+                 * TR = 0, BC -> RT
+                 * SUB = 2
+                 * WC = 1..max_wc
+                 */
+                if (candidate_wc == 0 || candidate_wc > max_wc) {
+                    continue;
+                }
+
+                if (candidate_tr != BUS_1553_TR_BC_TO_RT) {
+                    continue;
+                }
+
+                /*
+                 * Filtro de prueba.
+                 * Si después querés aceptar cualquier RT/SUB, comentá este if.
+                 */
+                if (candidate_rt != 3u || candidate_sub != 2u) {
+                    continue;
+                }
+
+                /*
+                 * Solo aceptamos este CMD si luego aparece SYNC_DATA 0x0F.
+                 */
+                uint8_t candidate_sync_data = 0;
+                int candidate_off_sync_data = -1;
+
+                if (!find_byte_near(samples,
+                                    candidate_off_cmd_lo + byte_samples,
+                                    search_radius,
+                                    0x0Fu,
+                                    &candidate_sync_data,
+                                    &candidate_off_sync_data)) {
+                    continue;
+                }
+
+                cmd_hi = candidate_cmd_hi;
+                cmd_lo = candidate_cmd_lo;
+                sync_data = candidate_sync_data;
+
+                off_cmd_hi = candidate_off_cmd_hi;
+                off_cmd_lo = candidate_off_cmd_lo;
+                off_sync_data = candidate_off_sync_data;
+
+                ok_cmd_and_sync = true;
+                break;
+            }
+
+            if (ok_cmd_and_sync) {
+                break;
+            }
         }
 
-        if (!ok_cmd_lo_and_sync) {
+        if (!ok_cmd_and_sync) {
             continue;
         }
 
@@ -793,11 +856,14 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
         dbg_sync_data++;
 
         uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-        uint16_t temp_data[16] = {0};
+        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
+
+        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
         bool data_ok = true;
 
         /*
-         * Leer DATA usando offsets encadenados.
+         * DATA empieza después de SYNC_DATA.
+         * Usamos offsets encadenados para evitar desfase acumulado.
          */
         int next_word_center = off_sync_data + byte_samples;
 
@@ -819,9 +885,11 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
         if (!data_ok) {
             continue;
         }
+
         dbg_data++;
+
         /*
-         * Leer checksum después del último dato.
+         * Checksum después del último dato.
          */
         uint16_t rx_chk = 0;
         int off_chk = -1;
@@ -833,7 +901,9 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
                                   &off_chk)) {
             continue;
         }
+
         dbg_chk++;
+
         uint16_t calc = rx_cmd;
 
         for (uint8_t i = 0; i < wc; i++) {
@@ -860,13 +930,18 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t ma
 
         return true;
     }
+
+    /*
+     * Debug temporal. Cuando funcione estable, podés comentarlo.
+     */
     printf("AUTO_DBG|F0=%d|CMD_H=%d|CMD_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
-       dbg_f0,
-       dbg_cmd_hi,
-       dbg_cmd_lo,
-       dbg_sync_data,
-       dbg_data,
-       dbg_chk);
+           dbg_f0,
+           dbg_cmd_hi,
+           dbg_cmd_lo,
+           dbg_sync_data,
+           dbg_data,
+           dbg_chk);
+
     return false;
 }
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
@@ -1239,6 +1314,11 @@ void bus_send_word16(uint16_t word) {
         bus_send_bit(((word >> i) & 1u) != 0u);
     }
 #endif
+}
+void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+    bus_send_byte(0xF0);
+    bus_send_word16(status);
 }
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);

@@ -4,7 +4,8 @@
 #include "pico/stdlib.h"
 #include "bus/bus.h"
 
-#define MAX_DATA_WORDS 31u
+#define MAX_DATA_WORDS 8u
+#define MY_RT_ADDR     3u
 
 int main(void) {
     stdio_init_all();
@@ -13,7 +14,7 @@ int main(void) {
     bus_init();
     bus_set_rx_mode();
 
-    printf("SLAVE RX 1553-LIKE PACKET TEST\n");
+    printf("SLAVE RT RX 1553-LIKE TEST\n");
 
     while (true) {
         uint16_t cmd = 0;
@@ -37,8 +38,24 @@ int main(void) {
             }
 
             printf("\n");
+
+            /*
+             * Si el comando era para este RT y era BC->RT,
+             * respondemos Status.
+             */
+            if (rt == MY_RT_ADDR && tr == BUS_1553_TR_BC_TO_RT) {
+                sleep_us(3000);      // pequeña guarda antes de responder
+                bus_set_tx_mode();
+
+                bus_send_status_word(MY_RT_ADDR, false);
+
+                bus_idle();
+                bus_set_rx_mode();
+
+                printf("STATUS_SENT|RT=%u|MSG_ERROR=0\n", MY_RT_ADDR);
+            }
         }
 
-        sleep_ms(50);
+        sleep_ms(20);
     }
 }
