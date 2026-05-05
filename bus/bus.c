@@ -129,11 +129,18 @@ void bus_set_tx_mode(void) {
 void bus_set_rx_mode(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
-        // 🔥 Esperar a que termine la transmisión
+        /*
+         * Esperar a que la FIFO se vacíe.
+         * Ojo: esto no garantiza que el último byte ya terminó físicamente.
+         */
         pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-        sleep_us(BIT_PERIOD_US);
 
-        // 🔻 recién ahora deshabilitar
+        /*
+         * Espera extra para que termine de salir el último byte.
+         * Cada byte son 8 bits, usamos margen de 10 bits.
+         */
+        sleep_us(10 * BIT_PERIOD_US);
+
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
 
@@ -147,9 +154,15 @@ void bus_set_rx_mode(void) {
 void bus_idle(void) {
 #if BUS_USE_PIO_TX
     if (bus_tx_pio_initialized) {
-        // 🔥 esperar fin de transmisión
+        /*
+         * Esperar a que la FIFO se vacíe.
+         */
         pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-        sleep_us(BIT_PERIOD_US);
+
+        /*
+         * Espera extra para no cortar el último byte.
+         */
+        sleep_us(10 * BIT_PERIOD_US);
 
         pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
     }
@@ -347,6 +360,11 @@ void bus_send_word16(uint16_t word) {
         bus_send_bit(((word >> i) & 1u) != 0u);
     }
 #endif
+}
+void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+    bus_send_byte(0xF0);
+    bus_send_word16(status);
 }
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);

@@ -41,6 +41,16 @@ extern "C" {
 
 #define BUS_1553_MAX_DATA_WORDS 31u
 
+#define BUS_1553_STATUS_MAKE(rt, msg_error) \
+    (uint16_t)((((uint16_t)(rt) & 0x1Fu) << 11) | \
+               (((uint16_t)(msg_error) & 0x01u) << 10))
+
+#define BUS_1553_STATUS_RT(status) \
+    (uint8_t)(((status) >> 11) & 0x1Fu)
+
+#define BUS_1553_STATUS_MSG_ERROR(status) \
+    (uint8_t)(((status) >> 10) & 0x01u)
+
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);
@@ -58,6 +68,9 @@ bool bus_read_sync(uint8_t *type);
 
 void bus_send_word16(uint16_t word);
 bool bus_read_word16(uint16_t *word);
+
+void bus_send_status_word(uint8_t rt_addr, bool msg_error);
+bool bus_read_status_word_pio(uint16_t *status);
 
 void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc);
 

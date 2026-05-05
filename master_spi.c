@@ -30,8 +30,16 @@ int main(void) {
     while (true) {
         bus_set_tx_mode();
 
-        for (int i = 0; i < 100; i++) {
-            bus_send_packet_checked(cmd, data, wc);
-        }
+        bus_send_packet_checked(cmd, data, wc);
+        sleep_us(20 * BIT_PERIOD_US);
+        bus_idle();
+
+        printf("BC_SENT|CMD=0x%04X\n", cmd);
+
+        /*
+         * Dejamos tiempo para que el RT responda status.
+         * Todavía no lo leemos en el BC.
+         */
+        sleep_ms(100);
     }
 }
