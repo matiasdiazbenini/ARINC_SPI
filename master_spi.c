@@ -16,60 +16,28 @@ int main(void) {
 
     const uint16_t cmd = BUS_1553_CMD_MAKE(
         rt_addr,
-        BUS_1553_TR_BC_TO_RT,
+        BUS_1553_TR_RT_TO_BC,
         subaddr,
         wc
     );
 
-    const uint16_t data[3] = {
-        0x1234,
-        0xABCD,
-        0x55AA
-    };
-
     while (true) {
         bus_set_tx_mode();
 
-        uint16_t chk_test = cmd;
+        printf("BC_TX_CMD|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u\n",
+               cmd,
+               BUS_1553_CMD_RT(cmd),
+               BUS_1553_CMD_TR(cmd),
+               BUS_1553_CMD_SUB(cmd),
+               BUS_1553_CMD_WC(cmd));
 
-        for (uint8_t i = 0; i < wc; i++) {
-            chk_test ^= data[i];
-        }
-
-        printf("BC_TX|CMD=0x%04X|WC=%u|CHK=0x%04X\n", cmd, wc, chk_test);
-
-        bus_send_packet_checked(cmd, data, wc);
+        bus_send_command_word(cmd);
 
         sleep_us(30 * BIT_PERIOD_US);
 
         bus_idle();
         bus_set_rx_mode();
 
-        printf("BC_SENT|CMD=0x%04X\n", cmd);
-
-        uint16_t status = 0;
-
-        bool status_ok = false;
-
-        for (int attempt = 0; attempt < 20; attempt++) {
-            if (bus_read_status_word_pio(&status)) {
-                status_ok = true;
-                break;
-            }
-
-            sleep_ms(10);
-        }
-
-        if (status_ok) {
-            uint8_t st_rt = BUS_1553_STATUS_RT(status);
-            uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-            printf("STATUS_OK|RAW=0x%04X|RT=%u|MSG_ERROR=%u\n",
-                status,
-                st_rt,
-                msg_error);
-        }
-
-        sleep_ms(100);
+        sleep_ms(200);
     }
 }
