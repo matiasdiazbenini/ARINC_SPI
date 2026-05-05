@@ -23,8 +23,6 @@ int main(void) {
                    data[0],
                    data[1],
                    data[2]);
-        } else {
-            printf("PACKET_NOT_FOUND\n");
         }
 
         sleep_ms(100);

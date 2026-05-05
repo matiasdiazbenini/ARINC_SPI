@@ -670,11 +670,6 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
 
         return true;
     }
-    printf("DBG|F0=%d|CMD=%d|DATA_SYNC=%d|DATA=%d\n",
-       dbg_sync_f0,
-       dbg_cmd_ok,
-       dbg_sync_data_ok,
-       dbg_data_ok);
     return false;
 }
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
