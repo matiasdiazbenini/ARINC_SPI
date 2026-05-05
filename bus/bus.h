@@ -43,6 +43,8 @@ bool bus_read_sync(uint8_t *type);
 void bus_send_word16(uint16_t word);
 bool bus_read_word16(uint16_t *word);
 
+void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc);
+
 uint8_t bus_compute_odd_parity(uint16_t word);
 void bus_send_word16_parity(uint16_t word);
 bool bus_read_word16_parity(uint16_t *word);

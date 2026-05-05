@@ -352,6 +352,23 @@ void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
     bus_send_bit(bus_compute_odd_parity(word) != 0u);
 }
+void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc) {
+    uint16_t chk = cmd;
+
+    bus_send_byte(0xF0);
+    bus_send_word16(cmd);
+
+    bus_send_byte(0x0F);
+
+    for (uint8_t i = 0; i < wc; i++) {
+        uint16_t word = data[i];
+
+        bus_send_word16(word);
+        chk ^= word;
+    }
+
+    bus_send_word16(chk);
+}
 
 bool bus_read_word16_parity(uint16_t *word) {
     uint16_t value = 0;
