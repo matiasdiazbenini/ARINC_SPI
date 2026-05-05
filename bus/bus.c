@@ -265,26 +265,41 @@ bool bus_read_status_word_pio(uint16_t *status) {
             continue;
         }
 
-        uint16_t rx_status = 0;
-        int off_status = -1;
+        uint8_t st_hi = 0;
+        uint8_t st_lo = 0;
 
-        if (!rx_find_any_word16_near(samples,
-                                     offset + byte_samples,
-                                     search_radius,
-                                     &rx_status,
-                                     &off_status)) {
-            continue;
-        }
-
-        uint8_t rt = BUS_1553_STATUS_RT(rx_status);
+        int off_st_hi = -1;
+        int off_st_lo = -1;
 
         /*
-         * Filtro básico: status válido de RT 1..31.
-         * Para tu prueba esperamos RT=3, pero lo dejamos general.
-         */
-        if (rt == 0 || rt > 31) {
+        * Para esta prueba esperamos RT=3 y MSG_ERROR=0.
+        * STATUS = 0x1800.
+        *
+        * Buscamos byte alto 0x18 y byte bajo 0x00.
+        */
+        bool ok_hi = rx_find_byte_near(samples,
+                                    offset + byte_samples,
+                                    search_radius,
+                                    0x18u,
+                                    &st_hi,
+                                    &off_st_hi);
+
+        if (!ok_hi) {
             continue;
         }
+
+        bool ok_lo = rx_find_byte_near(samples,
+                                    off_st_hi + byte_samples,
+                                    24,
+                                    0x00u,
+                                    &st_lo,
+                                    &off_st_lo);
+
+        if (!ok_lo) {
+            continue;
+        }
+
+        uint16_t rx_status = ((uint16_t)st_hi << 8) | st_lo;
 
         if (status != NULL) {
             *status = rx_status;
