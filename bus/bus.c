@@ -386,6 +386,13 @@ void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc) {
     }
 
     bus_send_word16(chk);
+
+    /*
+     * Postámbulo de margen.
+     * No pertenece al paquete. Solo evita que el checksum quede pegado
+     * al idle cuando el maestro suelta el bus.
+     */
+    bus_send_byte(0xAA);
 }
 
 bool bus_read_word16_parity(uint16_t *word) {

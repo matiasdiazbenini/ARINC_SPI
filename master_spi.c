@@ -31,7 +31,7 @@ int main(void) {
         bus_set_tx_mode();
 
         bus_send_packet_checked(cmd, data, wc);
-        sleep_us(20 * BIT_PERIOD_US);
+        sleep_us(30 * BIT_PERIOD_US);
         bus_idle();
 
         printf("BC_SENT|CMD=0x%04X\n", cmd);
