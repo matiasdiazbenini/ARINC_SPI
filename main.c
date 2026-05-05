@@ -44,10 +44,12 @@ int main(void) {
              * respondemos Status.
              */
             if (rt == MY_RT_ADDR && tr == BUS_1553_TR_BC_TO_RT) {
-                sleep_us(3000);      // pequeña guarda antes de responder
+                sleep_ms(80);      // pequeña guarda antes de responder
                 bus_set_tx_mode();
 
                 bus_send_status_word(MY_RT_ADDR, false);
+
+                sleep_us(20 * BIT_PERIOD_US);
 
                 bus_idle();
                 bus_set_rx_mode();
