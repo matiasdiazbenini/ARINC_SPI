@@ -20,7 +20,7 @@
 #define PN_LOW     0x02u
 #define PN_INVALID 0x03u
 
-#define CAPTURE_SAMPLES 2048u
+#define CAPTURE_SAMPLES 4096u
 
 static uint32_t sample_word = 0;
 static int sample_index = 16;
@@ -551,7 +551,7 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
         bool ok_cmd_lo = find_byte_near(samples,
                                         offset + 2 * byte_samples,
                                         search_radius,
-                                        0x23u,
+                                        0x03u,
                                         &cmd_lo,
                                         &off_cmd_lo);
 
@@ -670,6 +670,190 @@ bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
 
         return true;
     }
+    return false;
+}
+bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t max_wc, uint8_t *rx_wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_samples = 16 * SAMPLES_PER_BIT;
+    const int search_radius = 12;
+
+    /*
+     * Máximo esperado:
+     * F0 + CMD(2B) + 0F + DATA(max_wc*2B) + CHK(2B)
+     */
+    const int max_total_bytes = 1 + 2 + 1 + (max_wc * 2) + 2;
+
+    int dbg_f0 = 0;
+    int dbg_cmd_hi = 0;
+    int dbg_cmd_lo = 0;
+    int dbg_sync_data = 0;
+    int dbg_data = 0;
+    int dbg_chk = 0;
+
+    if (max_wc == 0 || max_wc > 16) {
+        return false;
+    }
+
+    for (int offset = 0;
+         offset + (max_total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_cmd = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
+            continue;
+        }
+
+        if (sync_cmd != 0xF0u) {
+            continue;
+        }
+        dbg_f0++;
+        /*
+         * CMD con formato 0x18XX:
+         * byte alto fijo 0x18
+         * byte bajo = WC
+         */
+        uint8_t cmd_hi = 0;
+        uint8_t cmd_lo = 0;
+
+        int off_cmd_hi = -1;
+        int off_cmd_lo = -1;
+
+        bool ok_cmd_hi = find_byte_near(samples,
+                                        offset + 1 * byte_samples,
+                                        search_radius,
+                                        0x18u,
+                                        &cmd_hi,
+                                        &off_cmd_hi);
+
+        if (!ok_cmd_hi) {
+            continue;
+        }
+        dbg_cmd_hi++;
+        /*
+         * El byte bajo del CMD puede ser variable.
+         * Buscamos cualquier byte decodificable cerca.
+         */
+        bool ok_cmd_lo = false;
+
+        for (uint8_t possible_wc = 1; possible_wc <= max_wc; possible_wc++) {
+            if (find_byte_near(samples,
+                            offset + 2 * byte_samples,
+                            search_radius,
+                            possible_wc,
+                            &cmd_lo,
+                            &off_cmd_lo)) {
+                ok_cmd_lo = true;
+                break;
+            }
+        }
+
+        if (!ok_cmd_lo) {
+            continue;
+        }
+        dbg_cmd_lo++;
+        uint8_t wc = cmd_lo;
+
+        if (wc == 0 || wc > max_wc) {
+            continue;
+        }
+
+        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
+
+        /*
+         * Buscar SYNC_DATA después del byte bajo real del CMD.
+         */
+        uint8_t sync_data = 0;
+        int off_sync_data = -1;
+
+        if (!find_byte_near(samples,
+                            off_cmd_lo + byte_samples,
+                            search_radius,
+                            0x0Fu,
+                            &sync_data,
+                            &off_sync_data)) {
+            continue;
+        }
+        dbg_sync_data++;
+        uint16_t temp_data[16] = {0};
+        bool data_ok = true;
+
+        /*
+         * Leer DATA usando offsets encadenados.
+         */
+        int next_word_center = off_sync_data + byte_samples;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            int off_word = -1;
+
+            if (!find_any_word16_near(samples,
+                                      next_word_center,
+                                      search_radius,
+                                      &temp_data[i],
+                                      &off_word)) {
+                data_ok = false;
+                break;
+            }
+
+            next_word_center = off_word + word_samples;
+        }
+
+        if (!data_ok) {
+            continue;
+        }
+        dbg_data++;
+        /*
+         * Leer checksum después del último dato.
+         */
+        uint16_t rx_chk = 0;
+        int off_chk = -1;
+
+        if (!find_any_word16_near(samples,
+                                  next_word_center,
+                                  search_radius,
+                                  &rx_chk,
+                                  &off_chk)) {
+            continue;
+        }
+        dbg_chk++;
+        uint16_t calc = rx_cmd;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            calc ^= temp_data[i];
+        }
+
+        if (calc != rx_chk) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        if (rx_wc != NULL) {
+            *rx_wc = wc;
+        }
+
+        if (data != NULL) {
+            for (uint8_t i = 0; i < wc; i++) {
+                data[i] = temp_data[i];
+            }
+        }
+
+        return true;
+    }
+    printf("AUTO_DBG|F0=%d|CMD_H=%d|CMD_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
+       dbg_f0,
+       dbg_cmd_hi,
+       dbg_cmd_lo,
+       dbg_sync_data,
+       dbg_data,
+       dbg_chk);
     return false;
 }
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
