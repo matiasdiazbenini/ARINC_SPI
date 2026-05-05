@@ -49,7 +49,18 @@ int main(void) {
 
         uint16_t status = 0;
 
-        if (bus_read_status_word_pio(&status)) {
+        bool status_ok = false;
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            if (bus_read_status_word_pio(&status)) {
+                status_ok = true;
+                break;
+            }
+
+            sleep_ms(20);
+        }
+
+        if (status_ok) {
             uint8_t st_rt = BUS_1553_STATUS_RT(status);
             uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
 

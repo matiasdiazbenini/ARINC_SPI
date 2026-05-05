@@ -235,6 +235,10 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
 bool bus_read_status_word_pio(uint16_t *status) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
 
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    rx_sample_index = 16;
+
     uint8_t samples[STATUS_CAPTURE_SAMPLES];
     rx_capture_samples(samples, STATUS_CAPTURE_SAMPLES);
 
