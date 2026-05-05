@@ -929,7 +929,7 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
         if (chk_dbg < 30) {
             chk_dbg++;
 
-            printf("CHK_DBG|CMD=0x%04X|WC=%u|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X|OFF_CHK=%d|CENTER=%d\n",
+            /*printf("CHK_DBG|CMD=0x%04X|WC=%u|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X|OFF_CHK=%d|CENTER=%d\n",
                 rx_cmd,
                 wc,
                 temp_data[0],
@@ -938,7 +938,7 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
                 rx_chk,
                 calc,
                 off_chk,
-                next_word_center);
+                next_word_center);*/
         }
 
         if (calc != rx_chk) {
@@ -965,13 +965,13 @@ bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
     /*
      * Debug temporal. Cuando funcione estable, podés comentarlo.
      */
-    printf("AUTO_DBG|F0=%d|CMD_H=%d|CMD_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
+    /*printf("AUTO_DBG|F0=%d|CMD_H=%d|CMD_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
            dbg_f0,
            dbg_cmd_hi,
            dbg_cmd_lo,
            dbg_sync_data,
            dbg_data,
-           dbg_chk);
+           dbg_chk);*/
 
     return false;
 }
@@ -1361,8 +1361,15 @@ void bus_send_word16(uint16_t word) {
 }
 void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
     uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+
     bus_send_byte(0xF0);
     bus_send_word16(status);
+
+    /*
+     * Postámbulo neutro para proteger el final del status.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
 }
 void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);

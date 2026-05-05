@@ -49,7 +49,7 @@ int main(void) {
 
                 bus_send_status_word(MY_RT_ADDR, false);
 
-                sleep_us(20 * BIT_PERIOD_US);
+                sleep_us(30 * BIT_PERIOD_US);
 
                 bus_idle();
                 bus_set_rx_mode();
