@@ -28,11 +28,22 @@ static bool bus_tx_pio_initialized = false;
 
 #define STATUS_CAPTURE_SAMPLES 4096u
 
+#define RX_RING_SIZE 8192u
+
+static uint8_t rx_ring[RX_RING_SIZE];
+static volatile uint32_t rx_ring_wr = 0;
+static bool rx_streaming = false;
+
 static uint32_t rx_sample_word = 0;
 static int rx_sample_index = 16;
 static bool rx_pio_initialized = false;
 
 void bus_send_command_word(uint16_t cmd);
+
+bool bus_read_status_word_pio(uint16_t *status);
+static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base);
+
 
 static uint8_t rx_get_sample_from_word(uint32_t raw, int index) {
     const int shift = 30 - (index * 2);
@@ -56,7 +67,51 @@ static void rx_capture_samples(uint8_t *buffer, uint32_t count) {
         buffer[i] = rx_read_sample();
     }
 }
+static void rx_ring_push(uint8_t sample) {
+    rx_ring[rx_ring_wr % RX_RING_SIZE] = sample;
+    rx_ring_wr++;
+}
 
+static void rx_service(void) {
+    /*
+     * Vacía todo lo que haya disponible en el FIFO RX del PIO
+     * y lo pasa al buffer circular.
+     */
+    while (!pio_sm_is_rx_fifo_empty(RX_PIO, RX_SM)) {
+        uint32_t raw = pio_sm_get(RX_PIO, RX_SM);
+
+        for (int i = 0; i < 16; i++) {
+            uint8_t sample = rx_get_sample_from_word(raw, i);
+            rx_ring_push(sample);
+        }
+    }
+}
+
+static void rx_get_recent_samples(uint8_t *dst, uint32_t count) {
+    rx_service();
+
+    if (count > RX_RING_SIZE) {
+        count = RX_RING_SIZE;
+    }
+
+    uint32_t wr = rx_ring_wr;
+
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t src_index = wr - count + i;
+        dst[i] = rx_ring[src_index % RX_RING_SIZE];
+    }
+}
+void bus_rx_stream_start(void) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
+
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+
+    rx_sample_index = 16;
+    rx_ring_wr = 0;
+    rx_streaming = true;
+}
 static uint8_t rx_majority_range(const uint8_t *buffer, int start, int count) {
     int h = 0;
     int l = 0;
@@ -328,16 +383,12 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
                                       uint16_t data[],
                                       uint8_t expected_wc) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    /*
-     * Asegurar que los pines estén conectados al RX PIO.
-     * Después de bus_idle()/bus_set_rx_mode() pueden haber quedado en SIO.
-     */
     rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
     /*
-     * Limpiar muestras viejas. El maestro pudo capturar su propio TX.
-     */
+    * Limpiar muestras viejas justo antes de capturar.
+    * Esta captura empieza apenas el maestro pasó a RX.
+    */
     pio_sm_clear_fifos(RX_PIO, RX_SM);
     pio_sm_restart(RX_PIO, RX_SM);
     rx_sample_index = 16;
@@ -350,8 +401,11 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
     const int search_radius = 12;
 
     /*
-     * Esperamos:
+     * Esperamos, idealmente:
+     *
      * F0 + STATUS(2B) + 0F + DATA(expected_wc*2B) + CHK(2B)
+     *
+     * Pero no vamos a confiar rígidamente en el offset del 0x0F.
      */
     const int total_bytes = 1 + 2 + 1 + (expected_wc * 2) + 2;
 
@@ -379,7 +433,9 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
         if (sync_status != 0xF0u) {
             continue;
         }
+
         dbg_f0++;
+
         /*
          * Para esta prueba esperamos STATUS=0x1800:
          * RT=3, MSG_ERROR=0.
@@ -398,7 +454,9 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
                                &off_st_hi)) {
             continue;
         }
+
         dbg_st_hi++;
+
         if (!rx_find_byte_near(samples,
                                off_st_hi + byte_samples,
                                24,
@@ -407,72 +465,121 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
                                &off_st_lo)) {
             continue;
         }
+
         dbg_st_lo++;
+
         uint16_t rx_status = ((uint16_t)st_hi << 8) | st_lo;
 
-        uint8_t sync_data = 0;
-        int off_sync_data = -1;
+        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+bool packet_ok = false;
 
-        if (!rx_find_byte_near(samples,
-                               off_st_lo + byte_samples,
-                               24,
-                               0x0Fu,
-                               &sync_data,
-                               &off_sync_data)) {
+/*
+ * Buscamos posibles SYNC_DATA = 0x0F después del STATUS.
+ * Para cada SYNC_DATA, buscamos DATA y CHK con tolerancia.
+ */
+int sync_search_start = off_st_lo + byte_samples - 96;
+int sync_search_end   = off_st_lo + (4 * byte_samples) + 96;
+
+for (int sync_pos = sync_search_start; sync_pos <= sync_search_end; sync_pos++) {
+    if (sync_pos < 0) {
+        continue;
+    }
+
+    if (sync_pos + byte_samples >= STATUS_CAPTURE_SAMPLES) {
+        continue;
+    }
+
+    uint8_t candidate_sync = 0;
+
+    if (!rx_decode_byte_at_phase(samples, sync_pos, &candidate_sync)) {
+        continue;
+    }
+
+    if (candidate_sync != 0x0Fu) {
+        continue;
+    }
+
+    dbg_sync_data++;
+
+    /*
+     * Ahora probamos varios centros para DATA0.
+     */
+    for (int delta0 = -96; delta0 <= 96; delta0++) {
+        int next_word_center = sync_pos + byte_samples + delta0;
+
+        if (next_word_center < 0) {
             continue;
         }
-        dbg_sync_data++;
-        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+
         bool data_ok = true;
+        uint16_t candidate_data[BUS_1553_MAX_DATA_WORDS] = {0};
 
-        int next_word_center = off_sync_data + byte_samples;
-
+        /*
+         * Leer DATA con búsqueda flexible, encadenando offsets reales.
+         */
         for (uint8_t i = 0; i < expected_wc; i++) {
             int off_word = -1;
 
             if (!rx_find_any_word16_near(samples,
                                          next_word_center,
-                                         search_radius,
-                                         &temp_data[i],
+                                         48,
+                                         &candidate_data[i],
                                          &off_word)) {
                 data_ok = false;
                 break;
             }
-            
+
             next_word_center = off_word + word_samples;
         }
 
         if (!data_ok) {
             continue;
         }
+
         dbg_data++;
+
+        /*
+         * Leer checksum con búsqueda flexible después del último DATA.
+         */
         uint16_t rx_chk = 0;
         int off_chk = -1;
 
         if (!rx_find_any_word16_near(samples,
                                      next_word_center,
-                                     24,
+                                     48,
                                      &rx_chk,
                                      &off_chk)) {
             continue;
         }
+
         dbg_chk++;
+
         uint16_t calc = rx_status;
 
         for (uint8_t i = 0; i < expected_wc; i++) {
-            calc ^= temp_data[i];
+            calc ^= candidate_data[i];
         }
 
         if (calc != rx_chk) {
-            printf("RTDATA_CHK_DBG|STATUS=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X\n",
-                   rx_status,
-                   temp_data[0],
-                   temp_data[1],
-                   temp_data[2],
-                   rx_chk,
-                   calc);
             continue;
         }
+
+        for (uint8_t i = 0; i < expected_wc; i++) {
+            temp_data[i] = candidate_data[i];
+        }
+
+        packet_ok = true;
+        break;
+    }
+
+    if (packet_ok) {
+        break;
+    }
+}
+
+if (!packet_ok) {
+    continue;
+}
 
         if (status != NULL) {
             *status = rx_status;
@@ -486,13 +593,15 @@ bool bus_read_status_data_checked_pio(uint16_t *status,
 
         return true;
     }
-    printf("RTDATA_DBG|F0=%d|ST_H=%d|ST_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
-       dbg_f0,
-       dbg_st_hi,
-       dbg_st_lo,
-       dbg_sync_data,
-       dbg_data,
-       dbg_chk);
+
+    /*printf("RTDATA_DBG|F0=%d|ST_H=%d|ST_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
+           dbg_f0,
+           dbg_st_hi,
+           dbg_st_lo,
+           dbg_sync_data,
+           dbg_data,
+           dbg_chk);*/
+
     return false;
 }
 static void bus_pio_take_tx_pins(void) {

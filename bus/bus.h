@@ -41,6 +41,8 @@ extern "C" {
 
 #define BUS_1553_MAX_DATA_WORDS 31u
 
+void bus_rx_stream_start(void);
+
 #define BUS_1553_STATUS_MAKE(rt, msg_error) \
     (uint16_t)((((uint16_t)(rt) & 0x1Fu) << 11) | \
                (((uint16_t)(msg_error) & 0x01u) << 10))
