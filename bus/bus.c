@@ -1628,3 +1628,392 @@ bool bus_read_command_word_pio(uint16_t *cmd) {
 
     return false;
 }
+void bus_send_command_word_parity(uint16_t cmd) {
+    /*
+     * Sync de comando/status.
+     * Todavía usamos 0xF0 como sync simplificado.
+     */
+    bus_send_byte(0xF0);
+
+    /*
+     * Command Word + paridad impar.
+     */
+    bus_send_word16_parity(cmd);
+
+    /*
+     * Postámbulo neutro.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+void bus_send_packet_parity(uint16_t cmd,
+                            const uint16_t data[],
+                            uint8_t wc) {
+    /*
+     * Sync de Command Word.
+     */
+    bus_send_byte(0xF0);
+
+    /*
+     * Command Word + paridad.
+     */
+    bus_send_word16_parity(cmd);
+
+    /*
+     * Sync de Data Words.
+     */
+    bus_send_byte(0x0F);
+
+    /*
+     * Data Words + paridad individual.
+     */
+    for (uint8_t i = 0; i < wc; i++) {
+        bus_send_word16_parity(data[i]);
+    }
+
+    /*
+     * Postámbulo neutro.
+     * Ya no mandamos checksum global.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+void bus_send_status_word_parity(uint8_t rt_addr,
+                                 bool msg_error) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+
+    /*
+     * Sync de status.
+     */
+    bus_send_byte(0xF0);
+
+    /*
+     * Status Word + paridad.
+     */
+    bus_send_word16_parity(status);
+
+    /*
+     * Postámbulo neutro.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+void bus_send_status_data_parity(uint8_t rt_addr,
+                                 bool msg_error,
+                                 const uint16_t data[],
+                                 uint8_t wc) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+
+    /*
+     * Sync de status.
+     */
+    bus_send_byte(0xF0);
+
+    /*
+     * Status Word + paridad.
+     */
+    bus_send_word16_parity(status);
+
+    /*
+     * Sync de data.
+     */
+    bus_send_byte(0x0F);
+
+    /*
+     * Data Words + paridad individual.
+     */
+    for (uint8_t i = 0; i < wc; i++) {
+        bus_send_word16_parity(data[i]);
+    }
+
+    /*
+     * Postámbulo neutro.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+static bool find_any_word16_parity_near(const uint8_t *samples,
+                                        int center,
+                                        int radius,
+                                        uint16_t *word,
+                                        int *found_offset) {
+    const int word_bits = 24;
+    const int word_samples = word_bits * SAMPLES_PER_BIT;
+
+    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
+        for (int s = 0; s < 2; s++) {
+            int delta;
+
+            if (abs_delta == 0) {
+                if (s == 1) {
+                    continue;
+                }
+
+                delta = 0;
+            } else {
+                delta = (s == 0) ? -abs_delta : abs_delta;
+            }
+
+            int pos = center + delta;
+
+            if (pos < 0) {
+                continue;
+            }
+
+            if (pos + word_samples >= CAPTURE_SAMPLES) {
+                continue;
+            }
+
+            uint8_t hi = 0;
+            uint8_t lo = 0;
+            bool parity_bit = false;
+
+            if (!decode_byte_at_phase(samples, pos, &hi)) {
+                continue;
+            }
+
+            if (!decode_byte_at_phase(samples,
+                                      pos + 8 * SAMPLES_PER_BIT,
+                                      &lo)) {
+                continue;
+            }
+
+            if (!decode_bit_at_phase(samples,
+                                     pos + 16 * SAMPLES_PER_BIT,
+                                     &parity_bit)) {
+                continue;
+            }
+
+            uint16_t w = ((uint16_t)hi << 8) | lo;
+            uint8_t expected_parity = bus_compute_odd_parity(w);
+            uint8_t rx_parity = parity_bit ? 1u : 0u;
+
+            if (rx_parity != expected_parity) {
+                continue;
+            }
+
+            if (word != NULL) {
+                *word = w;
+            }
+
+            if (found_offset != NULL) {
+                *found_offset = pos;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
+}
+bool bus_read_packet_parity_pio(uint16_t *cmd,
+                                uint16_t data[],
+                                uint8_t max_wc,
+                                uint8_t *out_wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
+    const int search_radius = 24;
+
+    /*
+     * Formato esperado:
+     *
+     * F0
+     * CMD + PARITY
+     * 0F
+     * DATA0 + PARITY
+     * DATA1 + PARITY
+     * ...
+     */
+
+    for (int offset = 0;
+         offset + (3 * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_cmd = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
+            continue;
+        }
+
+        if (sync_cmd != 0xF0u) {
+            continue;
+        }
+
+        uint16_t rx_cmd = 0;
+        int off_cmd = -1;
+
+        if (!find_any_word16_parity_near(samples,
+                                         offset + byte_samples,
+                                         search_radius,
+                                         &rx_cmd,
+                                         &off_cmd)) {
+            continue;
+        }
+
+        uint8_t rt = BUS_1553_CMD_RT(rx_cmd);
+        uint8_t tr = BUS_1553_CMD_TR(rx_cmd);
+        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
+
+        if (rt == 0u || rt > 31u) {
+            continue;
+        }
+
+        if (wc == 0u || wc > max_wc) {
+            continue;
+        }
+
+        /*
+         * Esta función es para TR=0:
+         * BC transmite datos al RT.
+         */
+        if (tr != BUS_1553_TR_BC_TO_RT) {
+            continue;
+        }
+
+        uint8_t sync_data = 0;
+        int off_sync_data = -1;
+
+        /*
+         * Buscar 0F después del command word con paridad.
+         */
+        int expected_sync_data = off_cmd + word_parity_samples;
+
+        bool found_sync_data = false;
+
+        for (int delta = -48; delta <= 48; delta++) {
+            int pos = expected_sync_data + delta;
+
+            if (pos < 0) {
+                continue;
+            }
+
+            if (pos + byte_samples >= CAPTURE_SAMPLES) {
+                continue;
+            }
+
+            if (!decode_byte_at_phase(samples, pos, &sync_data)) {
+                continue;
+            }
+
+            if (sync_data == 0x0Fu) {
+                off_sync_data = pos;
+                found_sync_data = true;
+                break;
+            }
+        }
+
+        if (!found_sync_data) {
+            continue;
+        }
+
+        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+        bool data_ok = true;
+
+        int next_word_center = off_sync_data + byte_samples;
+
+        for (uint8_t i = 0; i < wc; i++) {
+            int off_word = -1;
+
+            if (!find_any_word16_parity_near(samples,
+                                             next_word_center,
+                                             search_radius,
+                                             &temp_data[i],
+                                             &off_word)) {
+                data_ok = false;
+                break;
+            }
+
+            next_word_center = off_word + word_parity_samples;
+        }
+
+        if (!data_ok) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        if (data != NULL) {
+            for (uint8_t i = 0; i < wc; i++) {
+                data[i] = temp_data[i];
+            }
+        }
+
+        if (out_wc != NULL) {
+            *out_wc = wc;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool bus_read_command_word_parity_pio(uint16_t *cmd) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius = 24;
+
+    /*
+     * Formato esperado:
+     *
+     * F0
+     * CMD + PARITY
+     */
+    const int total_bytes = 1 + 3;
+
+    for (int offset = 0;
+         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync)) {
+            continue;
+        }
+
+        if (sync != 0xF0u) {
+            continue;
+        }
+
+        uint16_t rx_cmd = 0;
+        int off_cmd = -1;
+
+        if (!find_any_word16_parity_near(samples,
+                                         offset + byte_samples,
+                                         search_radius,
+                                         &rx_cmd,
+                                         &off_cmd)) {
+            continue;
+        }
+
+        uint8_t rt = BUS_1553_CMD_RT(rx_cmd);
+        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
+
+        if (rt == 0u || rt > 31u) {
+            continue;
+        }
+
+        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+            continue;
+        }
+
+        if (cmd != NULL) {
+            *cmd = rx_cmd;
+        }
+
+        return true;
+    }
+
+    return false;
+}

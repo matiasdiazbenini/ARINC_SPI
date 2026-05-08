@@ -7,6 +7,34 @@
 #define MY_RT_ADDR      3u
 #define MAX_DATA_WORDS  8u
 
+#define SUB_DATA        2u
+#define SUB_STATUS      3u
+#define SUB_DIAG        4u
+
+static bool rt_is_valid_subaddress(uint8_t sub) {
+    switch (sub) {
+        case SUB_DATA:
+        case SUB_STATUS:
+        case SUB_DIAG:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool rt_is_valid_wc(uint8_t wc) {
+    if (wc == 0u) {
+        return false;
+    }
+
+    if (wc > MAX_DATA_WORDS) {
+        return false;
+    }
+
+    return true;
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1200);
@@ -39,7 +67,7 @@ int main(void) {
         uint16_t rx_data[MAX_DATA_WORDS] = {0};
         uint8_t wc = 0;
 
-        if (bus_read_packet_checked_auto_pio(&cmd,
+        if (bus_read_packet_parity_pio(&cmd,
                                              rx_data,
                                              MAX_DATA_WORDS,
                                              &wc)) {
@@ -48,34 +76,43 @@ int main(void) {
             uint8_t sub = BUS_1553_CMD_SUB(cmd);
 
             if (rt == MY_RT_ADDR && tr == BUS_1553_TR_BC_TO_RT) {
-                printf("BC_TO_RT_OK|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
-                       cmd,
-                       rt,
-                       tr,
-                       sub,
-                       wc);
+                bool msg_error = false;
+
+                if (!rt_is_valid_subaddress(sub)) {
+                    msg_error = true;
+                }
+
+                if (!rt_is_valid_wc(wc)) {
+                    msg_error = true;
+                }
+
+                printf("BC_TO_RT_PARITY_OK|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
+                    cmd,
+                    rt,
+                    tr,
+                    sub,
+                    wc);
 
                 for (uint8_t i = 0; i < wc; i++) {
                     printf("|D%u=0x%04X", i, rx_data[i]);
                 }
 
-                printf("\n");
+                printf("|MSG_ERROR=%u\n", msg_error ? 1u : 0u);
 
-                /*
-                 * Responder STATUS.
-                 */
                 sleep_us(3000);
 
                 bus_set_tx_mode();
 
-                bus_send_status_word(MY_RT_ADDR, false);
+                bus_send_status_word_parity(MY_RT_ADDR, msg_error);
 
                 sleep_us(30 * BIT_PERIOD_US);
 
                 bus_idle();
                 bus_set_rx_mode();
 
-                printf("STATUS_SENT|RT=%u|MSG_ERROR=0\n", MY_RT_ADDR);
+                printf("STATUS_PARITY_SENT|RT=%u|MSG_ERROR=%u\n",
+                    MY_RT_ADDR,
+                    msg_error ? 1u : 0u);
             }
 
             sleep_ms(20);
@@ -96,55 +133,80 @@ int main(void) {
          */
         cmd = 0;
 
-        if (bus_read_command_word_pio(&cmd)) {
+        if (bus_read_command_word_parity_pio(&cmd)) {
             uint8_t rt  = BUS_1553_CMD_RT(cmd);
             uint8_t tr  = BUS_1553_CMD_TR(cmd);
             uint8_t sub = BUS_1553_CMD_SUB(cmd);
             wc          = BUS_1553_CMD_WC(cmd);
 
             if (rt == MY_RT_ADDR && tr == BUS_1553_TR_RT_TO_BC) {
-                printf("RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u\n",
-                       cmd,
-                       rt,
-                       tr,
-                       sub,
-                       wc);
+                bool msg_error = false;
 
-                /*
-                 * Para esta prueba, solo tenemos 3 palabras disponibles.
-                 */
-                uint8_t tx_wc = wc;
-
-                if (tx_wc > 3u) {
-                    tx_wc = 3u;
+                if (!rt_is_valid_subaddress(sub)) {
+                    msg_error = true;
                 }
 
+                if (!rt_is_valid_wc(wc)) {
+                    msg_error = true;
+                }
+
+                printf("RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|MSG_ERROR=%u\n",
+                    cmd,
+                    rt,
+                    tr,
+                    sub,
+                    wc,
+                    msg_error ? 1u : 0u);
+
                 /*
-                 * Guarda para que el BC pase a RX.
-                 */
+                * Guarda para que el BC pase a RX.
+                */
                 sleep_us(3000);
 
                 bus_set_tx_mode();
 
-                bus_send_status_data_checked(MY_RT_ADDR,
-                                             false,
-                                             rt_tx_data,
-                                             tx_wc);
+                if (msg_error) {
+                    /*
+                    * Si hay error, respondemos solo STATUS con MSG_ERROR=1.
+                    */
+                    bus_send_status_word_parity(MY_RT_ADDR, true);
 
-                sleep_us(30 * BIT_PERIOD_US);
+                    sleep_us(30 * BIT_PERIOD_US);
 
-                bus_idle();
-                bus_set_rx_mode();
+                    bus_idle();
+                    bus_set_rx_mode();
 
-                printf("STATUS_DATA_SENT|RT=%u|WC=%u",
-                       MY_RT_ADDR,
-                       tx_wc);
+                    printf("STATUS_SENT|RT=%u|MSG_ERROR=1\n", MY_RT_ADDR);
+                } else {
+                    /*
+                    * Si está todo bien, respondemos STATUS + DATA.
+                    */
+                    uint8_t tx_wc = wc;
 
-                for (uint8_t i = 0; i < tx_wc; i++) {
-                    printf("|D%u=0x%04X", i, rt_tx_data[i]);
+                    if (tx_wc > 3u) {
+                        tx_wc = 3u;
+                    }
+
+                    bus_send_status_data_parity(MY_RT_ADDR,
+                            false,
+                            rt_tx_data,
+                            tx_wc);
+
+                    sleep_us(30 * BIT_PERIOD_US);
+
+                    bus_idle();
+                    bus_set_rx_mode();
+
+                    printf("STATUS_DATA_SENT|RT=%u|WC=%u",
+                        MY_RT_ADDR,
+                        tx_wc);
+
+                    for (uint8_t i = 0; i < tx_wc; i++) {
+                        printf("|D%u=0x%04X", i, rt_tx_data[i]);
+                    }
+
+                    printf("\n");
                 }
-
-                printf("\n");
             }
 
             sleep_ms(20);
