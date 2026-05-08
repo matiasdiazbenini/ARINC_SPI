@@ -10,25 +10,30 @@ int main(void) {
 
     bus_init();
 
-    /*
-     * Arrancamos RX continuo una vez al inicio.
-     */
-
     const uint8_t rt_addr = 3;
     const uint8_t subaddr = 2;
     const uint8_t wc = 3;
 
+    /*
+     * TR=0: BC transmite datos al RT.
+     */
     const uint16_t cmd = BUS_1553_CMD_MAKE(
         rt_addr,
-        BUS_1553_TR_RT_TO_BC,
+        BUS_1553_TR_BC_TO_RT,
         subaddr,
         wc
     );
 
+    const uint16_t tx_data[3] = {
+        0x1234,
+        0xABCD,
+        0x55AA
+    };
+
     while (true) {
         bus_set_tx_mode();
 
-        bus_send_command_word(cmd);
+        bus_send_packet_checked(cmd, tx_data, wc);
 
         sleep_us(50 * BIT_PERIOD_US);
 
@@ -36,31 +41,24 @@ int main(void) {
         bus_set_rx_mode();
 
         uint16_t status = 0;
-        uint16_t rx_data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool response_ok = false;
+        bool status_ok = false;
 
-        for (int attempt = 0; attempt < 5; attempt++) {
-            if (bus_read_status_data_checked_pio(&status, rx_data, wc)) {
-                response_ok = true;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (bus_read_status_word_pio(&status)) {
+                status_ok = true;
                 break;
             }
 
-            sleep_ms(5);
+            sleep_ms(10);
         }
 
-        if (response_ok) {
-            printf("RT_DATA_OK|STATUS=0x%04X|RT=%u|MSG_ERROR=%u",
-                status,
-                BUS_1553_STATUS_RT(status),
-                BUS_1553_STATUS_MSG_ERROR(status));
-
-            for (uint8_t i = 0; i < wc; i++) {
-                printf("|D%u=0x%04X", i, rx_data[i]);
-            }
-
-            printf("\n");
+        if (status_ok) {
+            printf("STATUS_OK|RAW=0x%04X|RT=%u|MSG_ERROR=%u\n",
+                   status,
+                   BUS_1553_STATUS_RT(status),
+                   BUS_1553_STATUS_MSG_ERROR(status));
         }
 
-        sleep_ms(100);
+        sleep_ms(200);
     }
 }
