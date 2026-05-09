@@ -1,0 +1,45 @@
+.program manchester_tx
+
+.side_set 2 opt
+
+; TX Manchester por BYTE.
+; side 1 = 01 = P=1,N=0 = H
+; side 2 = 10 = P=0,N=1 = L
+;
+; bit 1 = H -> L
+; bit 0 = L -> H
+;
+; Importante:
+; La segunda mitad usa menos delay porque los jmp/out siguientes
+; mantienen el último side y también cuentan como tiempo de esa mitad.
+
+.wrap_target
+    pull block
+    set y, 7
+
+bitloop:
+    out x, 1
+    jmp !x bit_zero
+
+bit_one:
+    ; Primera mitad H: 8 ciclos
+    nop side 1 [3]
+    nop side 1 [3]
+
+    ; Segunda mitad L: 4 ciclos + overhead del loop
+    nop side 2 [3]
+    jmp next_bit
+
+bit_zero:
+    ; Primera mitad L: 8 ciclos
+    nop side 2 [3]
+    nop side 2 [3]
+
+    ; Segunda mitad H: 4 ciclos + overhead del loop
+    nop side 1 [3]
+    jmp next_bit
+
+next_bit:
+    jmp y-- bitloop
+
+.wrap

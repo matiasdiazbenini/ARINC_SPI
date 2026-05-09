@@ -12,6 +12,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
+
 cmake_minimum_required(VERSION 3.13)
 
 set(PICO_BOARD pico2_w)
@@ -23,6 +24,7 @@ else()
 endif()
 
 project(sniffer_mil C CXX ASM)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -34,9 +36,28 @@ add_executable(sniffer_mil
     mil1553_words.c
 )
 
+# Generar headers de PIO.
+# Si tu bus.c incluye "manchester_rx.pio.h", esto es obligatorio.
+pico_generate_pio_header(sniffer_mil
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
+)
+
+# Si tu bus.c también incluye "manchester_tx.pio.h",
+# dejá también esta línea. Si no lo incluye, podés comentarla.
+pico_generate_pio_header(sniffer_mil
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
+)
+
 target_link_libraries(sniffer_mil
     pico_stdlib
     hardware_clocks
+    hardware_pio
+    hardware_gpio
+)
+
+target_include_directories(sniffer_mil PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/bus
 )
 
 pico_enable_stdio_usb(sniffer_mil 1)

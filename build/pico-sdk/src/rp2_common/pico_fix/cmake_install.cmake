@@ -39,12 +39,12 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("C:/Users/User/ARINC_SPI/build/pico-sdk/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/cmake_install.cmake")
+  include("C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/pico-sdk/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/cmake_install.cmake")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/User/ARINC_SPI/build/pico-sdk/src/rp2_common/pico_fix/install_local_manifest.txt"
+  file(WRITE "C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/pico-sdk/src/rp2_common/pico_fix/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

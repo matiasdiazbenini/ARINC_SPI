@@ -11,18 +11,96 @@ extern "C" {
 #define BUS_PIN_P 2u
 #define BUS_PIN_N 3u
 
-#define BIT_PERIOD_US 40000u
+#define BIT_PERIOD_US 1000u
+// 1 = TX por PIO (reversible); 0 = TX por software original.
+// RX se mantiene en software en ambos casos.
+#define BUS_USE_PIO_TX 1
 
 #define SYNC_CMD_STATUS 0xF0u
 #define SYNC_DATA       0x0Fu
 
+#define SYNC_PREAMBLE_BYTE 0xAAu
+#define SYNC_PREAMBLE_COUNT 2u
 #define BUS_SYNC_TYPE_CMD_STATUS 1u
 #define BUS_SYNC_TYPE_DATA       2u
+
+#define BUS_1553_CMD_MAKE(rt, tr, sub, wc) \
+    (uint16_t)((((uint16_t)(rt)  & 0x1Fu) << 11) | \
+               (((uint16_t)(tr)  & 0x01u) << 10) | \
+               (((uint16_t)(sub) & 0x1Fu) << 5)  | \
+               ((uint16_t)(wc)   & 0x1Fu))
+
+#define BUS_1553_CMD_RT(cmd)   (uint8_t)(((cmd) >> 11) & 0x1Fu)
+#define BUS_1553_CMD_TR(cmd)   (uint8_t)(((cmd) >> 10) & 0x01u)
+#define BUS_1553_CMD_SUB(cmd)  (uint8_t)(((cmd) >> 5)  & 0x1Fu)
+#define BUS_1553_CMD_WC(cmd)   (uint8_t)((cmd) & 0x1Fu)
+
+#define BUS_1553_TR_BC_TO_RT   0u
+#define BUS_1553_TR_RT_TO_BC   1u
+
+#define BUS_1553_MAX_DATA_WORDS 31u
+
+#define BUS_1553_STATUS_MAKE(rt, msg_error) \
+    (uint16_t)((((uint16_t)(rt) & 0x1Fu) << 11) | \
+               (((uint16_t)(msg_error) & 0x01u) << 10))
+
+#define BUS_1553_STATUS_RT(status) \
+    (uint8_t)(((status) >> 11) & 0x1Fu)
+
+#define BUS_1553_STATUS_MSG_ERROR(status) \
+    (uint8_t)(((status) >> 10) & 0x01u)
+
+typedef enum {
+    BUS_1553_SYNC_CMD_STATUS = 0,
+    BUS_1553_SYNC_DATA       = 1
+} bus_1553_sync_t;
+
+typedef enum {
+    SNIFFER_EVENT_NONE = 0,
+    SNIFFER_EVENT_BC_TO_RT,
+    SNIFFER_EVENT_RT_TO_BC
+} sniffer_event_type_t;
+
+typedef struct {
+    sniffer_event_type_t type;
+
+    uint32_t timestamp_us;
+
+    uint16_t cmd;
+    uint16_t status;
+    uint16_t data[BUS_1553_MAX_DATA_WORDS];
+
+    uint8_t rt;
+    uint8_t tr;
+    uint8_t sub;
+    uint8_t wc;
+
+    uint8_t data_count;
+    uint8_t msg_error;
+} sniffer_event_t;
+
+bool rt_process_once(uint8_t my_rt_addr);
+
+void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
+
+void bus_send_1553_command(uint16_t cmd);
+
+void bus_send_1553_status(uint8_t rt_addr, bool msg_error);
+
+void bus_send_1553_data_word(uint16_t data);
+
+bool sniffer_capture_bc_to_rt_event_data(sniffer_event_t *event);
+bool sniffer_capture_rt_to_bc_event_data(sniffer_event_t *event);
+
+void sniffer_print_event(const sniffer_event_t *event);
+
+bool sniffer_capture_event_data(sniffer_event_t *event);
 
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);
 void bus_idle(void);
+
 
 void bus_send_bit(bool bit);
 bool bus_read_bit(bool *bit);
@@ -37,9 +115,55 @@ bool bus_read_sync(uint8_t *type);
 void bus_send_word16(uint16_t word);
 bool bus_read_word16(uint16_t *word);
 
+bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
+bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
+bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
+bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t max_wc, uint8_t *rx_wc);
+
+void bus_send_command_word(uint16_t cmd);
+
+void bus_send_status_data_checked(uint8_t rt_addr,
+                                  bool msg_error,
+                                  const uint16_t data[],
+                                  uint8_t wc);
+
+bool bus_read_command_word_pio(uint16_t *cmd);
+
+void bus_send_status_word(uint8_t rt_addr, bool msg_error);
+bool bus_read_status_word_pio(uint16_t *status);
+
+bool sniffer_capture_bc_to_rt_event(void);
+
+bool sniffer_capture_rt_to_bc_event(void);
+
 uint8_t bus_compute_odd_parity(uint16_t word);
 void bus_send_word16_parity(uint16_t word);
 bool bus_read_word16_parity(uint16_t *word);
+
+void bus_send_command_word_parity(uint16_t cmd);
+
+void bus_send_packet_parity(uint16_t cmd,
+                            const uint16_t data[],
+                            uint8_t wc);
+
+void bus_send_status_word_parity(uint8_t rt_addr,
+                                 bool msg_error);
+
+void bus_send_status_data_parity(uint8_t rt_addr,
+                                 bool msg_error,
+                                 const uint16_t data[],
+                                 uint8_t wc);
+
+bool bus_read_packet_parity_pio(uint16_t *cmd,
+                                uint16_t data[],
+                                uint8_t max_wc,
+                                uint8_t *out_wc);
+
+bool bus_read_command_word_parity_pio(uint16_t *cmd);
+
+bool bus_read_status_data_parity_pio(uint16_t *status,
+                                     uint16_t data[],
+                                     uint8_t expected_wc);
 
 #ifdef __cplusplus
 }
