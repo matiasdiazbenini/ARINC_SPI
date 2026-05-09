@@ -129,6 +129,17 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
                                      uint16_t data[],
                                      uint8_t expected_wc);
 
+bool bc_send_to_rt(uint8_t rt_addr,
+                   uint8_t subaddr,
+                   const uint16_t data[],
+                   uint8_t wc,
+                   uint16_t *out_status);
+
+bool bc_request_from_rt(uint8_t rt_addr,
+                        uint8_t subaddr,
+                        uint16_t data[],
+                        uint8_t wc,
+                        uint16_t *out_status);
 #ifdef __cplusplus
 }
 #endif

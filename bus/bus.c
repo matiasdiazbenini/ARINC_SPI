@@ -1391,6 +1391,25 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
             continue;
         }
 
+        /*
+        * Si el RT respondió con MSG_ERROR=1, puede venir solo STATUS,
+        * sin DATA. En ese caso la transacción es válida como respuesta
+        * de error y no debemos seguir buscando DATA.
+        */
+        if (BUS_1553_STATUS_MSG_ERROR(rx_status)) {
+            if (status != NULL) {
+                *status = rx_status;
+            }
+
+            if (data != NULL) {
+                for (uint8_t i = 0; i < expected_wc; i++) {
+                    data[i] = 0;
+                }
+            }
+
+            return true;
+        }
+
         uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
         bool data_ok = true;
 
@@ -1493,6 +1512,129 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
         }
 
         return true;
+    }
+
+    return false;
+}
+bool bc_send_to_rt(uint8_t rt_addr,
+                   uint8_t subaddr,
+                   const uint16_t data[],
+                   uint8_t wc,
+                   uint16_t *out_status) {
+    if (data == NULL) {
+        return false;
+    }
+
+    if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    uint16_t cmd = BUS_1553_CMD_MAKE(
+        rt_addr,
+        BUS_1553_TR_BC_TO_RT,
+        subaddr,
+        wc
+    );
+
+    /*
+     * BC transmite:
+     * CMD + PARITY
+     * DATA + PARITY
+     */
+    bus_set_tx_mode();
+
+    bus_send_packet_parity(cmd, data, wc);
+
+    sleep_us(50 * BIT_PERIOD_US);
+
+    bus_idle();
+    bus_set_rx_mode();
+
+    /*
+     * RT responde:
+     * STATUS + PARITY
+     */
+    uint16_t status = 0;
+
+    for (int attempt = 0; attempt < 20; attempt++) {
+        if (bus_read_status_word_parity_pio(&status)) {
+            if (out_status != NULL) {
+                *out_status = status;
+            }
+
+            return true;
+        }
+
+        sleep_ms(10);
+    }
+
+    return false;
+}
+bool bc_request_from_rt(uint8_t rt_addr,
+                        uint8_t subaddr,
+                        uint16_t data[],
+                        uint8_t wc,
+                        uint16_t *out_status) {
+    if (data == NULL) {
+        return false;
+    }
+
+    if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    uint16_t cmd = BUS_1553_CMD_MAKE(
+        rt_addr,
+        BUS_1553_TR_RT_TO_BC,
+        subaddr,
+        wc
+    );
+
+    /*
+     * BC transmite:
+     * CMD + PARITY
+     */
+    bus_set_tx_mode();
+
+    bus_send_command_word_parity(cmd);
+
+    sleep_us(50 * BIT_PERIOD_US);
+
+    bus_idle();
+    bus_set_rx_mode();
+
+    uint16_t status = 0;
+
+    /*
+     * Caso normal:
+     * RT responde STATUS + DATA, todo con paridad.
+     */
+    for (int attempt = 0; attempt < 20; attempt++) {
+        if (bus_read_status_data_parity_pio(&status, data, wc)) {
+            if (out_status != NULL) {
+                *out_status = status;
+            }
+
+            return true;
+        }
+
+        sleep_ms(10);
+    }
+
+    /*
+     * Caso de error:
+     * RT puede responder solo STATUS con MSG_ERROR=1.
+     */
+    for (int attempt = 0; attempt < 10; attempt++) {
+        if (bus_read_status_word_parity_pio(&status)) {
+            if (out_status != NULL) {
+                *out_status = status;
+            }
+
+            return true;
+        }
+
+        sleep_ms(10);
     }
 
     return false;
