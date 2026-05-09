@@ -53,6 +53,19 @@ void bus_rx_stream_start(void);
 #define BUS_1553_STATUS_MSG_ERROR(status) \
     (uint8_t)(((status) >> 10) & 0x01u)
 
+typedef enum {
+    BUS_1553_SYNC_CMD_STATUS = 0,
+    BUS_1553_SYNC_DATA       = 1
+} bus_1553_sync_t;
+
+void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
+
+void bus_send_1553_command(uint16_t cmd);
+
+void bus_send_1553_status(uint8_t rt_addr, bool msg_error);
+
+void bus_send_1553_data_word(uint16_t data);
+
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);

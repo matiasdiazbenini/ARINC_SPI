@@ -1118,6 +1118,56 @@ void bus_send_word16_parity(uint16_t word) {
     bus_send_word16(word);
     bus_send_bit(bus_compute_odd_parity(word) != 0u);
 }
+void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word) {
+    /*
+     * Abstracción de palabra 1553.
+     *
+     * Por ahora seguimos usando:
+     *   0xF0 → sync command/status simplificado
+     *   0x0F → sync data simplificado
+     *
+     * Más adelante esta función será el lugar donde reemplazamos
+     * estos bytes por un sync real tipo MIL-STD-1553.
+     */
+
+    if (sync_type == BUS_1553_SYNC_CMD_STATUS) {
+        bus_send_byte(0xF0);
+    } else {
+        bus_send_byte(0x0F);
+    }
+
+    /*
+     * 16 bits + paridad impar.
+     */
+    bus_send_word16_parity(word);
+}
+
+void bus_send_1553_command(uint16_t cmd) {
+    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, cmd);
+
+    /*
+     * Postámbulo neutro temporal.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+
+void bus_send_1553_status(uint8_t rt_addr, bool msg_error) {
+    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
+
+    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, status);
+
+    /*
+     * Postámbulo neutro temporal.
+     */
+    bus_send_byte(0x00);
+    bus_send_byte(0x00);
+}
+
+void bus_send_1553_data_word(uint16_t data) {
+    bus_send_1553_word(BUS_1553_SYNC_DATA, data);
+}
+
 void bus_send_packet_checked(uint16_t cmd, const uint16_t data[], uint8_t wc) {
     uint16_t chk = cmd;
 
@@ -1214,75 +1264,34 @@ void bus_send_command_word(uint16_t cmd) {
     bus_send_byte(0x00);
 }
 void bus_send_command_word_parity(uint16_t cmd) {
-    /*
-     * Sync de comando/status.
-     * Todavía usamos 0xF0 como sync simplificado.
-     */
-    bus_send_byte(0xF0);
-
-    /*
-     * Command Word + paridad impar.
-     */
-    bus_send_word16_parity(cmd);
-
-    /*
-     * Postámbulo neutro.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
+    bus_send_1553_command(cmd);
 }
 void bus_send_packet_parity(uint16_t cmd,
                             const uint16_t data[],
                             uint8_t wc) {
     /*
-     * Sync de Command Word.
+     * Command Word.
      */
-    bus_send_byte(0xF0);
+    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, cmd);
 
     /*
-     * Command Word + paridad.
-     */
-    bus_send_word16_parity(cmd);
-
-    /*
-     * Sync de Data Words.
-     */
-    bus_send_byte(0x0F);
-
-    /*
-     * Data Words + paridad individual.
+     * Data Words.
      */
     for (uint8_t i = 0; i < wc; i++) {
-        bus_send_word16_parity(data[i]);
+        bus_send_1553_word(BUS_1553_SYNC_DATA, data[i]);
     }
 
     /*
-     * Postámbulo neutro.
-     * Ya no mandamos checksum global.
+     * Postámbulo neutro temporal.
      */
     bus_send_byte(0x00);
     bus_send_byte(0x00);
 }
 void bus_send_status_word_parity(uint8_t rt_addr,
                                  bool msg_error) {
-    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
-
-    /*
-     * Sync de status.
-     */
-    bus_send_byte(0xF0);
-
-    /*
-     * Status Word + paridad.
-     */
-    bus_send_word16_parity(status);
-
-    /*
-     * Postámbulo neutro.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
+    bus_send_1553_status(rt_addr, msg_error);
 }
+
 void bus_send_status_data_parity(uint8_t rt_addr,
                                  bool msg_error,
                                  const uint16_t data[],
@@ -1290,29 +1299,19 @@ void bus_send_status_data_parity(uint8_t rt_addr,
     uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
 
     /*
-     * Sync de status.
+     * Status Word.
      */
-    bus_send_byte(0xF0);
+    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, status);
 
     /*
-     * Status Word + paridad.
-     */
-    bus_send_word16_parity(status);
-
-    /*
-     * Sync de data.
-     */
-    bus_send_byte(0x0F);
-
-    /*
-     * Data Words + paridad individual.
+     * Data Words.
      */
     for (uint8_t i = 0; i < wc; i++) {
-        bus_send_word16_parity(data[i]);
+        bus_send_1553_word(BUS_1553_SYNC_DATA, data[i]);
     }
 
     /*
-     * Postámbulo neutro.
+     * Postámbulo neutro temporal.
      */
     bus_send_byte(0x00);
     bus_send_byte(0x00);
@@ -1342,16 +1341,21 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
     }
 
     /*
-     * Formato esperado:
+     * Nuevo formato esperado:
      *
      * F0
      * STATUS + PARITY
+     *
      * 0F
      * DATA0 + PARITY
+     *
+     * 0F
      * DATA1 + PARITY
-     * ...
+     *
+     * 0F
+     * DATA2 + PARITY
      */
-    const int total_bytes = 1 + 3 + 1 + (expected_wc * 3);
+    const int total_bytes = 1 + 3 + (expected_wc * (1 + 3));
 
     for (int offset = 0;
          offset + (total_bytes * byte_samples) < STATUS_CAPTURE_SAMPLES;
@@ -1367,6 +1371,9 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
             continue;
         }
 
+        /*
+         * Leer STATUS + PARITY.
+         */
         uint16_t rx_status = 0;
         int off_status = -1;
 
@@ -1384,74 +1391,80 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
             continue;
         }
 
+        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+        bool data_ok = true;
+
         /*
-         * Buscar sync de datos 0x0F después del STATUS + PARITY.
+         * Después del STATUS + PARITY esperamos:
+         *
+         * 0F DATA0+P
+         * 0F DATA1+P
+         * 0F DATA2+P
          */
-        
-        int expected_sync_data = off_status + word_parity_samples;
+        int next_sync_center = off_status + word_parity_samples;
 
-        bool found_sync_data = false;
-        int off_sync_data = -1;
+        for (uint8_t i = 0; i < expected_wc; i++) {
+            /*
+             * Buscar SYNC_DATA = 0x0F para cada palabra de datos.
+             * Priorizamos el punto más cercano al centro esperado.
+             */
+            bool found_sync_data = false;
+            int off_sync_data = -1;
 
-        /*
-        * Buscar SYNC_DATA=0x0F alrededor del punto esperado,
-        * pero priorizando el offset más cercano al centro.
-        */
-        for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-            for (int side = 0; side < 2; side++) {
-                int delta;
+            for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
+                for (int side = 0; side < 2; side++) {
+                    int delta;
 
-                if (abs_delta == 0) {
-                    if (side == 1) {
+                    if (abs_delta == 0) {
+                        if (side == 1) {
+                            continue;
+                        }
+
+                        delta = 0;
+                    } else {
+                        delta = (side == 0) ? -abs_delta : abs_delta;
+                    }
+
+                    int pos = next_sync_center + delta;
+
+                    if (pos < 0) {
                         continue;
                     }
-                    delta = 0;
-                } else {
-                    delta = (side == 0) ? -abs_delta : abs_delta;
+
+                    if (pos + byte_samples >= STATUS_CAPTURE_SAMPLES) {
+                        continue;
+                    }
+
+                    uint8_t sync_data = 0;
+
+                    if (!rx_decode_byte_at_phase(samples, pos, &sync_data)) {
+                        continue;
+                    }
+
+                    if (sync_data == 0x0Fu) {
+                        found_sync_data = true;
+                        off_sync_data = pos;
+                        break;
+                    }
                 }
 
-                int pos = expected_sync_data + delta;
-
-                if (pos < 0) {
-                    continue;
-                }
-
-                if (pos + byte_samples >= STATUS_CAPTURE_SAMPLES) {
-                    continue;
-                }
-
-                uint8_t sync_data = 0;
-
-                if (!rx_decode_byte_at_phase(samples, pos, &sync_data)) {
-                    continue;
-                }
-
-                if (sync_data == 0x0Fu) {
-                    found_sync_data = true;
-                    off_sync_data = pos;
+                if (found_sync_data) {
                     break;
                 }
             }
 
-            if (found_sync_data) {
+            if (!found_sync_data) {
+                data_ok = false;
                 break;
             }
-        }
 
-        if (!found_sync_data) {
-            continue;
-        }
-
-        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        int next_word_center = off_sync_data + byte_samples;
-
-        for (uint8_t i = 0; i < expected_wc; i++) {
+            /*
+             * Leer DATA_i + PARITY después de su propio 0x0F.
+             */
             int off_word = -1;
 
             if (!rx_find_any_word16_parity_near(samples,
-                                                next_word_center,
+                                                off_sync_data + byte_samples,
                                                 search_radius,
                                                 &temp_data[i],
                                                 &off_word)) {
@@ -1459,7 +1472,10 @@ bool bus_read_status_data_parity_pio(uint16_t *status,
                 break;
             }
 
-            next_word_center = off_word + word_parity_samples;
+            /*
+             * El siguiente 0x0F debería venir después de esta palabra.
+             */
+            next_sync_center = off_word + word_parity_samples;
         }
 
         if (!data_ok) {
