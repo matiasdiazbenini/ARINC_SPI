@@ -8,22 +8,36 @@
 extern "C" {
 #endif
 
+/*
+ * Pines diferenciales del bus.
+ */
 #define BUS_PIN_P 2u
 #define BUS_PIN_N 3u
 
+/*
+ * Tiempo de bit actual.
+ */
 #define BIT_PERIOD_US 1000u
-// 1 = TX por PIO (reversible); 0 = TX por software original.
-// RX se mantiene en software en ambos casos.
+
+/*
+ * TX por PIO.
+ */
 #define BUS_USE_PIO_TX 1
 
+/*
+ * Sync simplificados tipo 1553-like.
+ */
 #define SYNC_CMD_STATUS 0xF0u
 #define SYNC_DATA       0x0Fu
 
-#define SYNC_PREAMBLE_BYTE 0xAAu
-#define SYNC_PREAMBLE_COUNT 2u
-#define BUS_SYNC_TYPE_CMD_STATUS 1u
-#define BUS_SYNC_TYPE_DATA       2u
-
+/*
+ * Command Word:
+ *
+ * RT  : bits 15..11
+ * TR  : bit  10
+ * SUB : bits 9..5
+ * WC  : bits 4..0
+ */
 #define BUS_1553_CMD_MAKE(rt, tr, sub, wc) \
     (uint16_t)((((uint16_t)(rt)  & 0x1Fu) << 11) | \
                (((uint16_t)(tr)  & 0x01u) << 10) | \
@@ -40,6 +54,12 @@ extern "C" {
 
 #define BUS_1553_MAX_DATA_WORDS 31u
 
+/*
+ * Status Word:
+ *
+ * RT        : bits 15..11
+ * MSG_ERROR : bit 10
+ */
 #define BUS_1553_STATUS_MAKE(rt, msg_error) \
     (uint16_t)((((uint16_t)(rt) & 0x1Fu) << 11) | \
                (((uint16_t)(msg_error) & 0x01u) << 10))
@@ -55,62 +75,30 @@ typedef enum {
     BUS_1553_SYNC_DATA       = 1
 } bus_1553_sync_t;
 
-
-bool rt_process_once(uint8_t my_rt_addr);
-
-void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
-
-void bus_send_1553_command(uint16_t cmd);
-
-void bus_send_1553_status(uint8_t rt_addr, bool msg_error);
-
-void bus_send_1553_data_word(uint16_t data);
-
+/*
+ * Inicialización y modos del bus.
+ */
 void bus_init(void);
 void bus_set_tx_mode(void);
 void bus_set_rx_mode(void);
 void bus_idle(void);
 
-
+/*
+ * TX básico / paridad.
+ */
 void bus_send_bit(bool bit);
-bool bus_read_bit(bool *bit);
-
 void bus_send_byte(uint8_t byte);
-bool bus_read_byte(uint8_t *byte);
-
-void bus_send_sync_cmd_status(void);
-void bus_send_sync_data(void);
-bool bus_read_sync(uint8_t *type);
-
 void bus_send_word16(uint16_t word);
-bool bus_read_word16(uint16_t *word);
-
-bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
-bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
-bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc);
-bool bus_read_packet_checked_auto_pio(uint16_t *cmd, uint16_t data[], uint8_t max_wc, uint8_t *rx_wc);
-
-void bus_send_command_word(uint16_t cmd);
-
-void bus_send_status_data_checked(uint8_t rt_addr,
-                                  bool msg_error,
-                                  const uint16_t data[],
-                                  uint8_t wc);
-
-bool bus_read_command_word_pio(uint16_t *cmd);
-
-void bus_send_status_word(uint8_t rt_addr, bool msg_error);
-bool bus_read_status_word_pio(uint16_t *status);
 
 uint8_t bus_compute_odd_parity(uint16_t word);
 void bus_send_word16_parity(uint16_t word);
-bool bus_read_word16_parity(uint16_t *word);
 
-void bus_send_command_word_parity(uint16_t cmd);
-
-void bus_send_packet_parity(uint16_t cmd,
-                            const uint16_t data[],
-                            uint8_t wc);
+/*
+ * TX 1553-like.
+ */
+void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
+void bus_send_1553_status(uint8_t rt_addr, bool msg_error);
+void bus_send_1553_data_word(uint16_t data);
 
 void bus_send_status_word_parity(uint8_t rt_addr,
                                  bool msg_error);
@@ -120,6 +108,9 @@ void bus_send_status_data_parity(uint8_t rt_addr,
                                  const uint16_t data[],
                                  uint8_t wc);
 
+/*
+ * RX usado por el RT.
+ */
 bool bus_read_packet_parity_pio(uint16_t *cmd,
                                 uint16_t data[],
                                 uint8_t max_wc,
@@ -127,9 +118,10 @@ bool bus_read_packet_parity_pio(uint16_t *cmd,
 
 bool bus_read_command_word_parity_pio(uint16_t *cmd);
 
-bool bus_read_status_data_parity_pio(uint16_t *status,
-                                     uint16_t data[],
-                                     uint8_t expected_wc);
+/*
+ * API de alto nivel del Remote Terminal.
+ */
+bool rt_process_once(uint8_t my_rt_addr);
 
 #ifdef __cplusplus
 }
