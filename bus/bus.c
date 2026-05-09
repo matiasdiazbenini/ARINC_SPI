@@ -22,6 +22,12 @@
 
 #define CAPTURE_SAMPLES 8192u
 
+#define RT_SUB_DATA    2u
+#define RT_SUB_STATUS  3u
+#define RT_SUB_DIAG    4u
+
+#define RT_TX_WORDS    3u
+
 static uint32_t sample_word = 0;
 static int sample_index = 16;
 
@@ -2063,6 +2069,219 @@ bool bus_read_command_word_parity_pio(uint16_t *cmd) {
         }
 
         return true;
+    }
+
+    return false;
+}
+static bool rt_is_valid_subaddress(uint8_t sub) {
+    switch (sub) {
+        case RT_SUB_DATA:
+        case RT_SUB_STATUS:
+        case RT_SUB_DIAG:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool rt_is_valid_rx_wc(uint8_t wc) {
+    if (wc == 0u) {
+        return false;
+    }
+
+    if (wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool rt_is_valid_tx_wc(uint8_t wc) {
+    if (wc == 0u) {
+        return false;
+    }
+
+    /*
+     * Por ahora el RT tiene solo 3 palabras disponibles para transmitir.
+     */
+    if (wc > RT_TX_WORDS) {
+        return false;
+    }
+
+    return true;
+}
+
+bool rt_process_once(uint8_t my_rt_addr) {
+    /*
+     * Datos que el RT entrega cuando el BC pide datos con TR=1.
+     * Más adelante esto puede reemplazarse por sensores, registros,
+     * memoria de subdirecciones, etc.
+     */
+    static const uint16_t rt_tx_data[RT_TX_WORDS] = {
+        0x1111,
+        0x2222,
+        0x3333
+    };
+
+    /*
+     * ============================================================
+     * CASO 1:
+     * TR=0 → BC transmite datos al RT.
+     *
+     * Esperamos:
+     * F0 CMD+P
+     * 0F DATA0+P
+     * 0F DATA1+P
+     * ...
+     *
+     * Respondemos:
+     * F0 STATUS+P
+     * ============================================================
+     */
+    uint16_t cmd = 0;
+    uint16_t rx_data[BUS_1553_MAX_DATA_WORDS] = {0};
+    uint8_t wc = 0;
+
+    if (bus_read_packet_parity_pio(&cmd,
+                                   rx_data,
+                                   BUS_1553_MAX_DATA_WORDS,
+                                   &wc)) {
+        uint8_t rt  = BUS_1553_CMD_RT(cmd);
+        uint8_t tr  = BUS_1553_CMD_TR(cmd);
+        uint8_t sub = BUS_1553_CMD_SUB(cmd);
+
+        if (rt == my_rt_addr && tr == BUS_1553_TR_BC_TO_RT) {
+            bool msg_error = false;
+
+            if (!rt_is_valid_subaddress(sub)) {
+                msg_error = true;
+            }
+
+            if (!rt_is_valid_rx_wc(wc)) {
+                msg_error = true;
+            }
+
+            printf("RT_RX_BC_TO_RT|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
+                   cmd,
+                   rt,
+                   tr,
+                   sub,
+                   wc);
+
+            for (uint8_t i = 0; i < wc; i++) {
+                printf("|D%u=0x%04X", i, rx_data[i]);
+            }
+
+            printf("|MSG_ERROR=%u\n", msg_error ? 1u : 0u);
+
+            /*
+             * Guarda para que el BC pase a RX.
+             */
+            sleep_us(3000);
+
+            bus_set_tx_mode();
+
+            bus_send_status_word_parity(my_rt_addr, msg_error);
+
+            sleep_us(30 * BIT_PERIOD_US);
+
+            bus_idle();
+            bus_set_rx_mode();
+
+            printf("RT_TX_STATUS|RT=%u|MSG_ERROR=%u\n",
+                   my_rt_addr,
+                   msg_error ? 1u : 0u);
+
+            return true;
+        }
+    }
+
+    /*
+     * ============================================================
+     * CASO 2:
+     * TR=1 → BC solicita datos al RT.
+     *
+     * Esperamos:
+     * F0 CMD+P
+     *
+     * Si está OK respondemos:
+     * F0 STATUS+P
+     * 0F DATA0+P
+     * 0F DATA1+P
+     * 0F DATA2+P
+     *
+     * Si hay error respondemos:
+     * F0 STATUS+P con MSG_ERROR=1
+     * ============================================================
+     */
+    cmd = 0;
+
+    if (bus_read_command_word_parity_pio(&cmd)) {
+        uint8_t rt  = BUS_1553_CMD_RT(cmd);
+        uint8_t tr  = BUS_1553_CMD_TR(cmd);
+        uint8_t sub = BUS_1553_CMD_SUB(cmd);
+        wc          = BUS_1553_CMD_WC(cmd);
+
+        if (rt == my_rt_addr && tr == BUS_1553_TR_RT_TO_BC) {
+            bool msg_error = false;
+
+            if (!rt_is_valid_subaddress(sub)) {
+                msg_error = true;
+            }
+
+            if (!rt_is_valid_tx_wc(wc)) {
+                msg_error = true;
+            }
+
+            printf("RT_RX_RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|MSG_ERROR=%u\n",
+                   cmd,
+                   rt,
+                   tr,
+                   sub,
+                   wc,
+                   msg_error ? 1u : 0u);
+
+            /*
+             * Guarda para que el BC pase a RX.
+             */
+            sleep_us(3000);
+
+            bus_set_tx_mode();
+
+            if (msg_error) {
+                bus_send_status_word_parity(my_rt_addr, true);
+
+                sleep_us(30 * BIT_PERIOD_US);
+
+                bus_idle();
+                bus_set_rx_mode();
+
+                printf("RT_TX_STATUS|RT=%u|MSG_ERROR=1\n", my_rt_addr);
+            } else {
+                bus_send_status_data_parity(my_rt_addr,
+                                            false,
+                                            rt_tx_data,
+                                            wc);
+
+                sleep_us(30 * BIT_PERIOD_US);
+
+                bus_idle();
+                bus_set_rx_mode();
+
+                printf("RT_TX_STATUS_DATA|RT=%u|WC=%u",
+                       my_rt_addr,
+                       wc);
+
+                for (uint8_t i = 0; i < wc; i++) {
+                    printf("|D%u=0x%04X", i, rt_tx_data[i]);
+                }
+
+                printf("\n");
+            }
+
+            return true;
+        }
     }
 
     return false;

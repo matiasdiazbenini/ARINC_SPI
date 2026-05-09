@@ -55,6 +55,9 @@ typedef enum {
     BUS_1553_SYNC_DATA       = 1
 } bus_1553_sync_t;
 
+
+bool rt_process_once(uint8_t my_rt_addr);
+
 void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
 
 void bus_send_1553_command(uint16_t cmd);
