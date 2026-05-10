@@ -17,7 +17,7 @@ extern "C" {
 /*
  * Tiempo de bit actual.
  */
-#define BIT_PERIOD_US 1000u
+#define BIT_PERIOD_US 500u
 
 /*
  * TX por PIO.

@@ -19,7 +19,7 @@
 #define RX_PIO pio0
 #define RX_SM  1u
 
-#define SAMPLES_PER_BIT      12u
+#define SAMPLES_PER_BIT      10u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
 #define PN_IDLE    0x00u
@@ -36,7 +36,7 @@
  * TR=1:
  *   CMD
  */
-#define CAPTURE_SAMPLES 8192u
+#define CAPTURE_SAMPLES 4096u
 
 /*
  * Subdirecciones válidas del RT.
@@ -69,6 +69,7 @@ static bool bus_tx_pio_initialized = false;
  */
 
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base);
 
 static uint8_t get_sample_from_word(uint32_t raw, int index);
 static uint8_t read_sample(void);
@@ -271,9 +272,16 @@ static bool find_any_word16_parity_near(const uint8_t *samples,
 
     return false;
 }
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base) {
+    gpio_set_function(pin_base, GPIO_FUNC_PIO0);
+    gpio_set_function(pin_base + 1u, GPIO_FUNC_PIO0);
 
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
+    pio_sm_set_enabled(pio, sm, true);
+}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     if (rx_pio_initialized) {
+        rx_sampler_take_pins(pio, sm, pin_base);
         return;
     }
 
@@ -298,6 +306,8 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     pio_sm_set_enabled(pio, sm, true);
 
     rx_pio_initialized = true;
+
+    rx_sampler_take_pins(pio, sm, pin_base);
 }
 
 /*
@@ -539,6 +549,15 @@ bool bus_read_packet_parity_pio(uint16_t *cmd,
                                 uint8_t max_wc,
                                 uint8_t *out_wc) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
+
+    /*
+     * Importante:
+     * arrancar cada captura desde una condición limpia.
+     */
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    sample_index = 16;
 
     uint8_t samples[CAPTURE_SAMPLES];
     capture_samples(samples, CAPTURE_SAMPLES);
@@ -706,7 +725,11 @@ bool bus_read_packet_parity_pio(uint16_t *cmd,
 
 bool bus_read_command_word_parity_pio(uint16_t *cmd) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    sample_index = 16;
     uint8_t samples[CAPTURE_SAMPLES];
     capture_samples(samples, CAPTURE_SAMPLES);
 
@@ -913,7 +936,7 @@ bool rt_process_once(uint8_t my_rt_addr) {
      * TR=1 → BC solicita datos al RT.
      * ============================================================
      */
-    cmd = 0;
+    /*cmd = 0;
 
     if (bus_read_command_word_parity_pio(&cmd)) {
         uint8_t rt  = BUS_1553_CMD_RT(cmd);
@@ -942,7 +965,7 @@ bool rt_process_once(uint8_t my_rt_addr) {
 
             /*
              * Guarda actual estable para que el BC pase a RX.
-             */
+             *
             sleep_us(3000);
 
             bus_set_tx_mode();
@@ -980,7 +1003,7 @@ bool rt_process_once(uint8_t my_rt_addr) {
 
             return true;
         }
-    }
+    }*/
 
     return false;
 }
