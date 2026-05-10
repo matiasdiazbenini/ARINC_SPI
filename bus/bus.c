@@ -24,7 +24,7 @@ static bool bus_tx_pio_initialized = false;
 #define RX_PIO pio0
 #define RX_SM  1u
 
-#define SAMPLES_PER_BIT      12u
+#define SAMPLES_PER_BIT      10u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
 #define PN_IDLE    0x00u
@@ -789,36 +789,57 @@ bool bc_send_to_rt(uint8_t rt_addr,
 
     uint32_t t0 = time_us_32();
 
-    bus_set_tx_mode();
-
-    bus_send_packet_parity(cmd, data, wc);
-
     /*
-     * Versión estable actual.
+     * Como el RT todavía escucha por ventanas bloqueantes,
+     * puede perder una transmisión. Por eso reintentamos
+     * transmitiendo de nuevo el paquete completo.
      */
-    sleep_us(50 * BIT_PERIOD_US);
+    for (int tx_attempt = 0; tx_attempt < 8; tx_attempt++) {
+        bus_set_tx_mode();
 
-    bus_idle();
-    bus_set_rx_mode();
+        bus_send_packet_parity(cmd, data, wc);
 
-    uint16_t status = 0;
+        /*
+         * Margen actual estable para no cortar físicamente el final
+         * del paquete.
+         */
+        sleep_us(50 * BIT_PERIOD_US);
 
-    for (int attempt = 0; attempt < 20; attempt++) {
-        if (bus_read_status_word_parity_pio(&status)) {
-            uint32_t t1 = time_us_32();
+        /*
+         * No usamos bus_idle() acá.
+         */
+        bus_set_rx_mode();
 
-            if (out_status != NULL) {
-                *out_status = status;
+        uint16_t status = 0;
+
+        /*
+         * Pocos intentos de lectura por cada transmisión.
+         * Si no llega STATUS, retransmitimos el paquete completo.
+         */
+        for (int rx_attempt = 0; rx_attempt < 3; rx_attempt++) {
+            if (bus_read_status_word_parity_pio(&status)) {
+                uint32_t t1 = time_us_32();
+
+                if (out_status != NULL) {
+                    *out_status = status;
+                }
+
+                printf("BC_SEND_TO_RT_TIME_US=%lu|TX_ATTEMPT=%d|RX_ATTEMPT=%d\n",
+                       (unsigned long)(t1 - t0),
+                       tx_attempt,
+                       rx_attempt);
+
+                return true;
             }
 
-            printf("BC_SEND_TO_RT_TIME_US=%lu|ATTEMPT=%d\n",
-                   (unsigned long)(t1 - t0),
-                   attempt);
-
-            return true;
+            sleep_ms(5);
         }
 
-        sleep_ms(10);
+        /*
+        * Pausa variable para no quedar sincronizado siempre
+        * con la ventana bloqueante del RT.
+        */
+        sleep_ms(7 + (tx_attempt * 13));
     }
 
     uint32_t t1 = time_us_32();
