@@ -825,9 +825,9 @@ bool bc_send_to_rt(uint8_t rt_addr,
                 }
 
                 printf("BC_SEND_TO_RT_TIME_US=%lu|TX_ATTEMPT=%d|RX_ATTEMPT=%d\n",
-                       (unsigned long)(t1 - t0),
-                       tx_attempt,
-                       rx_attempt);
+                    (unsigned long)(t1 - t0),
+                    tx_attempt,
+                    rx_attempt);
 
                 return true;
             }
@@ -836,8 +836,8 @@ bool bc_send_to_rt(uint8_t rt_addr,
         }
 
         /*
-        * Pausa variable para no quedar sincronizado siempre
-        * con la ventana bloqueante del RT.
+        * Pausa variable para no caer siempre en la misma fase
+        * respecto de la ventana de captura del RT.
         */
         sleep_ms(7 + (tx_attempt * 13));
     }
@@ -872,62 +872,83 @@ bool bc_request_from_rt(uint8_t rt_addr,
 
     uint32_t t0 = time_us_32();
 
-    bus_set_tx_mode();
-
-    bus_send_command_word_parity(cmd);
-
     /*
-     * Versión estable actual.
+     * Como el RT escucha por ventanas bloqueantes,
+     * retransmitimos el comando si no llega respuesta.
      */
-    sleep_us(50 * BIT_PERIOD_US);
+    for (int tx_attempt = 0; tx_attempt < 8; tx_attempt++) {
+        bus_set_tx_mode();
 
-    bus_idle();
-    bus_set_rx_mode();
+        bus_send_command_word_parity(cmd);
 
-    uint16_t status = 0;
+        /*
+         * Margen para no cortar físicamente el comando.
+         */
+        sleep_us(50 * BIT_PERIOD_US);
 
-    /*
-     * Caso normal:
-     * RT responde STATUS + DATA.
-     */
-    for (int attempt = 0; attempt < 20; attempt++) {
-        if (bus_read_status_data_parity_pio(&status, data, wc)) {
-            uint32_t t1 = time_us_32();
+        /*
+         * No usar bus_idle() acá.
+         * Pasamos directo a RX.
+         */
+        bus_set_rx_mode();
 
-            if (out_status != NULL) {
-                *out_status = status;
+        uint16_t status = 0;
+
+        /*
+         * Caso normal:
+         * RT responde STATUS + DATA.
+         */
+        for (int rx_attempt = 0; rx_attempt < 3; rx_attempt++) {
+            if (bus_read_status_data_parity_pio(&status, data, wc)) {
+                uint32_t t1 = time_us_32();
+
+                if (out_status != NULL) {
+                    *out_status = status;
+                }
+
+                printf("BC_REQUEST_FROM_RT_TIME_US=%lu|MODE=STATUS_DATA|TX_ATTEMPT=%d|RX_ATTEMPT=%d\n",
+                       (unsigned long)(t1 - t0),
+                       tx_attempt,
+                       rx_attempt);
+
+                return true;
             }
 
-            printf("BC_REQUEST_FROM_RT_TIME_US=%lu|MODE=STATUS_DATA|ATTEMPT=%d\n",
-                   (unsigned long)(t1 - t0),
-                   attempt);
-
-            return true;
+            sleep_ms(5);
         }
 
-        sleep_us(500);
-    }
+        /*
+         * Caso de error:
+         * RT puede responder solo STATUS con MSG_ERROR=1.
+         */
+        for (int rx_attempt = 0; rx_attempt < 2; rx_attempt++) {
+            if (bus_read_status_word_parity_pio(&status)) {
+                uint32_t t1 = time_us_32();
 
-    /*
-     * Caso de error:
-     * RT puede responder solo STATUS con MSG_ERROR=1.
-     */
-    for (int attempt = 0; attempt < 10; attempt++) {
-        if (bus_read_status_word_parity_pio(&status)) {
-            uint32_t t1 = time_us_32();
+                if (out_status != NULL) {
+                    *out_status = status;
+                }
 
-            if (out_status != NULL) {
-                *out_status = status;
+                for (uint8_t i = 0; i < wc; i++) {
+                    data[i] = 0;
+                }
+
+                printf("BC_REQUEST_FROM_RT_TIME_US=%lu|MODE=STATUS_ONLY|TX_ATTEMPT=%d|RX_ATTEMPT=%d\n",
+                       (unsigned long)(t1 - t0),
+                       tx_attempt,
+                       rx_attempt);
+
+                return true;
             }
 
-            printf("BC_REQUEST_FROM_RT_TIME_US=%lu|MODE=STATUS_ONLY|ATTEMPT=%d\n",
-                   (unsigned long)(t1 - t0),
-                   attempt);
-
-            return true;
+            sleep_ms(5);
         }
 
-        sleep_ms(10);
+        /*
+         * Pausa variable para no caer siempre en la misma fase
+         * respecto de la ventana del RT.
+         */
+        sleep_ms(7 + (tx_attempt * 13));
     }
 
     uint32_t t1 = time_us_32();

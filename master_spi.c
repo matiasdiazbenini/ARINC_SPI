@@ -8,10 +8,10 @@
  * 0 → TR=0: BC transmite datos al RT
  * 1 → TR=1: BC solicita datos al RT
  */
-#define TEST_TR_MODE 0
+#define TEST_TR_MODE 1
 
 #define RT_ADDR     3u
-#define SUBADDR     2u
+#define SUBADDR     7u
 #define WORD_COUNT  3u
 
 int main(void) {
