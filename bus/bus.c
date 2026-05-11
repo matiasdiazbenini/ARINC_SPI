@@ -36,7 +36,7 @@
  * TR=1:
  *   CMD
  */
-#define CAPTURE_SAMPLES 4096u
+#define CAPTURE_SAMPLES 3584u
 
 /*
  * Subdirecciones válidas del RT.
@@ -92,6 +92,10 @@ static void bus_release_pins_to_sio(void);
 static bool rt_is_valid_subaddress(uint8_t sub);
 static bool rt_is_valid_rx_wc(uint8_t wc);
 static bool rt_is_valid_tx_wc(uint8_t wc);
+static bool rt_capture_request_pio(uint16_t *cmd,
+                                   uint16_t data[],
+                                   uint8_t max_wc,
+                                   uint8_t *out_wc);
 
 /*
  * ============================================================
@@ -789,7 +793,191 @@ bool bus_read_command_word_parity_pio(uint16_t *cmd) {
 
     return false;
 }
+static bool rt_capture_request_pio(uint16_t *cmd,
+                                   uint16_t data[],
+                                   uint8_t max_wc,
+                                   uint8_t *out_wc) {
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
+    /*
+     * Una sola captura para detectar tanto TR=0 como TR=1.
+     */
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    sample_index = 16;
+
+    uint8_t samples[CAPTURE_SAMPLES];
+    capture_samples(samples, CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
+
+    const int search_radius_cmd = 24;
+    const int search_radius_sync = 48;
+    const int search_radius_word = 12;
+
+    for (int offset = 0;
+         offset + (3 * byte_samples) < CAPTURE_SAMPLES;
+         offset++) {
+
+        uint8_t sync_cmd = 0;
+
+        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
+            continue;
+        }
+
+        if (sync_cmd != SYNC_CMD_STATUS) {
+            continue;
+        }
+
+        uint16_t rx_cmd = 0;
+        int off_cmd = -1;
+
+        if (!find_any_word16_parity_near(samples,
+                                         offset + byte_samples,
+                                         search_radius_cmd,
+                                         &rx_cmd,
+                                         &off_cmd)) {
+            continue;
+        }
+
+        uint8_t rt  = BUS_1553_CMD_RT(rx_cmd);
+        uint8_t tr  = BUS_1553_CMD_TR(rx_cmd);
+        uint8_t wc  = BUS_1553_CMD_WC(rx_cmd);
+
+        if (rt == 0u || rt > 31u) {
+            continue;
+        }
+
+        if (wc == 0u || wc > max_wc) {
+            continue;
+        }
+
+        /*
+         * Caso TR=1:
+         * El BC solo manda CMD. No hay DATA después del CMD.
+         */
+        if (tr == BUS_1553_TR_RT_TO_BC) {
+            if (cmd != NULL) {
+                *cmd = rx_cmd;
+            }
+
+            if (out_wc != NULL) {
+                *out_wc = wc;
+            }
+
+            if (data != NULL) {
+                for (uint8_t i = 0; i < max_wc; i++) {
+                    data[i] = 0;
+                }
+            }
+
+            return true;
+        }
+
+        /*
+         * Caso TR=0:
+         * El BC manda CMD + DATA.
+         */
+        if (tr == BUS_1553_TR_BC_TO_RT) {
+            uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+            bool data_ok = true;
+
+            int next_sync_center = off_cmd + word_parity_samples;
+
+            for (uint8_t i = 0; i < wc; i++) {
+                bool found_sync_data = false;
+                int off_sync_data = -1;
+
+                /*
+                 * Buscar SYNC_DATA centrado.
+                 */
+                for (int abs_delta = 0; abs_delta <= search_radius_sync; abs_delta++) {
+                    for (int side = 0; side < 2; side++) {
+                        int delta;
+
+                        if (abs_delta == 0) {
+                            if (side == 1) {
+                                continue;
+                            }
+
+                            delta = 0;
+                        } else {
+                            delta = (side == 0) ? -abs_delta : abs_delta;
+                        }
+
+                        int pos = next_sync_center + delta;
+
+                        if (pos < 0) {
+                            continue;
+                        }
+
+                        if (pos + byte_samples >= CAPTURE_SAMPLES) {
+                            continue;
+                        }
+
+                        uint8_t sync_data = 0;
+
+                        if (!decode_byte_at_phase(samples, pos, &sync_data)) {
+                            continue;
+                        }
+
+                        if (sync_data == SYNC_DATA) {
+                            found_sync_data = true;
+                            off_sync_data = pos;
+                            break;
+                        }
+                    }
+
+                    if (found_sync_data) {
+                        break;
+                    }
+                }
+
+                if (!found_sync_data) {
+                    data_ok = false;
+                    break;
+                }
+
+                int off_word = -1;
+
+                if (!find_any_word16_parity_near(samples,
+                                                 off_sync_data + byte_samples,
+                                                 search_radius_word,
+                                                 &temp_data[i],
+                                                 &off_word)) {
+                    data_ok = false;
+                    break;
+                }
+
+                next_sync_center = off_word + word_parity_samples;
+            }
+
+            if (!data_ok) {
+                continue;
+            }
+
+            if (cmd != NULL) {
+                *cmd = rx_cmd;
+            }
+
+            if (data != NULL) {
+                for (uint8_t i = 0; i < wc; i++) {
+                    data[i] = temp_data[i];
+                }
+            }
+
+            if (out_wc != NULL) {
+                *out_wc = wc;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
+}
 /*
  * ============================================================
  * Validaciones RT
@@ -842,168 +1030,152 @@ static bool rt_is_valid_tx_wc(uint8_t wc) {
  */
 
 bool rt_process_once(uint8_t my_rt_addr) {
-    /*
-     * Datos que el RT entrega cuando el BC pide datos con TR=1.
-     * Más adelante esto puede reemplazarse por sensores, registros,
-     * memoria de subdirecciones, etc.
-     */
     static const uint16_t rt_tx_data[RT_TX_WORDS] = {
         0x1111,
         0x2222,
         0x3333
     };
 
-    /*
-     * ============================================================
-     * CASO 1:
-     * TR=0 → BC transmite datos al RT.
-     * ============================================================
-     */
     uint16_t cmd = 0;
     uint16_t rx_data[BUS_1553_MAX_DATA_WORDS] = {0};
     uint8_t wc = 0;
 
-    if (bus_read_packet_parity_pio(&cmd,
-                                   rx_data,
-                                   BUS_1553_MAX_DATA_WORDS,
-                                   &wc)) {
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
+    if (!rt_capture_request_pio(&cmd,
+                                rx_data,
+                                BUS_1553_MAX_DATA_WORDS,
+                                &wc)) {
+        return false;
+    }
 
-        if (rt == my_rt_addr && tr == BUS_1553_TR_BC_TO_RT) {
-            bool msg_error = false;
+    uint8_t rt  = BUS_1553_CMD_RT(cmd);
+    uint8_t tr  = BUS_1553_CMD_TR(cmd);
+    uint8_t sub = BUS_1553_CMD_SUB(cmd);
 
-            if (!rt_is_valid_subaddress(sub)) {
+    if (rt != my_rt_addr) {
+        return false;
+    }
+
+    /*
+     * ============================================================
+     * CASO TR=0:
+     * BC transmite datos al RT.
+     * ============================================================
+     */
+    if (tr == BUS_1553_TR_BC_TO_RT) {
+        bool msg_error = false;
+
+        if (!rt_is_valid_subaddress(sub)) {
+            msg_error = true;
+        }
+
+        if (!rt_is_valid_rx_wc(wc)) {
+            msg_error = true;
+        }
+
+        /*
+         * Validación temporal para prueba TR=0.
+         */
+        if (sub == RT_SUB_DATA && wc == 3u) {
+            if (rx_data[0] != 0x1234u ||
+                rx_data[1] != 0xABCDu ||
+                rx_data[2] != 0x55AAu) {
                 msg_error = true;
             }
+        }
 
-            if (!rt_is_valid_rx_wc(wc)) {
-                msg_error = true;
-            }
+        printf("RT_RX_BC_TO_RT|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
+               cmd,
+               rt,
+               tr,
+               sub,
+               wc);
 
-            /*
-             * Validación temporal para prueba TR=0.
-             * Mientras estemos probando con estos datos fijos, si llegan corruptos
-             * marcamos MSG_ERROR=1.
-             */
-            if (sub == RT_SUB_DATA && wc == 3u) {
-                if (rx_data[0] != 0x1234u ||
-                    rx_data[1] != 0xABCDu ||
-                    rx_data[2] != 0x55AAu) {
-                    msg_error = true;
-                }
-            }
+        for (uint8_t i = 0; i < wc; i++) {
+            printf("|D%u=0x%04X", i, rx_data[i]);
+        }
 
-            printf("RT_RX_BC_TO_RT|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
-                   cmd,
-                   rt,
-                   tr,
-                   sub,
-                   wc);
+        printf("|MSG_ERROR=%u\n", msg_error ? 1u : 0u);
 
-            for (uint8_t i = 0; i < wc; i++) {
-                printf("|D%u=0x%04X", i, rx_data[i]);
-            }
+        sleep_us(3000);
 
-            printf("|MSG_ERROR=%u\n", msg_error ? 1u : 0u);
+        bus_set_tx_mode();
 
-            /*
-             * Guarda actual estable para que el BC pase a RX.
-             */
-            sleep_us(3000);
+        bus_send_status_word_parity(my_rt_addr, msg_error);
 
-            bus_set_tx_mode();
+        sleep_us(30 * BIT_PERIOD_US);
 
-            bus_send_status_word_parity(my_rt_addr, msg_error);
+        bus_idle();
+        bus_set_rx_mode();
+
+        printf("RT_TX_STATUS|RT=%u|MSG_ERROR=%u\n",
+               my_rt_addr,
+               msg_error ? 1u : 0u);
+
+        return true;
+    }
+
+    /*
+     * ============================================================
+     * CASO TR=1:
+     * BC solicita datos al RT.
+     * ============================================================
+     */
+    if (tr == BUS_1553_TR_RT_TO_BC) {
+        bool msg_error = false;
+
+        if (!rt_is_valid_subaddress(sub)) {
+            msg_error = true;
+        }
+
+        if (!rt_is_valid_tx_wc(wc)) {
+            msg_error = true;
+        }
+
+        printf("RT_RX_RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|MSG_ERROR=%u\n",
+               cmd,
+               rt,
+               tr,
+               sub,
+               wc,
+               msg_error ? 1u : 0u);
+
+        sleep_us(3000);
+
+        bus_set_tx_mode();
+
+        if (msg_error) {
+            bus_send_status_word_parity(my_rt_addr, true);
 
             sleep_us(30 * BIT_PERIOD_US);
 
             bus_idle();
             bus_set_rx_mode();
 
-            printf("RT_TX_STATUS|RT=%u|MSG_ERROR=%u\n",
+            printf("RT_TX_STATUS|RT=%u|MSG_ERROR=1\n", my_rt_addr);
+        } else {
+            bus_send_status_data_parity(my_rt_addr,
+                                        false,
+                                        rt_tx_data,
+                                        wc);
+
+            sleep_us(30 * BIT_PERIOD_US);
+
+            bus_idle();
+            bus_set_rx_mode();
+
+            printf("RT_TX_STATUS_DATA|RT=%u|WC=%u",
                    my_rt_addr,
-                   msg_error ? 1u : 0u);
+                   wc);
 
-            return true;
+            for (uint8_t i = 0; i < wc; i++) {
+                printf("|D%u=0x%04X", i, rt_tx_data[i]);
+            }
+
+            printf("\n");
         }
+
+        return true;
     }
-
-    /*
-     * ============================================================
-     * CASO 2:
-     * TR=1 → BC solicita datos al RT.
-     * ============================================================
-     */
-    /*cmd = 0;
-
-    if (bus_read_command_word_parity_pio(&cmd)) {
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        wc          = BUS_1553_CMD_WC(cmd);
-
-        if (rt == my_rt_addr && tr == BUS_1553_TR_RT_TO_BC) {
-            bool msg_error = false;
-
-            if (!rt_is_valid_subaddress(sub)) {
-                msg_error = true;
-            }
-
-            if (!rt_is_valid_tx_wc(wc)) {
-                msg_error = true;
-            }
-
-            printf("RT_RX_RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|MSG_ERROR=%u\n",
-                   cmd,
-                   rt,
-                   tr,
-                   sub,
-                   wc,
-                   msg_error ? 1u : 0u);
-
-            /*
-             * Guarda actual estable para que el BC pase a RX.
-             *
-            sleep_us(3000);
-
-            bus_set_tx_mode();
-
-            if (msg_error) {
-                bus_send_status_word_parity(my_rt_addr, true);
-
-                sleep_us(30 * BIT_PERIOD_US);
-
-                bus_idle();
-                bus_set_rx_mode();
-
-                printf("RT_TX_STATUS|RT=%u|MSG_ERROR=1\n", my_rt_addr);
-            } else {
-                bus_send_status_data_parity(my_rt_addr,
-                                            false,
-                                            rt_tx_data,
-                                            wc);
-
-                sleep_us(30 * BIT_PERIOD_US);
-
-                bus_idle();
-                bus_set_rx_mode();
-
-                printf("RT_TX_STATUS_DATA|RT=%u|WC=%u",
-                       my_rt_addr,
-                       wc);
-
-                for (uint8_t i = 0; i < wc; i++) {
-                    printf("|D%u=0x%04X", i, rt_tx_data[i]);
-                }
-
-                printf("\n");
-            }
-
-            return true;
-        }
-    }*/
 
     return false;
 }
