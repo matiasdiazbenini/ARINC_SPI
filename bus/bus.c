@@ -1,18 +1,34 @@
 #include "bus.h"
+
 #include <stdio.h>
+#include <string.h>
+
+#include "pico/stdlib.h"
 #include "hardware/gpio.h"
-#if BUS_USE_PIO_TX
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
-#include "manchester_tx.pio.h"
+
 #include "manchester_rx.pio.h"
-#endif
-#include "pico/stdlib.h"
+
+/*
+ * ============================================================
+ * Configuración RX
+ * ============================================================
+ */
 
 #define RX_PIO pio0
 #define RX_SM  1u
 
-#define SAMPLES_PER_BIT      12u
+/*
+ * Base estable actual:
+ *
+ * BIT_PERIOD_US = 500 us
+ * SAMPLES_PER_BIT = 10
+ *
+ * Entonces:
+ * RX_SAMPLE_PERIOD_US = 50 us
+ */
+#define SAMPLES_PER_BIT      10u
 #define RX_SAMPLE_PERIOD_US  (BIT_PERIOD_US / SAMPLES_PER_BIT)
 
 #define PN_IDLE    0x00u
@@ -20,35 +36,97 @@
 #define PN_LOW     0x02u
 #define PN_INVALID 0x03u
 
-#define CAPTURE_SAMPLES 8192u
-
-#define RT_SUB_DATA    2u
-#define RT_SUB_STATUS  3u
-#define RT_SUB_DIAG    4u
-
-#define RT_TX_WORDS    3u
+/*
+ * Para el sniffer conviene una ventana más larga que en el RT,
+ * porque queremos capturar la transacción completa:
+ *
+ * TR=0:
+ *   CMD + DATA + STATUS
+ *
+ * TR=1:
+ *   CMD + STATUS + DATA
+ *
+ * Con 8192 muestras:
+ *   8192 * 50 us ≈ 409 ms
+ */
+#define SNIFFER_CAPTURE_SAMPLES 8192u
 
 static uint32_t sample_word = 0;
 static int sample_index = 16;
-
 static bool rx_pio_initialized = false;
+
+/*
+ * ============================================================
+ * Prototipos internos
+ * ============================================================
+ */
+
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base);
-bool bus_read_command_word_pio(uint16_t *cmd);
-static bool find_any_word16_near(const uint8_t *samples,
-                                 int center,
-                                 int radius,
-                                 uint16_t *word,
-                                 int *found_offset);
-static bool find_word16_near(const uint8_t *samples,
-                             int center,
-                             int radius,
-                             uint16_t target,
-                             uint16_t *found_word,
-                             int *found_offset);
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base);
 
-void bus_send_command_word(uint16_t cmd);
+static uint8_t get_sample_from_word(uint32_t raw, int index);
+static uint8_t read_sample(void);
+static void capture_samples(uint8_t *buffer, uint32_t count);
 
-bool sniffer_capture_bc_to_rt_event(void);
+static uint8_t majority_range(const uint8_t *buffer, int start, int count);
+static bool decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit);
+static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte);
+
+static uint8_t bus_compute_odd_parity(uint16_t word);
+
+static bool find_any_word16_parity_near(const uint8_t *samples,
+                                        int sample_count,
+                                        int center,
+                                        int radius,
+                                        uint16_t *word,
+                                        int *found_offset);
+
+static bool find_sync_byte_near(const uint8_t *samples,
+                                int sample_count,
+                                int center,
+                                int radius,
+                                uint8_t sync_value,
+                                int *found_offset);
+
+static bool find_sync_byte_forward(const uint8_t *samples,
+                                   int sample_count,
+                                   int start,
+                                   int end,
+                                   uint8_t sync_value,
+                                   int *found_offset);
+
+static bool decode_status_at_sync(const uint8_t *samples,
+                                  int sample_count,
+                                  int off_sync,
+                                  uint16_t *status,
+                                  int *off_status_word);
+
+static bool decode_data_words_after(const uint8_t *samples,
+                                    int sample_count,
+                                    int start_sync_center,
+                                    uint8_t wc,
+                                    uint16_t data[],
+                                    int *next_center_after_last_word);
+
+static bool parse_bc_to_rt_event(const uint8_t *samples,
+                                 int sample_count,
+                                 int off_cmd_sync,
+                                 uint16_t cmd,
+                                 int off_cmd_word,
+                                 sniffer_event_t *event);
+
+static bool parse_rt_to_bc_event(const uint8_t *samples,
+                                 int sample_count,
+                                 int off_cmd_sync,
+                                 uint16_t cmd,
+                                 int off_cmd_word,
+                                 sniffer_event_t *event);
+
+/*
+ * ============================================================
+ * RX PIO helpers
+ * ============================================================
+ */
 
 static uint8_t get_sample_from_word(uint32_t raw, int index) {
     const int shift = 30 - (index * 2);
@@ -99,6 +177,10 @@ static uint8_t majority_range(const uint8_t *buffer, int start, int count) {
 static bool decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit) {
     const int half = SAMPLES_PER_BIT / 2;
 
+    if (bit == NULL) {
+        return false;
+    }
+
     uint8_t first = majority_range(buffer, start, half);
     uint8_t second = majority_range(buffer, start + half, half);
 
@@ -136,858 +218,24 @@ static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte
     *byte = value;
     return true;
 }
-static bool find_byte_near(const uint8_t *samples,
-                           int center,
-                           int radius,
-                           uint8_t target,
-                           uint8_t *found_byte,
-                           int *found_offset) {
-    for (int delta = -radius; delta <= radius; delta++) {
-        int pos = center + delta;
 
-        if (pos < 0) {
-            continue;
-        }
+/*
+ * ============================================================
+ * PIO init
+ * ============================================================
+ */
 
-        if (pos + (8 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
-            continue;
-        }
+static void rx_sampler_take_pins(PIO pio, uint sm, uint pin_base) {
+    gpio_set_function(pin_base, GPIO_FUNC_PIO0);
+    gpio_set_function(pin_base + 1u, GPIO_FUNC_PIO0);
 
-        uint8_t b = 0;
-
-        if (decode_byte_at_phase(samples, pos, &b)) {
-            if (b == target) {
-                if (found_byte != NULL) {
-                    *found_byte = b;
-                }
-
-                if (found_offset != NULL) {
-                    *found_offset = pos;
-                }
-
-                return true;
-            }
-        }
-    }
-
-    return false;
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 2, false);
+    pio_sm_set_enabled(pio, sm, true);
 }
-static bool find_any_byte_near(const uint8_t *samples,
-                               int center,
-                               int radius,
-                               uint8_t *found_byte,
-                               int *found_offset) {
-    for (int delta = -radius; delta <= radius; delta++) {
-        int pos = center + delta;
 
-        if (pos < 0) {
-            continue;
-        }
-
-        if (pos + (8 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
-            continue;
-        }
-
-        uint8_t b = 0;
-
-        if (decode_byte_at_phase(samples, pos, &b)) {
-            if (found_byte != NULL) {
-                *found_byte = b;
-            }
-
-            if (found_offset != NULL) {
-                *found_offset = pos;
-            }
-
-            return true;
-        }
-    }
-
-    return false;
-}
-static bool bus_pio_read_frame_any(uint16_t *cmd, uint16_t data[], uint8_t wc) {
-    uint8_t samples[CAPTURE_SAMPLES];
-
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int search_radius = 20;
-
-    const int total_bytes = 1 + 2 + (wc * 2); // SYNC + CMD + DATA
-
-    for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync)) {
-            continue;
-        }
-
-        if (sync != 0xF0u) {
-            continue;
-        }
-
-        uint8_t cmd_hi = 0;
-        uint8_t cmd_lo = 0;
-
-        int off_cmd_hi = -1;
-        int off_cmd_lo = -1;
-
-        bool ok_cmd_hi = find_any_byte_near(samples,
-                                            offset + 1 * byte_samples,
-                                            search_radius,
-                                            &cmd_hi,
-                                            &off_cmd_hi);
-
-        bool ok_cmd_lo = find_any_byte_near(samples,
-                                            offset + 2 * byte_samples,
-                                            search_radius,
-                                            &cmd_lo,
-                                            &off_cmd_lo);
-
-        if (!ok_cmd_hi || !ok_cmd_lo) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-        }
-
-        bool all_data_ok = true;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            uint8_t hi = 0;
-            uint8_t lo = 0;
-
-            int off_hi = -1;
-            int off_lo = -1;
-
-            int hi_center = offset + (3 + i * 2) * byte_samples;
-            int lo_center = offset + (4 + i * 2) * byte_samples;
-
-            bool ok_hi = find_any_byte_near(samples,
-                                            hi_center,
-                                            search_radius,
-                                            &hi,
-                                            &off_hi);
-
-            bool ok_lo = find_any_byte_near(samples,
-                                            lo_center,
-                                            search_radius,
-                                            &lo,
-                                            &off_lo);
-
-            if (!ok_hi || !ok_lo) {
-                all_data_ok = false;
-                break;
-            }
-
-            if (data != NULL) {
-                data[i] = ((uint16_t)hi << 8) | lo;
-            }
-        }
-
-        if (all_data_ok) {
-            return true;
-        }
-    }
-
-    return false;
-}
-static bool bus_pio_read_frame(uint16_t *cmd, uint16_t data[], uint8_t wc) {
-    uint8_t samples[CAPTURE_SAMPLES];
-
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int search_radius = 20;
-
-    for (int offset = 0;
-         offset + ((3 + wc * 2) * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync)) {
-            continue;
-        }
-
-        if (sync != 0xF0u) {
-            continue;
-        }
-
-        uint8_t cmd_hi = 0;
-        uint8_t cmd_lo = 0;
-        int off_dummy = -1;
-
-        bool ok_cmd_hi = find_byte_near(samples,
-                                        offset + 1 * byte_samples,
-                                        search_radius,
-                                        0x18u,
-                                        &cmd_hi,
-                                        &off_dummy);
-
-        bool ok_cmd_lo = find_byte_near(samples,
-                                        offset + 2 * byte_samples,
-                                        search_radius,
-                                        0x23u,
-                                        &cmd_lo,
-                                        &off_dummy);
-
-        if (!ok_cmd_hi || !ok_cmd_lo) {
-            continue;
-        }
-
-        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        bool all_data_ok = true;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            uint8_t hi = 0;
-            uint8_t lo = 0;
-
-            uint8_t expected_hi = 0xA0u;
-            uint8_t expected_lo = i;
-
-            bool ok_hi = find_byte_near(samples,
-                                        offset + (3 + i * 2) * byte_samples,
-                                        search_radius,
-                                        expected_hi,
-                                        &hi,
-                                        &off_dummy);
-
-            bool ok_lo = find_byte_near(samples,
-                                        offset + (4 + i * 2) * byte_samples,
-                                        search_radius,
-                                        expected_lo,
-                                        &lo,
-                                        &off_dummy);
-
-            if (!ok_hi || !ok_lo) {
-                all_data_ok = false;
-                break;
-            }
-
-            if (data != NULL) {
-                data[i] = ((uint16_t)hi << 8) | lo;
-            }
-        }
-
-        if (all_data_ok) {
-            return true;
-        }
-    }
-
-    return false;
-}
-bool bus_read_test_frame_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-    return bus_pio_read_frame(cmd, data, wc);
-}
-bool bus_read_test_packet_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-    uint8_t samples[CAPTURE_SAMPLES];
-
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int search_radius = 20;
-
-    /*
-     * Paquete esperado:
-     *
-     * 0: 0xF0  -> SYNC CMD/STATUS
-     * 1: 0x18
-     * 2: 0x23
-     * 3: 0x0F  -> SYNC DATA
-     * 4: 0xA0
-     * 5: 0x00
-     * 6: 0xA0
-     * 7: 0x01
-     * 8: 0xA0
-     * 9: 0x02
-     *
-     * Total = 4 + wc*2 bytes
-     */
-    const int total_bytes = 4 + (wc * 2);
-
-    for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        uint8_t cmd_hi = 0;
-        uint8_t cmd_lo = 0;
-        uint8_t sync_data = 0;
-
-        int off_dummy = -1;
-
-        bool ok_cmd_hi = find_byte_near(samples,
-                                        offset + 1 * byte_samples,
-                                        search_radius,
-                                        0x18u,
-                                        &cmd_hi,
-                                        &off_dummy);
-
-        bool ok_cmd_lo = find_byte_near(samples,
-                                        offset + 2 * byte_samples,
-                                        search_radius,
-                                        0x23u,
-                                        &cmd_lo,
-                                        &off_dummy);
-
-        bool ok_sync_data = find_byte_near(samples,
-                                           offset + 3 * byte_samples,
-                                           search_radius,
-                                           0x0Fu,
-                                           &sync_data,
-                                           &off_dummy);
-
-        if (!ok_cmd_hi || !ok_cmd_lo || !ok_sync_data) {
-            continue;
-        }
-
-        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        bool all_data_ok = true;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            uint8_t hi = 0;
-            uint8_t lo = 0;
-
-            uint8_t expected_hi = 0xA0u;
-            uint8_t expected_lo = i;
-
-            /*
-             * Los datos ahora empiezan después de:
-             * F0 18 23 0F
-             *
-             * DATA0_H está en índice 4
-             * DATA0_L está en índice 5
-             */
-            int hi_center = offset + (4 + i * 2) * byte_samples;
-            int lo_center = offset + (5 + i * 2) * byte_samples;
-
-            bool ok_hi = find_byte_near(samples,
-                                        hi_center,
-                                        search_radius,
-                                        expected_hi,
-                                        &hi,
-                                        &off_dummy);
-
-            bool ok_lo = find_byte_near(samples,
-                                        lo_center,
-                                        search_radius,
-                                        expected_lo,
-                                        &lo,
-                                        &off_dummy);
-
-            if (!ok_hi || !ok_lo) {
-                all_data_ok = false;
-                break;
-            }
-
-            if (data != NULL) {
-                data[i] = ((uint16_t)hi << 8) | lo;
-            }
-        }
-
-        if (all_data_ok) {
-            return true;
-        }
-    }
-
-    return false;
-}
-bool bus_read_packet_checked_pio(uint16_t *cmd, uint16_t data[], uint8_t wc) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_samples = 16 * SAMPLES_PER_BIT;
-    const int search_radius = 12;
-
-    /*
-     * F0 + CMD(2B) + 0F + DATA(wc*2B) + CHK(2B)
-     */
-    const int total_bytes = 1 + 2 + 1 + (wc * 2) + 2;
-
-    int dbg_sync_f0 = 0;
-    int dbg_cmd_ok = 0;
-    int dbg_sync_data_ok = 0;
-    int dbg_data_ok = 0;
-
-    for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-        dbg_sync_f0++;
-        uint8_t cmd_hi = 0;
-        uint8_t cmd_lo = 0;
-
-        int off_cmd_hi = -1;
-        int off_cmd_lo = -1;
-
-        bool ok_cmd_hi = find_byte_near(samples,
-                                        offset + 1 * byte_samples,
-                                        search_radius,
-                                        0x18u,
-                                        &cmd_hi,
-                                        &off_cmd_hi);
-
-        bool ok_cmd_lo = find_byte_near(samples,
-                                        offset + 2 * byte_samples,
-                                        search_radius,
-                                        0x03u,
-                                        &cmd_lo,
-                                        &off_cmd_lo);
-
-        if (!ok_cmd_hi || !ok_cmd_lo) {
-            continue;
-        }
-
-        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-
-        dbg_cmd_ok++;
-
-        uint8_t sync_data = 0;
-        int off_sync_data = -1;
-
-        /*
-        * Buscar el 0x0F después del byte bajo real del CMD.
-        * off_cmd_lo es la posición real donde encontró 0x23.
-        */
-        if (!find_byte_near(samples,
-                            off_cmd_lo + byte_samples,
-                            search_radius,
-                            0x0Fu,
-                            &sync_data,
-                            &off_sync_data)) {
-            continue;
-        }
-
-        dbg_sync_data_ok++;
-        uint16_t temp_data[16] = {0};
-
-        if (wc > 16) {
-            return false;
-        }
-
-        bool data_ok = true;
-
-        /*
-        * El primer dato debería empezar después del SYNC_DATA.
-        * Pero después de encontrar cada word, usamos su offset real
-        * para buscar el siguiente. Esto evita acumulación de desfase.
-        */
-        int next_word_center = off_sync_data + byte_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            int off_word = -1;
-
-            if (!find_any_word16_near(samples,
-                                    next_word_center,
-                                    search_radius,
-                                    &temp_data[i],
-                                    &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-            * Próxima palabra: 16 bits después del offset real encontrado.
-            */
-            next_word_center = off_word + word_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        dbg_data_ok++;
-
-        uint16_t rx_chk = 0;
-        int off_chk = -1;
-
-        /*
-        * El checksum va después del último data word,
-        * usando el offset real encadenado.
-        */
-        if (!find_any_word16_near(samples,
-                                next_word_center,
-                                search_radius,
-                                &rx_chk,
-                                &off_chk)) {
-            continue;
-        }
-
-        uint16_t calc = rx_cmd;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            calc ^= temp_data[i];
-        }
-
-        static int dbg_count = 0;
-
-        if (dbg_count < 20) {
-            dbg_count++;
-
-            printf("CHK_TEST|CMD=0x%04X|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X\n",
-                rx_cmd,
-                temp_data[0],
-                temp_data[1],
-                temp_data[2],
-                rx_chk,
-                calc);
-        }
-
-        if (calc != rx_chk) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        if (data != NULL) {
-            for (uint8_t i = 0; i < wc; i++) {
-                data[i] = temp_data[i];
-            }
-        }
-
-        return true;
-    }
-    return false;
-}
-bool bus_read_packet_checked_auto_pio(uint16_t *cmd,
-                                      uint16_t data[],
-                                      uint8_t max_wc,
-                                      uint8_t *rx_wc) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_samples = 16 * SAMPLES_PER_BIT;
-    const int search_radius = 12;
-
-    /*
-     * Máximo esperado:
-     * F0 + CMD(2B) + 0F + DATA(max_wc*2B) + CHK(2B)
-     */
-    const int max_total_bytes = 1 + 2 + 1 + (max_wc * 2) + 2;
-
-    int dbg_f0 = 0;
-    int dbg_cmd_hi = 0;
-    int dbg_cmd_lo = 0;
-    int dbg_sync_data = 0;
-    int dbg_data = 0;
-    int dbg_chk = 0;
-
-    /*
-     * Para esta versión:
-     * WC = 1..max_wc.
-     * En 1553 real WC usa 5 bits: 1..31. Dejamos WC=0 reservado.
-     */
-    if (max_wc == 0 || max_wc > BUS_1553_MAX_DATA_WORDS) {
-        return false;
-    }
-
-    for (int offset = 0;
-         offset + (max_total_bytes * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        dbg_f0++;
-
-        /*
-         * Buscar:
-         *
-         * F0 CMD_H CMD_L 0F
-         *
-         * No aceptamos CMD_H/CMD_L si después no aparece SYNC_DATA 0x0F.
-         * Esto evita agarrar bytes falsos o corridos.
-         */
-        uint8_t cmd_hi = 0;
-        uint8_t cmd_lo = 0;
-        uint8_t sync_data = 0;
-
-        int off_cmd_hi = -1;
-        int off_cmd_lo = -1;
-        int off_sync_data = -1;
-
-        bool ok_cmd_and_sync = false;
-
-        for (int delta_hi = -search_radius; delta_hi <= search_radius; delta_hi++) {
-            int candidate_off_cmd_hi = offset + byte_samples + delta_hi;
-
-            if (candidate_off_cmd_hi < 0) {
-                continue;
-            }
-
-            if (candidate_off_cmd_hi + byte_samples >= CAPTURE_SAMPLES) {
-                continue;
-            }
-
-            uint8_t candidate_cmd_hi = 0;
-
-            if (!decode_byte_at_phase(samples, candidate_off_cmd_hi, &candidate_cmd_hi)) {
-                continue;
-            }
-
-            dbg_cmd_hi++;
-
-            /*
-             * CMD_L debería estar un byte después de CMD_H.
-             * Lo buscamos cerca de esa posición.
-             */
-            for (int delta_lo = -search_radius; delta_lo <= search_radius; delta_lo++) {
-                int candidate_off_cmd_lo =
-                    candidate_off_cmd_hi + byte_samples + delta_lo;
-
-                if (candidate_off_cmd_lo < 0) {
-                    continue;
-                }
-
-                if (candidate_off_cmd_lo + byte_samples >= CAPTURE_SAMPLES) {
-                    continue;
-                }
-
-                uint8_t candidate_cmd_lo = 0;
-
-                if (!decode_byte_at_phase(samples,
-                                          candidate_off_cmd_lo,
-                                          &candidate_cmd_lo)) {
-                    continue;
-                }
-
-                uint16_t candidate_cmd =
-                    ((uint16_t)candidate_cmd_hi << 8) | candidate_cmd_lo;
-
-                uint8_t candidate_rt  = BUS_1553_CMD_RT(candidate_cmd);
-                uint8_t candidate_tr  = BUS_1553_CMD_TR(candidate_cmd);
-                uint8_t candidate_sub = BUS_1553_CMD_SUB(candidate_cmd);
-                uint8_t candidate_wc  = BUS_1553_CMD_WC(candidate_cmd);
-
-                /*
-                 * Validaciones básicas.
-                 * Para esta prueba esperamos:
-                 * RT = 3
-                 * TR = 0, BC -> RT
-                 * SUB = 2
-                 * WC = 1..max_wc
-                 */
-                if (candidate_wc == 0 || candidate_wc > max_wc) {
-                    continue;
-                }
-
-                if (candidate_tr != BUS_1553_TR_BC_TO_RT) {
-                    continue;
-                }
-
-                /*
-                 * Filtro de prueba.
-                 * Si después querés aceptar cualquier RT/SUB, comentá este if.
-                 */
-                if (candidate_rt != 3u || candidate_sub != 2u) {
-                    continue;
-                }
-
-                /*
-                 * Solo aceptamos este CMD si luego aparece SYNC_DATA 0x0F.
-                 */
-                uint8_t candidate_sync_data = 0;
-                int candidate_off_sync_data = -1;
-
-                if (!find_byte_near(samples,
-                                    candidate_off_cmd_lo + byte_samples,
-                                    search_radius,
-                                    0x0Fu,
-                                    &candidate_sync_data,
-                                    &candidate_off_sync_data)) {
-                    continue;
-                }
-
-                cmd_hi = candidate_cmd_hi;
-                cmd_lo = candidate_cmd_lo;
-                sync_data = candidate_sync_data;
-
-                off_cmd_hi = candidate_off_cmd_hi;
-                off_cmd_lo = candidate_off_cmd_lo;
-                off_sync_data = candidate_off_sync_data;
-
-                ok_cmd_and_sync = true;
-                break;
-            }
-
-            if (ok_cmd_and_sync) {
-                break;
-            }
-        }
-
-        if (!ok_cmd_and_sync) {
-            continue;
-        }
-
-        dbg_cmd_lo++;
-        dbg_sync_data++;
-
-        uint16_t rx_cmd = ((uint16_t)cmd_hi << 8) | cmd_lo;
-        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
-
-        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        /*
-         * DATA empieza después de SYNC_DATA.
-         * Usamos offsets encadenados para evitar desfase acumulado.
-         */
-        int next_word_center = off_sync_data + byte_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            int off_word = -1;
-
-            if (!find_any_word16_near(samples,
-                                      next_word_center,
-                                      search_radius,
-                                      &temp_data[i],
-                                      &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            next_word_center = off_word + word_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        dbg_data++;
-
-        /*
-         * Checksum después del último dato.
-         */
-        /*
-        * Calcular checksum esperado.
-        */
-        uint16_t calc = rx_cmd;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            calc ^= temp_data[i];
-        }
-
-       /*
-        * Debug temporal del checksum:
-        * primero leemos cualquier word16 cercano para ver qué está llegando,
-        * y comparamos contra calc.
-        */
-        uint16_t rx_chk = 0;
-        int off_chk = -1;
-
-        if (!find_any_word16_near(samples,
-                                next_word_center,
-                                24,
-                                &rx_chk,
-                                &off_chk)) {
-            continue;
-        }
-
-        dbg_chk++;
-
-        static int chk_dbg = 0;
-
-        if (chk_dbg < 30) {
-            chk_dbg++;
-
-            /*printf("CHK_DBG|CMD=0x%04X|WC=%u|D0=0x%04X|D1=0x%04X|D2=0x%04X|RX_CHK=0x%04X|CALC=0x%04X|OFF_CHK=%d|CENTER=%d\n",
-                rx_cmd,
-                wc,
-                temp_data[0],
-                temp_data[1],
-                temp_data[2],
-                rx_chk,
-                calc,
-                off_chk,
-                next_word_center);*/
-        }
-
-        if (calc != rx_chk) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        if (rx_wc != NULL) {
-            *rx_wc = wc;
-        }
-
-        if (data != NULL) {
-            for (uint8_t i = 0; i < wc; i++) {
-                data[i] = temp_data[i];
-            }
-        }
-
-        return true;
-    }
-
-    /*
-     * Debug temporal. Cuando funcione estable, podés comentarlo.
-     */
-    /*printf("AUTO_DBG|F0=%d|CMD_H=%d|CMD_L=%d|SYNC_DATA=%d|DATA=%d|CHK=%d\n",
-           dbg_f0,
-           dbg_cmd_hi,
-           dbg_cmd_lo,
-           dbg_sync_data,
-           dbg_data,
-           dbg_chk);*/
-
-    return false;
-}
 static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     if (rx_pio_initialized) {
+        rx_sampler_take_pins(pio, sm, pin_base);
         return;
     }
 
@@ -1012,343 +260,31 @@ static void rx_sampler_init(PIO pio, uint sm, uint pin_base) {
     pio_sm_set_enabled(pio, sm, true);
 
     rx_pio_initialized = true;
+
+    rx_sampler_take_pins(pio, sm, pin_base);
 }
 
-#if BUS_USE_PIO_TX
-static PIO bus_tx_pio = pio0;
-static const uint bus_tx_sm = 0u;
-static uint bus_tx_offset = 0u;
-static bool bus_tx_pio_initialized = false;
-
-static void bus_pio_take_tx_pins(void) {
-    gpio_set_function(BUS_PIN_P, GPIO_FUNC_PIO0);
-    gpio_set_function(BUS_PIN_N, GPIO_FUNC_PIO0);
-    pio_sm_set_consecutive_pindirs(bus_tx_pio, bus_tx_sm, BUS_PIN_P, 2u, true);
-}
-
-static void bus_release_pins_to_sio(void) {
-    gpio_set_function(BUS_PIN_P, GPIO_FUNC_SIO);
-    gpio_set_function(BUS_PIN_N, GPIO_FUNC_SIO);
-}
-
-static void bus_tx_pio_init(void) {
-    if (bus_tx_pio_initialized) {
-        return;
-    }
-
-    bus_tx_offset = pio_add_program(bus_tx_pio, &manchester_tx_program);
-
-    pio_sm_config c = manchester_tx_program_get_default_config(bus_tx_offset);
-
-    sm_config_set_sideset_pins(&c, BUS_PIN_P);
-
-    /*
-     * MSB first.
-     * bus_send_bit() carga 0x80000000 para bit=1 y 0x00000000 para bit=0.
-     */
-    sm_config_set_out_shift(&c, false, false, 32);
-
-    /*
-     * Valor conservador inicial. La temporización efectiva todavía se
-     * completa con sleep_us(BIT_PERIOD_US) en bus_send_bit().
-     */
-    const float pio_cycles_per_bit = 16.0f;
-    const float clkdiv =
-        ((float)clock_get_hz(clk_sys) * ((float)BIT_PERIOD_US / 1000000.0f)) /
-        pio_cycles_per_bit;
-
-    sm_config_set_clkdiv(&c, clkdiv);
-
-    pio_gpio_init(bus_tx_pio, BUS_PIN_P);
-    pio_gpio_init(bus_tx_pio, BUS_PIN_N);
-
-    bus_pio_take_tx_pins();
-
-    pio_sm_init(bus_tx_pio, bus_tx_sm, bus_tx_offset, &c);
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
-
-    bus_tx_pio_initialized = true;
-}
-#endif
-
-#if !BUS_USE_PIO_TX
-static void bus_send_bit_software(bool bit) {
-    const uint32_t half_period_us = BIT_PERIOD_US / 2u;
-
-    if (bit) {
-        gpio_put(BUS_PIN_P, 1);
-        gpio_put(BUS_PIN_N, 0);
-        sleep_us(half_period_us);
-
-        gpio_put(BUS_PIN_P, 0);
-        gpio_put(BUS_PIN_N, 1);
-        sleep_us(half_period_us);
-    } else {
-        gpio_put(BUS_PIN_P, 0);
-        gpio_put(BUS_PIN_N, 1);
-        sleep_us(half_period_us);
-
-        gpio_put(BUS_PIN_P, 1);
-        gpio_put(BUS_PIN_N, 0);
-        sleep_us(half_period_us);
-    }
-}
-#endif
-
-static int bus_read_diff_level(void) {
-    const int p = gpio_get(BUS_PIN_P);
-    const int n = gpio_get(BUS_PIN_N);
-
-    if (p == 1 && n == 0) {
-        return 1;
-    }
-
-    if (p == 0 && n == 1) {
-        return 0;
-    }
-
-    return -1;
-}
+/*
+ * ============================================================
+ * Inicialización pública
+ * ============================================================
+ */
 
 void bus_init(void) {
     gpio_init(BUS_PIN_P);
     gpio_init(BUS_PIN_N);
 
-#if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-#endif
-
-    bus_set_rx_mode();
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 }
 
-void bus_set_tx_mode(void) {
-#if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-    bus_pio_take_tx_pins();
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
-#else
-    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
-    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
-#endif
-}
+/*
+ * ============================================================
+ * Decodificación de palabras con paridad
+ * ============================================================
+ */
 
-void bus_set_rx_mode(void) {
-#if BUS_USE_PIO_TX
-    if (bus_tx_pio_initialized) {
-        /*
-         * Esperar a que la FIFO se vacíe.
-         * Ojo: esto no garantiza que el último byte ya terminó físicamente.
-         */
-        pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-
-        /*
-         * Espera extra para que termine de salir el último byte.
-         * Cada byte son 8 bits, usamos margen de 10 bits.
-         */
-        sleep_us(10 * BIT_PERIOD_US);
-
-        pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
-    }
-
-    bus_release_pins_to_sio();
-#endif
-
-    gpio_set_dir(BUS_PIN_P, GPIO_IN);
-    gpio_set_dir(BUS_PIN_N, GPIO_IN);
-}
-
-void bus_idle(void) {
-#if BUS_USE_PIO_TX
-    if (bus_tx_pio_initialized) {
-        /*
-         * Esperar a que la FIFO se vacíe.
-         */
-        pio_sm_drain_tx_fifo(bus_tx_pio, bus_tx_sm);
-
-        /*
-         * Espera extra para no cortar el último byte.
-         */
-        sleep_us(10 * BIT_PERIOD_US);
-
-        pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, false);
-    }
-
-    bus_release_pins_to_sio();
-
-    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
-    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
-#else
-    gpio_set_dir(BUS_PIN_P, GPIO_OUT);
-    gpio_set_dir(BUS_PIN_N, GPIO_OUT);
-#endif
-
-    gpio_put(BUS_PIN_P, 0);
-    gpio_put(BUS_PIN_N, 0);
-}
-
-void bus_send_bit(bool bit) {
-#if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-
-    if (gpio_get_function(BUS_PIN_P) != GPIO_FUNC_PIO0 ||
-        gpio_get_function(BUS_PIN_N) != GPIO_FUNC_PIO0) {
-        bus_pio_take_tx_pins();
-    }
-
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
-
-    const uint32_t tx_word = bit ? 0x80000000u : 0x00000000u;
-    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, tx_word);
-
-    /*
-     * Espera conservadora:
-     * evita que el código pase a RX/IDLE o cargue el siguiente bit antes
-     * de que el PIO termine de consumir el bit actual.
-     */
-#else
-    bus_send_bit_software(bit);
-#endif
-}
-
-bool bus_read_bit(bool *bit) {
-    int first_half = 0;
-    int second_half = 0;
-
-    if (bit == NULL) {
-        return false;
-    }
-
-    first_half = bus_read_diff_level();
-    if (first_half < 0) {
-        return false;
-    }
-
-    sleep_us(BIT_PERIOD_US / 2u);
-
-    second_half = bus_read_diff_level();
-    if (second_half < 0) {
-        return false;
-    }
-
-    if (first_half == 1 && second_half == 0) {
-        *bit = true;
-    } else if (first_half == 0 && second_half == 1) {
-        *bit = false;
-    } else {
-        return false;
-    }
-
-    sleep_us(BIT_PERIOD_US / 2u);
-    return true;
-}
-
-void bus_send_byte(uint8_t byte) {
-#if BUS_USE_PIO_TX
-    bus_tx_pio_init();
-    bus_pio_take_tx_pins();
-    pio_sm_set_enabled(bus_tx_pio, bus_tx_sm, true);
-
-    uint32_t v = ((uint32_t)byte) << 24u;  // MSB first
-    pio_sm_put_blocking(bus_tx_pio, bus_tx_sm, v);
-#else
-    for (int i = 7; i >= 0; i--) {
-        bus_send_bit(((byte >> i) & 1u) != 0u);
-    }
-#endif
-}
-
-bool bus_read_byte(uint8_t *byte) {
-    uint8_t value = 0;
-
-    if (byte == NULL) {
-        return false;
-    }
-
-    for (int i = 0; i < 8; i++) {
-        bool bit = false;
-
-        if (!bus_read_bit(&bit)) {
-            return false;
-        }
-
-        value = (uint8_t)((value << 1) | (bit ? 1u : 0u));
-    }
-
-    *byte = value;
-    return true;
-}
-
-static void bus_send_preamble(void){
-    for(uint8_t i = 0; i < SYNC_PREAMBLE_COUNT; i++){
-        bus_send_byte(SYNC_PREAMBLE_BYTE);
-    }
-}
-void bus_send_sync_cmd_status(void) {
-    bus_send_preamble();
-    bus_send_byte(SYNC_CMD_STATUS);
-}
-void bus_send_sync_data(void) {
-    bus_send_preamble();
-    bus_send_byte(SYNC_DATA);
-}
-bool bus_read_sync(uint8_t *type) {
-    uint8_t byte = 0;
-    uint8_t preamble_seen = 0;
-
-    while(true){
-        if(!bus_read_byte(&byte)){
-            return false;
-        }
-
-        printf("SYNC_SCAN_BYTE=%02X\n", byte);
-
-        if(byte == SYNC_PREAMBLE_BYTE){
-            if(preamble_seen < SYNC_PREAMBLE_COUNT){
-                preamble_seen++;
-            }
-            continue;
-        }
-        if(preamble_seen >= SYNC_PREAMBLE_COUNT){
-            if(byte == SYNC_CMD_STATUS){
-                if(type != NULL){
-                    *type = BUS_SYNC_TYPE_CMD_STATUS;
-                }
-                return true;
-            }
-            if(byte == SYNC_DATA){
-                if(type != NULL){
-                    *type = BUS_SYNC_TYPE_DATA;
-                }
-                return true;
-            }
-        }
-        preamble_seen = 0;
-    }
-}
-
-
-bool bus_read_word16(uint16_t *word) {
-    uint16_t value = 0;
-
-    if (word == NULL) {
-        return false;
-    }
-
-    for (int i = 0; i < 16; i++) {
-        bool bit = false;
-
-        if (!bus_read_bit(&bit)) {
-            return false;
-        }
-
-        value = (uint16_t)((value << 1) | (bit ? 1u : 0u));
-    }
-
-    *word = value;
-    return true;
-}
-
-uint8_t bus_compute_odd_parity(uint16_t word) {
+static uint8_t bus_compute_odd_parity(uint16_t word) {
     uint8_t parity = 0u;
 
     for (int i = 0; i < 16; i++) {
@@ -1357,407 +293,37 @@ uint8_t bus_compute_odd_parity(uint16_t word) {
 
     return (uint8_t)(parity ^ 1u);
 }
-void bus_send_word16(uint16_t word) {
-#if BUS_USE_PIO_TX
-    uint8_t hi = (uint8_t)((word >> 8) & 0xFFu);
-    uint8_t lo = (uint8_t)(word & 0xFFu);
 
-    bus_send_byte(hi);
-    bus_send_byte(lo);
-#else
-    for (int i = 15; i >= 0; i--) {
-        bus_send_bit(((word >> i) & 1u) != 0u);
-    }
-#endif
-}
-void bus_send_status_word(uint8_t rt_addr, bool msg_error) {
-    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
-
-    bus_send_byte(0xF0);
-    bus_send_word16(status);
-
-    /*
-     * Postámbulo neutro para proteger el final del status.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-void bus_send_status_data_checked(uint8_t rt_addr,
-                                  bool msg_error,
-                                  const uint16_t data[],
-                                  uint8_t wc) {
-    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
-    uint16_t chk = status;
-
-    /*
-     * STATUS SYNC + STATUS WORD
-     */
-    bus_send_byte(0xF0);
-    bus_send_word16(status);
-
-    /*
-    * Separación entre STATUS y DATA SYNC.
-    * No pertenece al paquete; solo estabiliza la búsqueda del 0x0F.
-    */
-    bus_send_byte(0x00);
-
-    /*
-    * DATA SYNC + DATA WORDS
-    */
-    bus_send_byte(0x0F);
-
-    for (uint8_t i = 0; i < wc; i++) {
-        uint16_t word = data[i];
-
-        bus_send_word16(word);
-        chk ^= word;
-    }
-
-    /*
-     * CHECKSUM
-     */
-    bus_send_word16(chk);
-
-    /*
-     * Postámbulo neutro.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-void bus_send_word16_parity(uint16_t word) {
-    bus_send_word16(word);
-    bus_send_bit(bus_compute_odd_parity(word) != 0u);
-}
-
-void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word) {
-    /*
-     * Abstracción de palabra 1553.
-     *
-     * Por ahora seguimos usando:
-     *   0xF0 → sync command/status simplificado
-     *   0x0F → sync data simplificado
-     *
-     * Más adelante esta función será el lugar donde reemplazamos
-     * estos bytes por un sync real tipo MIL-STD-1553.
-     */
-
-    if (sync_type == BUS_1553_SYNC_CMD_STATUS) {
-        bus_send_byte(0xF0);
-    } else {
-        bus_send_byte(0x0F);
-    }
-
-    /*
-     * 16 bits + paridad impar.
-     */
-    bus_send_word16_parity(word);
-}
-
-void bus_send_1553_command(uint16_t cmd) {
-    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, cmd);
-
-    /*
-     * Postámbulo neutro temporal.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-
-void bus_send_1553_status(uint8_t rt_addr, bool msg_error) {
-    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
-
-    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, status);
-
-    /*
-     * Postámbulo neutro temporal.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-
-void bus_send_1553_data_word(uint16_t data) {
-    bus_send_1553_word(BUS_1553_SYNC_DATA, data);
-}
-
-bool bus_read_word16_parity(uint16_t *word) {
-    uint16_t value = 0;
-    bool parity_bit = false;
-
-    if (word == NULL) {
-        return false;
-    }
-
-    if (!bus_read_word16(&value)) {
-        return false;
-    }
-
-    if (!bus_read_bit(&parity_bit)) {
-        return false;
-    }
-
-    if ((parity_bit ? 1u : 0u) != bus_compute_odd_parity(value)) {
-        return false;
-    }
-
-    *word = value;
-    return true;
-}
-static bool find_any_word16_near(const uint8_t *samples,
-                                 int center,
-                                 int radius,
-                                 uint16_t *word,
-                                 int *found_offset) {
-    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
-        for (int s = 0; s < 2; s++) {
-            int delta;
-
-            if (abs_delta == 0) {
-                if (s == 1) {
-                    continue;
-                }
-                delta = 0;
-            } else {
-                delta = (s == 0) ? -abs_delta : abs_delta;
-            }
-
-            int pos = center + delta;
-
-            if (pos < 0) {
-                continue;
-            }
-
-            if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
-                continue;
-            }
-
-            uint8_t hi = 0;
-            uint8_t lo = 0;
-
-            if (decode_byte_at_phase(samples, pos, &hi) &&
-                decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
-
-                if (word != NULL) {
-                    *word = ((uint16_t)hi << 8) | lo;
-                }
-
-                if (found_offset != NULL) {
-                    *found_offset = pos;
-                }
-
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-static bool find_word16_near(const uint8_t *samples,
-                             int center,
-                             int radius,
-                             uint16_t target,
-                             uint16_t *found_word,
-                             int *found_offset) {
-    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
-        for (int s = 0; s < 2; s++) {
-            int delta;
-
-            if (abs_delta == 0) {
-                if (s == 1) {
-                    continue;
-                }
-                delta = 0;
-            } else {
-                delta = (s == 0) ? -abs_delta : abs_delta;
-            }
-
-            int pos = center + delta;
-
-            if (pos < 0) {
-                continue;
-            }
-
-            if (pos + (16 * SAMPLES_PER_BIT) >= CAPTURE_SAMPLES) {
-                continue;
-            }
-
-            uint8_t hi = 0;
-            uint8_t lo = 0;
-
-            if (decode_byte_at_phase(samples, pos, &hi) &&
-                decode_byte_at_phase(samples, pos + 8 * SAMPLES_PER_BIT, &lo)) {
-
-                uint16_t w = ((uint16_t)hi << 8) | lo;
-
-                if (w == target) {
-                    if (found_word != NULL) {
-                        *found_word = w;
-                    }
-
-                    if (found_offset != NULL) {
-                        *found_offset = pos;
-                    }
-
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-void bus_send_command_word(uint16_t cmd) {
-    bus_send_byte(0xF0);
-    bus_send_word16(cmd);
-
-    /*
-     * Postámbulo neutro para proteger el final del comando.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-bool bus_read_command_word_pio(uint16_t *cmd) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int search_radius = 12;
-
-    /*
-     * Comando esperado:
-     * F0 + CMD(2 bytes)
-     */
-    const int total_bytes = 1 + 2;
-
-    for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync)) {
-            continue;
-        }
-
-        if (sync != 0xF0u) {
-            continue;
-        }
-
-        uint16_t rx_cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_near(samples,
-                                  offset + byte_samples,
-                                  search_radius,
-                                  &rx_cmd,
-                                  &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt  = BUS_1553_CMD_RT(rx_cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(rx_cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(rx_cmd);
-
-        /*
-         * Filtro básico de comando 1553-like.
-         */
-        if (rt == 0 || rt > 31) {
-            continue;
-        }
-
-        if (wc == 0 || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        /*
-         * Para esta prueba queremos TR=1.
-         */
-        if (tr != BUS_1553_TR_RT_TO_BC) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        return true;
-    }
-
-    return false;
-}
-void bus_send_command_word_parity(uint16_t cmd) {
-    bus_send_1553_command(cmd);
-}
-void bus_send_packet_parity(uint16_t cmd,
-                            const uint16_t data[],
-                            uint8_t wc) {
-    /*
-     * Command Word.
-     */
-    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, cmd);
-
-    /*
-     * Data Words.
-     */
-    for (uint8_t i = 0; i < wc; i++) {
-        bus_send_1553_word(BUS_1553_SYNC_DATA, data[i]);
-    }
-
-    /*
-     * Postámbulo neutro temporal.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
-void bus_send_status_word_parity(uint8_t rt_addr,
-                                 bool msg_error) {
-    bus_send_1553_status(rt_addr, msg_error);
-}
-void bus_send_status_data_parity(uint8_t rt_addr,
-                                 bool msg_error,
-                                 const uint16_t data[],
-                                 uint8_t wc) {
-    uint16_t status = BUS_1553_STATUS_MAKE(rt_addr, msg_error);
-
-    /*
-     * Status Word.
-     */
-    bus_send_1553_word(BUS_1553_SYNC_CMD_STATUS, status);
-
-    /*
-     * Data Words.
-     */
-    for (uint8_t i = 0; i < wc; i++) {
-        bus_send_1553_word(BUS_1553_SYNC_DATA, data[i]);
-    }
-
-    /*
-     * Postámbulo neutro temporal.
-     */
-    bus_send_byte(0x00);
-    bus_send_byte(0x00);
-}
 static bool find_any_word16_parity_near(const uint8_t *samples,
+                                        int sample_count,
                                         int center,
                                         int radius,
                                         uint16_t *word,
                                         int *found_offset) {
+    /*
+     * Palabra esperada:
+     *
+     * 16 bits útiles + paridad.
+     *
+     * En la práctica venimos usando una ranura equivalente de 24 bits
+     * para sincronizar el siguiente elemento, tomando la paridad real en
+     * el primer bit después de los 16 bits.
+     */
     const int word_bits = 24;
     const int word_samples = word_bits * SAMPLES_PER_BIT;
 
     for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
-        for (int s = 0; s < 2; s++) {
+        for (int side = 0; side < 2; side++) {
             int delta;
 
             if (abs_delta == 0) {
-                if (s == 1) {
+                if (side == 1) {
                     continue;
                 }
 
                 delta = 0;
             } else {
-                delta = (s == 0) ? -abs_delta : abs_delta;
+                delta = (side == 0) ? -abs_delta : abs_delta;
             }
 
             int pos = center + delta;
@@ -1766,7 +332,7 @@ static bool find_any_word16_parity_near(const uint8_t *samples,
                 continue;
             }
 
-            if (pos + word_samples >= CAPTURE_SAMPLES) {
+            if (pos + word_samples >= sample_count) {
                 continue;
             }
 
@@ -1791,6 +357,7 @@ static bool find_any_word16_parity_near(const uint8_t *samples,
             }
 
             uint16_t w = ((uint16_t)hi << 8) | lo;
+
             uint8_t expected_parity = bus_compute_odd_parity(w);
             uint8_t rx_parity = parity_bit ? 1u : 0u;
 
@@ -1812,226 +379,392 @@ static bool find_any_word16_parity_near(const uint8_t *samples,
 
     return false;
 }
-bool bus_read_packet_parity_pio(uint16_t *cmd,
-                                uint16_t data[],
-                                uint8_t max_wc,
-                                uint8_t *out_wc) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
 
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
+static bool find_sync_byte_near(const uint8_t *samples,
+                                int sample_count,
+                                int center,
+                                int radius,
+                                uint8_t sync_value,
+                                int *found_offset) {
     const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
 
-    /*
-     * Formato esperado:
-     *
-     * F0
-     * CMD + PARITY
-     * 0F
-     * DATA0 + PARITY
-     * DATA1 + PARITY
-     * ...
-     */
+    for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
+        for (int side = 0; side < 2; side++) {
+            int delta;
 
-    for (int offset = 0;
-         offset + (3 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
+            if (abs_delta == 0) {
+                if (side == 1) {
+                    continue;
+                }
 
-        uint8_t sync_cmd = 0;
+                delta = 0;
+            } else {
+                delta = (side == 0) ? -abs_delta : abs_delta;
+            }
 
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        uint16_t rx_cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &rx_cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt = BUS_1553_CMD_RT(rx_cmd);
-        uint8_t tr = BUS_1553_CMD_TR(rx_cmd);
-        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > max_wc) {
-            continue;
-        }
-
-        /*
-         * Esta función es para TR=0:
-         * BC transmite datos al RT.
-         */
-        if (tr != BUS_1553_TR_BC_TO_RT) {
-            continue;
-        }
-
-        uint8_t sync_data = 0;
-        int off_sync_data = -1;
-
-        /*
-         * Buscar 0F después del command word con paridad.
-         */
-        int expected_sync_data = off_cmd + word_parity_samples;
-
-        bool found_sync_data = false;
-
-        for (int delta = -48; delta <= 48; delta++) {
-            int pos = expected_sync_data + delta;
+            int pos = center + delta;
 
             if (pos < 0) {
                 continue;
             }
 
-            if (pos + byte_samples >= CAPTURE_SAMPLES) {
+            if (pos + byte_samples >= sample_count) {
                 continue;
             }
 
-            if (!decode_byte_at_phase(samples, pos, &sync_data)) {
+            uint8_t b = 0;
+
+            if (!decode_byte_at_phase(samples, pos, &b)) {
                 continue;
             }
 
-            if (sync_data == 0x0Fu) {
-                off_sync_data = pos;
-                found_sync_data = true;
-                break;
-            }
-        }
-
-        if (!found_sync_data) {
-            continue;
-        }
-
-        uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        /*
-        * Después del CMD + PARITY, esperamos:
-        *
-        * 0F DATA0+P
-        * 0F DATA1+P
-        * 0F DATA2+P
-        */
-        int next_sync_center = off_cmd + word_parity_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            /*
-            * Buscar SYNC_DATA = 0x0F para cada data word.
-            */
-            bool found_sync_data = false;
-            int off_sync_data = -1;
-
-            for (int delta = -96; delta <= 96; delta++) {
-                int pos = next_sync_center + delta;
-
-                if (pos < 0) {
-                    continue;
+            if (b == sync_value) {
+                if (found_offset != NULL) {
+                    *found_offset = pos;
                 }
 
-                if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                    continue;
-                }
-
-                uint8_t sync_data = 0;
-
-                if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                    continue;
-                }
-
-                if (sync_data == 0x0Fu) {
-                    found_sync_data = true;
-                    off_sync_data = pos;
-                    break;
-                }
-            }
-
-            if (!found_sync_data) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-            * Leer DATA_i + PARITY después del 0x0F.
-            */
-            int off_word = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                            off_sync_data + byte_samples,
-                                            search_radius,
-                                            &temp_data[i],
-                                            &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-            * El próximo sync de data debería venir después de esta palabra.
-            */
-            next_sync_center = off_word + word_parity_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        if (data != NULL) {
-            for (uint8_t i = 0; i < wc; i++) {
-                data[i] = temp_data[i];
+                return true;
             }
         }
-
-        if (out_wc != NULL) {
-            *out_wc = wc;
-        }
-
-        return true;
     }
 
     return false;
 }
 
-bool bus_read_command_word_parity_pio(uint16_t *cmd) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+static bool find_sync_byte_forward(const uint8_t *samples,
+                                   int sample_count,
+                                   int start,
+                                   int end,
+                                   uint8_t sync_value,
+                                   int *found_offset) {
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
 
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
+    if (start < 0) {
+        start = 0;
+    }
 
+    if (end > sample_count - byte_samples) {
+        end = sample_count - byte_samples;
+    }
+
+    for (int pos = start; pos < end; pos++) {
+        uint8_t b = 0;
+
+        if (!decode_byte_at_phase(samples, pos, &b)) {
+            continue;
+        }
+
+        if (b == sync_value) {
+            if (found_offset != NULL) {
+                *found_offset = pos;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool decode_status_at_sync(const uint8_t *samples,
+                                  int sample_count,
+                                  int off_sync,
+                                  uint16_t *status,
+                                  int *off_status_word) {
     const int byte_samples = 8 * SAMPLES_PER_BIT;
     const int search_radius = 24;
 
+    return find_any_word16_parity_near(samples,
+                                       sample_count,
+                                       off_sync + byte_samples,
+                                       search_radius,
+                                       status,
+                                       off_status_word);
+}
+
+static bool decode_data_words_after(const uint8_t *samples,
+                                    int sample_count,
+                                    int start_sync_center,
+                                    uint8_t wc,
+                                    uint16_t data[],
+                                    int *next_center_after_last_word) {
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
+
+    const int search_radius_sync = 64;
+    const int search_radius_word = 24;
+
+    int next_sync_center = start_sync_center;
+
+    for (uint8_t i = 0; i < wc; i++) {
+        int off_sync_data = -1;
+
+        if (!find_sync_byte_near(samples,
+                                 sample_count,
+                                 next_sync_center,
+                                 search_radius_sync,
+                                 SYNC_DATA,
+                                 &off_sync_data)) {
+            return false;
+        }
+
+        int off_word = -1;
+
+        if (!find_any_word16_parity_near(samples,
+                                         sample_count,
+                                         off_sync_data + byte_samples,
+                                         search_radius_word,
+                                         &data[i],
+                                         &off_word)) {
+            return false;
+        }
+
+        next_sync_center = off_word + word_parity_samples;
+    }
+
+    if (next_center_after_last_word != NULL) {
+        *next_center_after_last_word = next_sync_center;
+    }
+
+    return true;
+}
+
+/*
+ * ============================================================
+ * Parseo de eventos
+ * ============================================================
+ */
+
+static bool parse_bc_to_rt_event(const uint8_t *samples,
+                                 int sample_count,
+                                 int off_cmd_sync,
+                                 uint16_t cmd,
+                                 int off_cmd_word,
+                                 sniffer_event_t *event) {
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
+
+    uint8_t rt  = BUS_1553_CMD_RT(cmd);
+    uint8_t tr  = BUS_1553_CMD_TR(cmd);
+    uint8_t sub = BUS_1553_CMD_SUB(cmd);
+    uint8_t wc  = BUS_1553_CMD_WC(cmd);
+
+    if (event == NULL) {
+        return false;
+    }
+
+    if (tr != BUS_1553_TR_BC_TO_RT) {
+        return false;
+    }
+
+    if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+    int next_center = off_cmd_word + word_parity_samples;
+
+    if (!decode_data_words_after(samples,
+                                 sample_count,
+                                 next_center,
+                                 wc,
+                                 temp_data,
+                                 &next_center)) {
+        return false;
+    }
+
     /*
-     * Formato esperado:
+     * Después de los DATA, buscamos el STATUS del RT.
+     * Hay una guarda temporal, así que no lo buscamos solo cerca:
+     * buscamos hacia adelante.
+     */
+    int off_status_sync = -1;
+
+    if (!find_sync_byte_forward(samples,
+                                sample_count,
+                                next_center,
+                                sample_count,
+                                SYNC_CMD_STATUS,
+                                &off_status_sync)) {
+        return false;
+    }
+
+    uint16_t status = 0;
+    int off_status_word = -1;
+
+    if (!decode_status_at_sync(samples,
+                               sample_count,
+                               off_status_sync,
+                               &status,
+                               &off_status_word)) {
+        return false;
+    }
+
+    memset(event, 0, sizeof(*event));
+
+    event->type = SNIFFER_EVENT_BC_TO_RT;
+    event->timestamp_us = time_us_32();
+
+    event->cmd = cmd;
+    event->status = status;
+
+    event->rt = rt;
+    event->tr = tr;
+    event->sub = sub;
+    event->wc = wc;
+
+    event->data_count = wc;
+    event->msg_error = BUS_1553_STATUS_MSG_ERROR(status);
+
+    for (uint8_t i = 0; i < wc; i++) {
+        event->data[i] = temp_data[i];
+    }
+
+    (void)off_cmd_sync;
+    (void)byte_samples;
+    (void)off_status_word;
+
+    return true;
+}
+
+static bool parse_rt_to_bc_event(const uint8_t *samples,
+                                 int sample_count,
+                                 int off_cmd_sync,
+                                 uint16_t cmd,
+                                 int off_cmd_word,
+                                 sniffer_event_t *event) {
+    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
+
+    uint8_t rt  = BUS_1553_CMD_RT(cmd);
+    uint8_t tr  = BUS_1553_CMD_TR(cmd);
+    uint8_t sub = BUS_1553_CMD_SUB(cmd);
+    uint8_t wc  = BUS_1553_CMD_WC(cmd);
+
+    if (event == NULL) {
+        return false;
+    }
+
+    if (tr != BUS_1553_TR_RT_TO_BC) {
+        return false;
+    }
+
+    if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+        return false;
+    }
+
+    /*
+     * Después del CMD buscamos STATUS hacia adelante,
+     * porque hay guarda entre BC y RT.
+     */
+    int off_status_sync = -1;
+    int min_status_search = off_cmd_word + word_parity_samples;
+
+    if (!find_sync_byte_forward(samples,
+                                sample_count,
+                                min_status_search,
+                                sample_count,
+                                SYNC_CMD_STATUS,
+                                &off_status_sync)) {
+        return false;
+    }
+
+    uint16_t status = 0;
+    int off_status_word = -1;
+
+    if (!decode_status_at_sync(samples,
+                               sample_count,
+                               off_status_sync,
+                               &status,
+                               &off_status_word)) {
+        return false;
+    }
+
+    memset(event, 0, sizeof(*event));
+
+    event->type = SNIFFER_EVENT_RT_TO_BC;
+    event->timestamp_us = time_us_32();
+
+    event->cmd = cmd;
+    event->status = status;
+
+    event->rt = rt;
+    event->tr = tr;
+    event->sub = sub;
+    event->wc = wc;
+
+    event->msg_error = BUS_1553_STATUS_MSG_ERROR(status);
+
+    /*
+     * Si MSG_ERROR=1, el RT responde solo STATUS.
+     */
+    if (event->msg_error) {
+        event->data_count = 0u;
+        (void)off_cmd_sync;
+        return true;
+    }
+
+    uint16_t temp_data[BUS_1553_MAX_DATA_WORDS] = {0};
+    int next_center = off_status_word + word_parity_samples;
+
+    if (!decode_data_words_after(samples,
+                                 sample_count,
+                                 next_center,
+                                 wc,
+                                 temp_data,
+                                 &next_center)) {
+        return false;
+    }
+
+    event->data_count = wc;
+
+    for (uint8_t i = 0; i < wc; i++) {
+        event->data[i] = temp_data[i];
+    }
+
+    (void)off_cmd_sync;
+
+    return true;
+}
+
+/*
+ * ============================================================
+ * API pública del sniffer
+ * ============================================================
+ */
+
+bool sniffer_capture_event_data(sniffer_event_t *event) {
+    if (event == NULL) {
+        return false;
+    }
+
+    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
+
+    /*
+     * Captura limpia.
+     */
+    pio_sm_clear_fifos(RX_PIO, RX_SM);
+    pio_sm_restart(RX_PIO, RX_SM);
+    sample_index = 16;
+
+    uint8_t samples[SNIFFER_CAPTURE_SAMPLES];
+    capture_samples(samples, SNIFFER_CAPTURE_SAMPLES);
+
+    const int byte_samples = 8 * SAMPLES_PER_BIT;
+    const int search_radius_cmd = 24;
+
+    /*
+     * Buscamos un CMD:
      *
      * F0
      * CMD + PARITY
+     *
+     * Luego, según TR, parseamos el resto.
      */
-    const int total_bytes = 1 + 3;
+    const int min_total_samples = (1 + 3) * byte_samples;
 
     for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset + min_total_samples < SNIFFER_CAPTURE_SAMPLES;
          offset++) {
 
         uint8_t sync = 0;
@@ -2040,108 +773,25 @@ bool bus_read_command_word_parity_pio(uint16_t *cmd) {
             continue;
         }
 
-        if (sync != 0xF0u) {
+        if (sync != SYNC_CMD_STATUS) {
             continue;
         }
 
-        uint16_t rx_cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &rx_cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt = BUS_1553_CMD_RT(rx_cmd);
-        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        if (cmd != NULL) {
-            *cmd = rx_cmd;
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-bool sniffer_capture_bc_to_rt_event(void) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    /*
-     * Capturamos una ventana grande para:
-     *
-     * F0 CMD+P
-     * 0F DATA0+P
-     * 0F DATA1+P
-     * 0F DATA2+P
-     * pausa del RT
-     * F0 STATUS+P
-     */
-    pio_sm_clear_fifos(RX_PIO, RX_SM);
-    pio_sm_restart(RX_PIO, RX_SM);
-    sample_index = 16;
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
-
-    for (int offset = 0;
-         offset + (4 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        /*
-         * Buscar F0 del Command Word.
-         */
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        /*
-         * Leer CMD + paridad.
-         */
         uint16_t cmd = 0;
-        int off_cmd = -1;
+        int off_cmd_word = -1;
 
         if (!find_any_word16_parity_near(samples,
+                                         SNIFFER_CAPTURE_SAMPLES,
                                          offset + byte_samples,
-                                         search_radius,
+                                         search_radius_cmd,
                                          &cmd,
-                                         &off_cmd)) {
+                                         &off_cmd_word)) {
             continue;
         }
 
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(cmd);
-
-        /*
-         * Esta función captura solo TR=0: BC_TO_RT.
-         */
-        if (tr != BUS_1553_TR_BC_TO_RT) {
-            continue;
-        }
+        uint8_t rt = BUS_1553_CMD_RT(cmd);
+        uint8_t tr = BUS_1553_CMD_TR(cmd);
+        uint8_t wc = BUS_1553_CMD_WC(cmd);
 
         if (rt == 0u || rt > 31u) {
             continue;
@@ -2151,440 +801,30 @@ bool sniffer_capture_bc_to_rt_event(void) {
             continue;
         }
 
-        uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        /*
-         * Después del CMD esperamos:
-         *
-         * 0F DATA0+P
-         * 0F DATA1+P
-         * 0F DATA2+P
-         */
-        int next_sync_center = off_cmd + word_parity_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            bool found_sync_data = false;
-            int off_sync_data = -1;
-
-            /*
-             * Buscar SYNC_DATA = 0x0F para cada palabra DATA.
-             */
-            for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                for (int side = 0; side < 2; side++) {
-                    int delta;
-
-                    if (abs_delta == 0) {
-                        if (side == 1) {
-                            continue;
-                        }
-
-                        delta = 0;
-                    } else {
-                        delta = (side == 0) ? -abs_delta : abs_delta;
-                    }
-
-                    int pos = next_sync_center + delta;
-
-                    if (pos < 0) {
-                        continue;
-                    }
-
-                    if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                        continue;
-                    }
-
-                    uint8_t sync_data = 0;
-
-                    if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                        continue;
-                    }
-
-                    if (sync_data == 0x0Fu) {
-                        found_sync_data = true;
-                        off_sync_data = pos;
-                        break;
-                    }
-                }
-
-                if (found_sync_data) {
-                    break;
-                }
+        if (tr == BUS_1553_TR_BC_TO_RT) {
+            if (parse_bc_to_rt_event(samples,
+                                     SNIFFER_CAPTURE_SAMPLES,
+                                     offset,
+                                     cmd,
+                                     off_cmd_word,
+                                     event)) {
+                return true;
             }
-
-            if (!found_sync_data) {
-                data_ok = false;
-                break;
+        } else {
+            if (parse_rt_to_bc_event(samples,
+                                     SNIFFER_CAPTURE_SAMPLES,
+                                     offset,
+                                     cmd,
+                                     off_cmd_word,
+                                     event)) {
+                return true;
             }
-
-            /*
-             * Leer DATA_i + paridad.
-             */
-            int off_word = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             off_sync_data + byte_samples,
-                                             search_radius,
-                                             &data[i],
-                                             &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-             * El próximo sync de data debería venir después de esta palabra.
-             */
-            next_sync_center = off_word + word_parity_samples;
         }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        /*
-         * Después de DATA viene una pausa del RT.
-         * Entonces buscamos F0 STATUS+P hacia adelante,
-         * no solo cerca de next_sync_center.
-         */
-        bool found_status_sync = false;
-        int off_status_sync = -1;
-        uint16_t status = 0;
-
-        int status_search_start = next_sync_center;
-        int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-        for (int pos = status_search_start; pos < status_search_end; pos++) {
-            uint8_t sync_status = 0;
-
-            if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                continue;
-            }
-
-            if (sync_status != 0xF0u) {
-                continue;
-            }
-
-            uint16_t candidate_status = 0;
-            int off_candidate_status = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             pos + byte_samples,
-                                             search_radius,
-                                             &candidate_status,
-                                             &off_candidate_status)) {
-                continue;
-            }
-
-            uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-            if (candidate_rt != rt) {
-                continue;
-            }
-
-            found_status_sync = true;
-            off_status_sync = pos;
-            status = candidate_status;
-            break;
-        }
-
-        if (!found_status_sync) {
-            continue;
-        }
-
-        uint8_t st_rt = BUS_1553_STATUS_RT(status);
-        uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-        if (st_rt != rt) {
-            continue;
-        }
-
-        /*
-         * Evento completo TR=0.
-         */
-        printf("SNIFF|TYPE=BC_TO_RT|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
-               cmd,
-               rt,
-               tr,
-               sub,
-               wc);
-
-        for (uint8_t i = 0; i < wc; i++) {
-            printf("|D%u=0x%04X", i, data[i]);
-        }
-
-        printf("|STATUS=0x%04X|MSG_ERROR=%u\n",
-               status,
-               msg_error);
-
-        return true;
     }
 
     return false;
 }
 
-bool sniffer_capture_rt_to_bc_event(void) {
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    /*
-     * Capturamos una ventana grande para:
-     *
-     * F0 CMD+P
-     * pausa del RT
-     * F0 STATUS+P
-     * 0F DATA0+P
-     * 0F DATA1+P
-     * 0F DATA2+P
-     */
-    pio_sm_clear_fifos(RX_PIO, RX_SM);
-    pio_sm_restart(RX_PIO, RX_SM);
-    sample_index = 16;
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
-
-    for (int offset = 0;
-         offset + (4 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        /*
-         * Buscar F0 del Command Word.
-         */
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        /*
-         * Leer CMD + paridad.
-         */
-        uint16_t cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(cmd);
-
-        /*
-         * Esta función captura solo TR=1: RT_TO_BC.
-         */
-        if (tr != BUS_1553_TR_RT_TO_BC) {
-            continue;
-        }
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        /*
-         * Después del CMD viene una pausa del RT.
-         * Buscamos hacia adelante:
-         *
-         * F0 STATUS+P
-         */
-        bool found_status_sync = false;
-        int off_status_sync = -1;
-        uint16_t status = 0;
-
-        int status_search_start = off_cmd + word_parity_samples;
-        int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-        for (int pos = status_search_start; pos < status_search_end; pos++) {
-            uint8_t sync_status = 0;
-
-            if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                continue;
-            }
-
-            if (sync_status != 0xF0u) {
-                continue;
-            }
-
-            uint16_t candidate_status = 0;
-            int off_candidate_status = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             pos + byte_samples,
-                                             search_radius,
-                                             &candidate_status,
-                                             &off_candidate_status)) {
-                continue;
-            }
-
-            uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-            if (candidate_rt != rt) {
-                continue;
-            }
-
-            found_status_sync = true;
-            off_status_sync = pos;
-            status = candidate_status;
-            break;
-        }
-
-        if (!found_status_sync) {
-            continue;
-        }
-
-        uint8_t st_rt = BUS_1553_STATUS_RT(status);
-        uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-        if (st_rt != rt) {
-            continue;
-        }
-
-        /*
-         * Si MSG_ERROR=1, el RT puede responder solo STATUS,
-         * sin DATA. En ese caso el evento termina acá.
-         */
-        if (msg_error) {
-            printf("SNIFF|TYPE=RT_TO_BC|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|STATUS=0x%04X|MSG_ERROR=%u\n",
-                   cmd,
-                   rt,
-                   tr,
-                   sub,
-                   wc,
-                   status,
-                   msg_error);
-
-            return true;
-        }
-
-        /*
-         * Si MSG_ERROR=0, después del STATUS esperamos:
-         *
-         * 0F DATA0+P
-         * 0F DATA1+P
-         * 0F DATA2+P
-         */
-        uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        int next_sync_center = off_status_sync + byte_samples + word_parity_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            bool found_sync_data = false;
-            int off_sync_data = -1;
-
-            /*
-             * Buscar SYNC_DATA = 0x0F para cada palabra DATA.
-             */
-            for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                for (int side = 0; side < 2; side++) {
-                    int delta;
-
-                    if (abs_delta == 0) {
-                        if (side == 1) {
-                            continue;
-                        }
-
-                        delta = 0;
-                    } else {
-                        delta = (side == 0) ? -abs_delta : abs_delta;
-                    }
-
-                    int pos = next_sync_center + delta;
-
-                    if (pos < 0) {
-                        continue;
-                    }
-
-                    if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                        continue;
-                    }
-
-                    uint8_t sync_data = 0;
-
-                    if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                        continue;
-                    }
-
-                    if (sync_data == 0x0Fu) {
-                        found_sync_data = true;
-                        off_sync_data = pos;
-                        break;
-                    }
-                }
-
-                if (found_sync_data) {
-                    break;
-                }
-            }
-
-            if (!found_sync_data) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-             * Leer DATA_i + paridad.
-             */
-            int off_word = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             off_sync_data + byte_samples,
-                                             search_radius,
-                                             &data[i],
-                                             &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-             * El próximo sync de data debería venir después de esta palabra.
-             */
-            next_sync_center = off_word + word_parity_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        /*
-         * Evento completo TR=1.
-         */
-        printf("SNIFF|TYPE=RT_TO_BC|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|STATUS=0x%04X|MSG_ERROR=%u",
-               cmd,
-               rt,
-               tr,
-               sub,
-               wc,
-               status,
-               msg_error);
-
-        for (uint8_t i = 0; i < wc; i++) {
-            printf("|D%u=0x%04X", i, data[i]);
-        }
-
-        printf("\n");
-
-        return true;
-    }
-
-    return false;
-}
 void sniffer_print_event(const sniffer_event_t *event) {
     if (event == NULL) {
         return;
@@ -2630,1125 +870,11 @@ void sniffer_print_event(const sniffer_event_t *event) {
         return;
     }
 }
-bool sniffer_capture_bc_to_rt_event_data(sniffer_event_t *event) {
-    if (event == NULL) {
-        return false;
-    }
-
+void sniffer_resync(void) {
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
+    rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
     pio_sm_clear_fifos(RX_PIO, RX_SM);
     pio_sm_restart(RX_PIO, RX_SM);
     sample_index = 16;
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
-
-    for (int offset = 0;
-         offset + (4 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        uint16_t cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(cmd);
-
-        if (tr != BUS_1553_TR_BC_TO_RT) {
-            continue;
-        }
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        int next_sync_center = off_cmd + word_parity_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            bool found_sync_data = false;
-            int off_sync_data = -1;
-
-            for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                for (int side = 0; side < 2; side++) {
-                    int delta;
-
-                    if (abs_delta == 0) {
-                        if (side == 1) {
-                            continue;
-                        }
-
-                        delta = 0;
-                    } else {
-                        delta = (side == 0) ? -abs_delta : abs_delta;
-                    }
-
-                    int pos = next_sync_center + delta;
-
-                    if (pos < 0) {
-                        continue;
-                    }
-
-                    if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                        continue;
-                    }
-
-                    uint8_t sync_data = 0;
-
-                    if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                        continue;
-                    }
-
-                    if (sync_data == 0x0Fu) {
-                        found_sync_data = true;
-                        off_sync_data = pos;
-                        break;
-                    }
-                }
-
-                if (found_sync_data) {
-                    break;
-                }
-            }
-
-            if (!found_sync_data) {
-                data_ok = false;
-                break;
-            }
-
-            int off_word = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             off_sync_data + byte_samples,
-                                             search_radius,
-                                             &data[i],
-                                             &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            next_sync_center = off_word + word_parity_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        bool found_status_sync = false;
-        uint16_t status = 0;
-
-        int status_search_start = next_sync_center;
-        int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-        for (int pos = status_search_start; pos < status_search_end; pos++) {
-            uint8_t sync_status = 0;
-
-            if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                continue;
-            }
-
-            if (sync_status != 0xF0u) {
-                continue;
-            }
-
-            uint16_t candidate_status = 0;
-            int off_candidate_status = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             pos + byte_samples,
-                                             search_radius,
-                                             &candidate_status,
-                                             &off_candidate_status)) {
-                continue;
-            }
-
-            uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-            if (candidate_rt != rt) {
-                continue;
-            }
-
-            found_status_sync = true;
-            status = candidate_status;
-            break;
-        }
-
-        if (!found_status_sync) {
-            continue;
-        }
-
-        event->type = SNIFFER_EVENT_BC_TO_RT;
-        event->timestamp_us = time_us_32();
-
-        event->cmd = cmd;
-        event->status = status;
-
-        event->rt = rt;
-        event->tr = tr;
-        event->sub = sub;
-        event->wc = wc;
-
-        event->data_count = wc;
-        event->msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-        for (uint8_t i = 0; i < BUS_1553_MAX_DATA_WORDS; i++) {
-            event->data[i] = 0;
-        }
-
-        for (uint8_t i = 0; i < wc; i++) {
-            event->data[i] = data[i];
-        }
-
-        return true;
-    }
-
-    return false;
-}
-bool sniffer_capture_rt_to_bc_event_data(sniffer_event_t *event) {
-    if (event == NULL) {
-        return false;
-    }
-
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    /*
-     * Capturamos una ventana grande para:
-     *
-     * F0 CMD+P
-     * pausa del RT
-     * F0 STATUS+P
-     * 0F DATA0+P
-     * 0F DATA1+P
-     * 0F DATA2+P
-     */
-    pio_sm_clear_fifos(RX_PIO, RX_SM);
-    pio_sm_restart(RX_PIO, RX_SM);
-    sample_index = 16;
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
-
-    for (int offset = 0;
-         offset + (4 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        /*
-         * Buscar F0 del Command Word.
-         */
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        /*
-         * Leer CMD + paridad.
-         */
-        uint16_t cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(cmd);
-
-        /*
-         * Esta función captura solo TR=1: RT_TO_BC.
-         */
-        if (tr != BUS_1553_TR_RT_TO_BC) {
-            continue;
-        }
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        /*
-         * Después del CMD viene la respuesta del RT.
-         * Puede ser:
-         *
-         *   F0 STATUS+P
-         *
-         * o si no hay error:
-         *
-         *   F0 STATUS+P
-         *   0F DATA0+P
-         *   0F DATA1+P
-         *   ...
-         */
-        bool found_status_sync = false;
-        uint16_t status = 0;
-        int off_status = -1;
-
-        int status_search_start = off_cmd + word_parity_samples;
-        int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-        for (int pos = status_search_start; pos < status_search_end; pos++) {
-            uint8_t sync_status = 0;
-
-            if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                continue;
-            }
-
-            if (sync_status != 0xF0u) {
-                continue;
-            }
-
-            uint16_t candidate_status = 0;
-            int off_candidate_status = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             pos + byte_samples,
-                                             search_radius,
-                                             &candidate_status,
-                                             &off_candidate_status)) {
-                continue;
-            }
-
-            uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-            if (candidate_rt != rt) {
-                continue;
-            }
-
-            found_status_sync = true;
-            status = candidate_status;
-            off_status = off_candidate_status;
-            break;
-        }
-
-        if (!found_status_sync) {
-            continue;
-        }
-
-        uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-        /*
-         * Inicializamos el evento.
-         */
-        event->type = SNIFFER_EVENT_RT_TO_BC;
-        event->timestamp_us = time_us_32();
-
-        event->cmd = cmd;
-        event->status = status;
-
-        event->rt = rt;
-        event->tr = tr;
-        event->sub = sub;
-        event->wc = wc;
-
-        event->msg_error = msg_error;
-        event->data_count = 0;
-
-        for (uint8_t i = 0; i < BUS_1553_MAX_DATA_WORDS; i++) {
-            event->data[i] = 0;
-        }
-
-        /*
-         * Si MSG_ERROR=1, el RT puede responder solo STATUS.
-         * En ese caso el evento ya está completo.
-         */
-        if (msg_error) {
-            return true;
-        }
-
-        /*
-         * Si MSG_ERROR=0, esperamos DATA words:
-         *
-         * 0F DATA0+P
-         * 0F DATA1+P
-         * 0F DATA2+P
-         */
-        uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-        bool data_ok = true;
-
-        int next_sync_center = off_status + word_parity_samples;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            bool found_sync_data = false;
-            int off_sync_data = -1;
-
-            /*
-             * Buscar SYNC_DATA = 0x0F para cada DATA word.
-             */
-            for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                for (int side = 0; side < 2; side++) {
-                    int delta;
-
-                    if (abs_delta == 0) {
-                        if (side == 1) {
-                            continue;
-                        }
-
-                        delta = 0;
-                    } else {
-                        delta = (side == 0) ? -abs_delta : abs_delta;
-                    }
-
-                    int pos = next_sync_center + delta;
-
-                    if (pos < 0) {
-                        continue;
-                    }
-
-                    if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                        continue;
-                    }
-
-                    uint8_t sync_data = 0;
-
-                    if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                        continue;
-                    }
-
-                    if (sync_data == 0x0Fu) {
-                        found_sync_data = true;
-                        off_sync_data = pos;
-                        break;
-                    }
-                }
-
-                if (found_sync_data) {
-                    break;
-                }
-            }
-
-            if (!found_sync_data) {
-                data_ok = false;
-                break;
-            }
-
-            /*
-             * Leer DATA_i + paridad.
-             */
-            int off_word = -1;
-
-            if (!find_any_word16_parity_near(samples,
-                                             off_sync_data + byte_samples,
-                                             search_radius,
-                                             &data[i],
-                                             &off_word)) {
-                data_ok = false;
-                break;
-            }
-
-            next_sync_center = off_word + word_parity_samples;
-        }
-
-        if (!data_ok) {
-            continue;
-        }
-
-        event->data_count = wc;
-
-        for (uint8_t i = 0; i < wc; i++) {
-            event->data[i] = data[i];
-        }
-
-        return true;
-    }
-
-    return false;
-}
-bool sniffer_capture_event_data(sniffer_event_t *event) {
-    if (event == NULL) {
-        return false;
-    }
-
-    rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
-
-    /*
-     * Captura única:
-     *
-     * Puede contener:
-     *
-     * TR=0:
-     *   F0 CMD+P
-     *   0F DATA0+P
-     *   0F DATA1+P
-     *   0F DATA2+P
-     *   pausa
-     *   F0 STATUS+P
-     *
-     * TR=1:
-     *   F0 CMD+P
-     *   pausa
-     *   F0 STATUS+P
-     *   0F DATA0+P
-     *   0F DATA1+P
-     *   0F DATA2+P
-     */
-    pio_sm_clear_fifos(RX_PIO, RX_SM);
-    pio_sm_restart(RX_PIO, RX_SM);
-    sample_index = 16;
-
-    uint8_t samples[CAPTURE_SAMPLES];
-    capture_samples(samples, CAPTURE_SAMPLES);
-
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int word_parity_samples = 24 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
-
-    /*
-     * Limpiar evento.
-     */
-    event->type = SNIFFER_EVENT_NONE;
-    event->timestamp_us = 0;
-
-    event->cmd = 0;
-    event->status = 0;
-
-    event->rt = 0;
-    event->tr = 0;
-    event->sub = 0;
-    event->wc = 0;
-
-    event->data_count = 0;
-    event->msg_error = 0;
-
-    for (uint8_t i = 0; i < BUS_1553_MAX_DATA_WORDS; i++) {
-        event->data[i] = 0;
-    }
-
-    /*
-     * Buscar primer CMD válido dentro de la ventana.
-     */
-    for (int offset = 0;
-         offset + (4 * byte_samples) < CAPTURE_SAMPLES;
-         offset++) {
-
-        uint8_t sync_cmd = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync_cmd)) {
-            continue;
-        }
-
-        if (sync_cmd != 0xF0u) {
-            continue;
-        }
-
-        uint16_t cmd = 0;
-        int off_cmd = -1;
-
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &cmd,
-                                         &off_cmd)) {
-            continue;
-        }
-
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        uint8_t wc  = BUS_1553_CMD_WC(cmd);
-
-        if (rt == 0u || rt > 31u) {
-            continue;
-        }
-
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
-            continue;
-        }
-
-        /*
-         * ============================================================
-         * CASO TR=0: BC_TO_RT
-         *
-         * CMD ya leído.
-         * Ahora esperamos DATA del BC, después STATUS del RT.
-         * ============================================================
-         */
-        if (tr == BUS_1553_TR_BC_TO_RT) {
-            uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-            bool data_ok = true;
-
-            int next_sync_center = off_cmd + word_parity_samples;
-
-            for (uint8_t i = 0; i < wc; i++) {
-                bool found_sync_data = false;
-                int off_sync_data = -1;
-
-                /*
-                 * Buscar 0F DATA_i.
-                 */
-                for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                    for (int side = 0; side < 2; side++) {
-                        int delta;
-
-                        if (abs_delta == 0) {
-                            if (side == 1) {
-                                continue;
-                            }
-
-                            delta = 0;
-                        } else {
-                            delta = (side == 0) ? -abs_delta : abs_delta;
-                        }
-
-                        int pos = next_sync_center + delta;
-
-                        if (pos < 0) {
-                            continue;
-                        }
-
-                        if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                            continue;
-                        }
-
-                        uint8_t sync_data = 0;
-
-                        if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                            continue;
-                        }
-
-                        if (sync_data == 0x0Fu) {
-                            found_sync_data = true;
-                            off_sync_data = pos;
-                            break;
-                        }
-                    }
-
-                    if (found_sync_data) {
-                        break;
-                    }
-                }
-
-                if (!found_sync_data) {
-                    data_ok = false;
-                    break;
-                }
-
-                int off_word = -1;
-
-                if (!find_any_word16_parity_near(samples,
-                                                 off_sync_data + byte_samples,
-                                                 search_radius,
-                                                 &data[i],
-                                                 &off_word)) {
-                    data_ok = false;
-                    break;
-                }
-
-                next_sync_center = off_word + word_parity_samples;
-            }
-
-            if (!data_ok) {
-                continue;
-            }
-
-            /*
-             * Buscar STATUS del RT hacia adelante, porque hay una pausa.
-             */
-            bool found_status = false;
-            uint16_t status = 0;
-
-            int status_search_start = next_sync_center;
-            int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-            for (int pos = status_search_start; pos < status_search_end; pos++) {
-                uint8_t sync_status = 0;
-
-                if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                    continue;
-                }
-
-                if (sync_status != 0xF0u) {
-                    continue;
-                }
-
-                uint16_t candidate_status = 0;
-                int off_candidate_status = -1;
-
-                if (!find_any_word16_parity_near(samples,
-                                                 pos + byte_samples,
-                                                 search_radius,
-                                                 &candidate_status,
-                                                 &off_candidate_status)) {
-                    continue;
-                }
-
-                uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-                if (candidate_rt != rt) {
-                    continue;
-                }
-
-                status = candidate_status;
-                found_status = true;
-                break;
-            }
-
-            if (!found_status) {
-                continue;
-            }
-
-            /*
-             * Cargar evento BC_TO_RT.
-             */
-            event->type = SNIFFER_EVENT_BC_TO_RT;
-            event->timestamp_us = time_us_32();
-
-            event->cmd = cmd;
-            event->status = status;
-
-            event->rt = rt;
-            event->tr = tr;
-            event->sub = sub;
-            event->wc = wc;
-
-            event->data_count = wc;
-            event->msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-            for (uint8_t i = 0; i < wc; i++) {
-                event->data[i] = data[i];
-            }
-
-            return true;
-        }
-
-        /*
-         * ============================================================
-         * CASO TR=1: RT_TO_BC
-         *
-         * CMD ya leído.
-         * Ahora esperamos STATUS del RT.
-         * Si MSG_ERROR=0, después esperamos DATA del RT.
-         * ============================================================
-         */
-        if (tr == BUS_1553_TR_RT_TO_BC) {
-            bool found_status = false;
-            uint16_t status = 0;
-            int off_status = -1;
-
-            int status_search_start = off_cmd + word_parity_samples;
-            int status_search_end = CAPTURE_SAMPLES - byte_samples;
-
-            for (int pos = status_search_start; pos < status_search_end; pos++) {
-                uint8_t sync_status = 0;
-
-                if (!decode_byte_at_phase(samples, pos, &sync_status)) {
-                    continue;
-                }
-
-                if (sync_status != 0xF0u) {
-                    continue;
-                }
-
-                uint16_t candidate_status = 0;
-                int off_candidate_status = -1;
-
-                if (!find_any_word16_parity_near(samples,
-                                                 pos + byte_samples,
-                                                 search_radius,
-                                                 &candidate_status,
-                                                 &off_candidate_status)) {
-                    continue;
-                }
-
-                uint8_t candidate_rt = BUS_1553_STATUS_RT(candidate_status);
-
-                if (candidate_rt != rt) {
-                    continue;
-                }
-
-                status = candidate_status;
-                off_status = off_candidate_status;
-                found_status = true;
-                break;
-            }
-
-            if (!found_status) {
-                continue;
-            }
-
-            uint8_t msg_error = BUS_1553_STATUS_MSG_ERROR(status);
-
-            /*
-             * Si hay error, el RT puede responder solo STATUS.
-             */
-            if (msg_error) {
-                event->type = SNIFFER_EVENT_RT_TO_BC;
-                event->timestamp_us = time_us_32();
-
-                event->cmd = cmd;
-                event->status = status;
-
-                event->rt = rt;
-                event->tr = tr;
-                event->sub = sub;
-                event->wc = wc;
-
-                event->data_count = 0;
-                event->msg_error = msg_error;
-
-                return true;
-            }
-
-            /*
-             * Si no hay error, buscamos DATA del RT.
-             */
-            uint16_t data[BUS_1553_MAX_DATA_WORDS] = {0};
-            bool data_ok = true;
-
-            int next_sync_center = off_status + word_parity_samples;
-
-            for (uint8_t i = 0; i < wc; i++) {
-                bool found_sync_data = false;
-                int off_sync_data = -1;
-
-                for (int abs_delta = 0; abs_delta <= 96; abs_delta++) {
-                    for (int side = 0; side < 2; side++) {
-                        int delta;
-
-                        if (abs_delta == 0) {
-                            if (side == 1) {
-                                continue;
-                            }
-
-                            delta = 0;
-                        } else {
-                            delta = (side == 0) ? -abs_delta : abs_delta;
-                        }
-
-                        int pos = next_sync_center + delta;
-
-                        if (pos < 0) {
-                            continue;
-                        }
-
-                        if (pos + byte_samples >= CAPTURE_SAMPLES) {
-                            continue;
-                        }
-
-                        uint8_t sync_data = 0;
-
-                        if (!decode_byte_at_phase(samples, pos, &sync_data)) {
-                            continue;
-                        }
-
-                        if (sync_data == 0x0Fu) {
-                            found_sync_data = true;
-                            off_sync_data = pos;
-                            break;
-                        }
-                    }
-
-                    if (found_sync_data) {
-                        break;
-                    }
-                }
-
-                if (!found_sync_data) {
-                    data_ok = false;
-                    break;
-                }
-
-                int off_word = -1;
-
-                if (!find_any_word16_parity_near(samples,
-                                                 off_sync_data + byte_samples,
-                                                 search_radius,
-                                                 &data[i],
-                                                 &off_word)) {
-                    data_ok = false;
-                    break;
-                }
-
-                next_sync_center = off_word + word_parity_samples;
-            }
-
-            if (!data_ok) {
-                continue;
-            }
-
-            /*
-             * Cargar evento RT_TO_BC.
-             */
-            event->type = SNIFFER_EVENT_RT_TO_BC;
-            event->timestamp_us = time_us_32();
-
-            event->cmd = cmd;
-            event->status = status;
-
-            event->rt = rt;
-            event->tr = tr;
-            event->sub = sub;
-            event->wc = wc;
-
-            event->data_count = wc;
-            event->msg_error = msg_error;
-
-            for (uint8_t i = 0; i < wc; i++) {
-                event->data[i] = data[i];
-            }
-
-            return true;
-        }
-    }
-
-    return false;
-}
-static bool rt_is_valid_subaddress(uint8_t sub) {
-    switch (sub) {
-        case RT_SUB_DATA:
-        case RT_SUB_STATUS:
-        case RT_SUB_DIAG:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-static bool rt_is_valid_rx_wc(uint8_t wc) {
-    if (wc == 0u) {
-        return false;
-    }
-
-    if (wc > BUS_1553_MAX_DATA_WORDS) {
-        return false;
-    }
-
-    return true;
-}
-
-static bool rt_is_valid_tx_wc(uint8_t wc) {
-    if (wc == 0u) {
-        return false;
-    }
-
-    /*
-     * Por ahora el RT tiene solo 3 palabras disponibles para transmitir.
-     */
-    if (wc > RT_TX_WORDS) {
-        return false;
-    }
-
-    return true;
-}
-
-bool rt_process_once(uint8_t my_rt_addr) {
-    /*
-     * Datos que el RT entrega cuando el BC pide datos con TR=1.
-     * Más adelante esto puede reemplazarse por sensores, registros,
-     * memoria de subdirecciones, etc.
-     */
-    static const uint16_t rt_tx_data[RT_TX_WORDS] = {
-        0x1111,
-        0x2222,
-        0x3333
-    };
-
-    /*
-     * ============================================================
-     * CASO 1:
-     * TR=0 → BC transmite datos al RT.
-     *
-     * Esperamos:
-     * F0 CMD+P
-     * 0F DATA0+P
-     * 0F DATA1+P
-     * ...
-     *
-     * Respondemos:
-     * F0 STATUS+P
-     * ============================================================
-     */
-    uint16_t cmd = 0;
-    uint16_t rx_data[BUS_1553_MAX_DATA_WORDS] = {0};
-    uint8_t wc = 0;
-
-    if (bus_read_packet_parity_pio(&cmd,
-                                   rx_data,
-                                   BUS_1553_MAX_DATA_WORDS,
-                                   &wc)) {
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-
-        if (rt == my_rt_addr && tr == BUS_1553_TR_BC_TO_RT) {
-            bool msg_error = false;
-
-            if (!rt_is_valid_subaddress(sub)) {
-                msg_error = true;
-            }
-
-            if (!rt_is_valid_rx_wc(wc)) {
-                msg_error = true;
-            }
-
-            printf("RT_RX_BC_TO_RT|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u",
-                   cmd,
-                   rt,
-                   tr,
-                   sub,
-                   wc);
-
-            for (uint8_t i = 0; i < wc; i++) {
-                printf("|D%u=0x%04X", i, rx_data[i]);
-            }
-
-            printf("|MSG_ERROR=%u\n", msg_error ? 1u : 0u);
-
-            /*
-             * Guarda para que el BC pase a RX.
-             */
-            sleep_us(3000);
-
-            bus_set_tx_mode();
-
-            bus_send_status_word_parity(my_rt_addr, msg_error);
-
-            sleep_us(30 * BIT_PERIOD_US);
-
-            bus_idle();
-            bus_set_rx_mode();
-
-            printf("RT_TX_STATUS|RT=%u|MSG_ERROR=%u\n",
-                   my_rt_addr,
-                   msg_error ? 1u : 0u);
-
-            return true;
-        }
-    }
-
-    /*
-     * ============================================================
-     * CASO 2:
-     * TR=1 → BC solicita datos al RT.
-     *
-     * Esperamos:
-     * F0 CMD+P
-     *
-     * Si está OK respondemos:
-     * F0 STATUS+P
-     * 0F DATA0+P
-     * 0F DATA1+P
-     * 0F DATA2+P
-     *
-     * Si hay error respondemos:
-     * F0 STATUS+P con MSG_ERROR=1
-     * ============================================================
-     */
-    cmd = 0;
-
-    if (bus_read_command_word_parity_pio(&cmd)) {
-        uint8_t rt  = BUS_1553_CMD_RT(cmd);
-        uint8_t tr  = BUS_1553_CMD_TR(cmd);
-        uint8_t sub = BUS_1553_CMD_SUB(cmd);
-        wc          = BUS_1553_CMD_WC(cmd);
-
-        if (rt == my_rt_addr && tr == BUS_1553_TR_RT_TO_BC) {
-            bool msg_error = false;
-
-            if (!rt_is_valid_subaddress(sub)) {
-                msg_error = true;
-            }
-
-            if (!rt_is_valid_tx_wc(wc)) {
-                msg_error = true;
-            }
-
-            printf("RT_RX_RT_TO_BC_REQ|CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u|MSG_ERROR=%u\n",
-                   cmd,
-                   rt,
-                   tr,
-                   sub,
-                   wc,
-                   msg_error ? 1u : 0u);
-
-            /*
-             * Guarda para que el BC pase a RX.
-             */
-            sleep_us(3000);
-
-            bus_set_tx_mode();
-
-            if (msg_error) {
-                bus_send_status_word_parity(my_rt_addr, true);
-
-                sleep_us(30 * BIT_PERIOD_US);
-
-                bus_idle();
-                bus_set_rx_mode();
-
-                printf("RT_TX_STATUS|RT=%u|MSG_ERROR=1\n", my_rt_addr);
-            } else {
-                bus_send_status_data_parity(my_rt_addr,
-                                            false,
-                                            rt_tx_data,
-                                            wc);
-
-                sleep_us(30 * BIT_PERIOD_US);
-
-                bus_idle();
-                bus_set_rx_mode();
-
-                printf("RT_TX_STATUS_DATA|RT=%u|WC=%u",
-                       my_rt_addr,
-                       wc);
-
-                for (uint8_t i = 0; i < wc; i++) {
-                    printf("|D%u=0x%04X", i, rt_tx_data[i]);
-                }
-
-                printf("\n");
-            }
-
-            return true;
-        }
-    }
-
-    return false;
 }
