@@ -22,6 +22,9 @@
 #define HALF_CYCLES             5u
 #define WORD_GAP_BITS           4u
 #define WORDS_PER_BATCH         1000u
+#define TX_PATTERN_WORDS        10u
+#define VALID_PATTERN_WORDS     3u
+#define NOISE_PATTERN_WORDS     (TX_PATTERN_WORDS - VALID_PATTERN_WORDS)
 #define STARTUP_DELAY_MS        2500u
 #define ACK_LABEL               0xACu
 #define ACK_SDI                 0x03u
@@ -34,6 +37,7 @@ typedef struct {
     uint8_t label;
     uint8_t sdi;
     const char *name;
+    bool is_signal;
 } arinc_profile_t;
 
 typedef struct {
@@ -118,6 +122,21 @@ static uint32_t encode_altitude(float altitude_ft) {
     float raw = altitude_ft / 10.0f;
     raw = clamp_float(raw, 0.0f, (float)0x7FFFFu);
     return (uint32_t)(raw + 0.5f);
+}
+
+static uint32_t build_noise_payload(uint32_t *state, uint32_t slot) {
+    const uint32_t sample = prng_next(state) & 0x7FFFFu;
+
+    switch (slot % 4u) {
+        case 0u:
+            return sample;
+        case 1u:
+            return (sample ^ 0x15555u) & 0x7FFFFu;
+        case 2u:
+            return ((sample >> 2u) | ((sample & 0x3u) << 17u)) & 0x7FFFFu;
+        default:
+            return (sample + (slot * 137u)) & 0x7FFFFu;
+    }
 }
 
 static const char *ssm_to_text(uint8_t ssm) {
@@ -288,6 +307,10 @@ int main(void) {
     printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
     printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
     printf("Batch: %u palabras | ACK label: 0x%02X\r\n\r\n", WORDS_PER_BATCH, ACK_LABEL);
+    printf("Patron TX: %u utiles + %u basura cada %u palabras\r\n\r\n",
+           VALID_PATTERN_WORDS,
+           NOISE_PATTERN_WORDS,
+           TX_PATTERN_WORDS);
 
     PIO pio = pio0;
     const uint sm_fwd_tx = 0;
@@ -301,9 +324,16 @@ int main(void) {
     start_rx_channel(pio, sm_rev_rx, ARINC_REV_PIN_BASE);
 
     const arinc_profile_t profiles[] = {
-        {0xA5, 0x0, "TEMPERATURA"},
-        {0xB1, 0x1, "VELOCIDAD"},
-        {0xC2, 0x2, "ALTITUD"},
+        {0xA5, 0x0, "TEMPERATURA", true},
+        {0xB1, 0x1, "VELOCIDAD", true},
+        {0xC2, 0x2, "ALTITUD", true},
+        {0x11, 0x0, "NOISE_NAV", false},
+        {0x24, 0x1, "NOISE_FMS", false},
+        {0x39, 0x2, "NOISE_MAINT", false},
+        {0x4E, 0x3, "NOISE_MISC", false},
+        {0x57, 0x0, "NOISE_TEST", false},
+        {0x6A, 0x2, "NOISE_DIAG", false},
+        {0x7D, 0x1, "NOISE_SPARE", false},
     };
 
     signal_state_t signals = {
@@ -318,6 +348,8 @@ int main(void) {
 
     while (true) {
         ++batch_number;
+        uint32_t valid_words_in_batch = 0u;
+        uint32_t noise_words_in_batch = 0u;
         reset_rx_channel(pio, sm_rev_rx);
 
 #if ENABLE_TX_BATCH_LOG
@@ -330,10 +362,19 @@ int main(void) {
 #endif
 
         for (uint32_t i = 0; i < WORDS_PER_BATCH; ++i) {
-            const uint32_t idx = global_word_index % 3u;
+            const uint32_t idx = global_word_index % count_of(profiles);
             const arinc_profile_t profile = profiles[idx];
             const uint8_t ssm = random_ssm(&signals.rng_state);
-            const uint32_t raw = encode_profile_value(&signals, idx);
+            uint32_t raw = 0u;
+
+            if (profile.is_signal) {
+                raw = encode_profile_value(&signals, idx);
+                ++valid_words_in_batch;
+            } else {
+                raw = build_noise_payload(&signals.rng_state, idx);
+                ++noise_words_in_batch;
+            }
+
             const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
 
             pio_sm_put_blocking(pio, sm_fwd_tx, word);
@@ -350,15 +391,19 @@ int main(void) {
                    ssm_to_text(ssm));
 #endif
 
-            evolve_signal(&signals, idx);
+            if (profile.is_signal) {
+                evolve_signal(&signals, idx);
+            }
             ++global_word_index;
         }
 
         wait_tx_drain(pio, sm_fwd_tx);
 
 #if ENABLE_TX_BATCH_LOG
-        printf("[INFO] MASTER -> batch %lu enviado por GP2/GP3, esperando ACK en GP4/GP5\r\n",
-               (unsigned long)batch_number);
+        printf("[INFO] MASTER -> batch %lu enviado por GP2/GP3 | utiles=%lu | basura=%lu | esperando ACK en GP4/GP5\r\n",
+               (unsigned long)batch_number,
+               (unsigned long)valid_words_in_batch,
+               (unsigned long)noise_words_in_batch);
 #endif
 
         (void)wait_for_ack(pio, sm_rev_rx, batch_number);
