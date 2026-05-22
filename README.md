@@ -67,6 +67,8 @@ Endpoints principales:
 - `ARINC_SPI_POLL_SEC` defecto `0.05`
 - `ARINC_SPI_STATS_SEC` defecto `0.50`
 - `ARINC_SPI_FILTER_SEC` defecto `2.00`
+- `ARINC_SPI_RESPONSE_DELAY_SEC` defecto `0.002`
+- `ARINC_SPI_RESPONSE_RETRIES` defecto `4`
 
 ## Integracion con Flask
 
@@ -75,7 +77,49 @@ En `FLASK/arinc_dashboard`:
 ```bash
 export ARINC_SOURCE_MODE=bridge
 export ARINC_BRIDGE_URL=http://127.0.0.1:5100
+export ARINC_DASHBOARD_HOST=0.0.0.0
+export ARINC_DASHBOARD_PORT=5000
 python3 app.py
 ```
 
 De esta manera el dashboard deja de leer un puerto serial y pasa a consumir el bridge SPI.
+
+## Arranque desde una sola terminal
+
+Si no queres abrir dos sesiones SSH, podes dejar el bridge corriendo en segundo plano y luego levantar Flask en la misma terminal:
+
+```bash
+cd ~/PAMPA/PI3_HOST
+source .venv/bin/activate
+nohup python3 spi_sniffer_bridge.py > bridge.log 2>&1 &
+
+cd ~/PAMPA/FLASK/arinc_dashboard
+source .venv/bin/activate
+export ARINC_SOURCE_MODE=bridge
+export ARINC_BRIDGE_URL=http://127.0.0.1:5100
+export ARINC_DASHBOARD_HOST=0.0.0.0
+export ARINC_DASHBOARD_PORT=5000
+python3 app.py
+```
+
+Con ese esquema:
+
+- el bridge sigue escuchando en `http://127.0.0.1:5100`
+- Flask queda accesible desde tu PC en `http://IP_DE_LA_PI:5000`
+
+## Diagnostico rapido del enlace SPI
+
+Si el bridge muestra errores como `magic SPI invalido`, conviene probar el enlace fisico sin Flask con:
+
+```bash
+cd ~/PAMPA/PI3_HOST
+source .venv/bin/activate
+python3 spi_link_diagnostic.py
+```
+
+La herramienta barre varias combinaciones de frecuencia SPI y espera entre request/respuesta. Si encuentra respuestas validas, te dice cual fue la mejor combinacion. Si no encuentra ninguna, reporta patrones utiles para diagnostico:
+
+- `todo_cero`: suele apuntar a `MISO` desconectado o `CS`/`SCLK` sin transaccion real
+- `todo_ff`: suele apuntar a linea flotante o dispositivo no seleccionado
+- `magic_desplazado_byte_N`: hay actividad, pero la trama esta corrida o desalineada
+- `sin_magic`: la respuesta no se parece al protocolo esperado

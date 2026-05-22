@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import threading
 import time
 from collections import Counter, deque
@@ -16,6 +18,9 @@ from sniffer_spi_protocol import (
     RESP_EVENT,
     RESP_FILTER,
     RESP_STATS,
+    SNIFFER_SPI_PACKET_SIZE,
+    SNIFFER_SPI_TRANSPORT_IDLE,
+    SNIFFER_SPI_TRANSPORT_RESET,
     STATUS_EMPTY,
     STATUS_OK,
     ProtocolError,
@@ -33,15 +38,29 @@ except ImportError:  # pragma: no cover - esperado fuera de Raspberry Pi OS
     spidev = None
 
 
+def env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in ("0", "false", "no", "off")
+
+
+SPI_MANUAL_CS = env_flag("ARINC_SPI_MANUAL_CS", False)
 SPI_BUS = int(os.getenv("ARINC_SPI_BUS", "0"))
 SPI_DEVICE = int(os.getenv("ARINC_SPI_DEVICE", "0"))
 SPI_MAX_SPEED_HZ = int(os.getenv("ARINC_SPI_HZ", "200000"))
+SPI_CS_GPIO = int(os.getenv("ARINC_SPI_CS_GPIO", "8"))
+SPI_CS_SETUP_US = int(os.getenv("ARINC_SPI_CS_SETUP_US", "150"))
+SPI_CS_HOLD_US = int(os.getenv("ARINC_SPI_CS_HOLD_US", "150"))
+SPI_BYTE_DELAY_US = int(os.getenv("ARINC_SPI_BYTE_DELAY_US", "1000"))
 BRIDGE_PORT = int(os.getenv("ARINC_BRIDGE_PORT", "5100"))
 POLL_INTERVAL_SEC = float(os.getenv("ARINC_SPI_POLL_SEC", "0.05"))
 STATS_REFRESH_SEC = float(os.getenv("ARINC_SPI_STATS_SEC", "0.50"))
 FILTER_REFRESH_SEC = float(os.getenv("ARINC_SPI_FILTER_SEC", "2.00"))
 MAX_EVENTS_PER_CYCLE = int(os.getenv("ARINC_SPI_DRAIN_PER_LOOP", "32"))
 MAX_RECORDS = int(os.getenv("ARINC_SPI_MAX_RECORDS", "12000"))
+SPI_RESPONSE_DELAY_SEC = float(os.getenv("ARINC_SPI_RESPONSE_DELAY_SEC", "0.002"))
+SPI_RESPONSE_RETRIES = int(os.getenv("ARINC_SPI_RESPONSE_RETRIES", "4"))
 
 ACK_LABEL = 0xAC
 
@@ -56,7 +75,7 @@ bridge_state = {
     "running": False,
     "connected": False,
     "source_mode": "spi_bridge",
-    "port": f"spi{SPI_BUS}.{SPI_DEVICE}",
+    "port": f"spi{SPI_BUS}.{SPI_DEVICE}" + (f"+gpio{SPI_CS_GPIO}" if SPI_MANUAL_CS else ""),
     "last_rx_time": None,
     "total_events": 0,
     "ack_events": 0,
@@ -107,10 +126,34 @@ CHANNEL_TEXT = {
 }
 
 
+class ManualCsController:
+    def __init__(self, gpio: int):
+        self.gpio = gpio
+        self.backend = self._detect_backend()
+        self._run_set("op", "dh")
+
+    @staticmethod
+    def _detect_backend() -> str:
+        for candidate in ("pinctrl", "raspi-gpio"):
+            if shutil.which(candidate):
+                return candidate
+        raise RuntimeError("No se encontro pinctrl ni raspi-gpio para manejar CS manual en la Raspberry Pi.")
+
+    def _run_set(self, mode: str, level: str) -> None:
+        subprocess.run([self.backend, "set", str(self.gpio), mode, level], check=True)
+
+    def low(self) -> None:
+        self._run_set("op", "dl")
+
+    def high(self) -> None:
+        self._run_set("op", "dh")
+
+
 class SpiSnifferClient:
     def __init__(self):
         self.spi = None
         self.sequence = 1
+        self.cs = None
 
     def open(self):
         if spidev is None:
@@ -124,28 +167,74 @@ class SpiSnifferClient:
         spi.max_speed_hz = SPI_MAX_SPEED_HZ
         spi.mode = 0
         spi.bits_per_word = 8
+        if SPI_MANUAL_CS:
+            spi.no_cs = True
+            self.cs = ManualCsController(SPI_CS_GPIO)
         self.spi = spi
 
     def close(self):
         if self.spi is not None:
             self.spi.close()
             self.spi = None
+        self.cs = None
 
     def _next_sequence(self):
         sequence = self.sequence & 0xFFFF
         self.sequence = (self.sequence + 1) & 0xFFFF
         return sequence
 
+    def _xfer_byte(self, value: int) -> int:
+        if self.cs is None:
+            response = self.spi.xfer2([value & 0xFF])[0]
+        else:
+            self.cs.low()
+            if SPI_CS_SETUP_US > 0:
+                time.sleep(SPI_CS_SETUP_US / 1_000_000.0)
+            try:
+                response = self.spi.xfer2([value & 0xFF])[0]
+            finally:
+                if SPI_CS_HOLD_US > 0:
+                    time.sleep(SPI_CS_HOLD_US / 1_000_000.0)
+                self.cs.high()
+
+        if SPI_BYTE_DELAY_US > 0:
+            time.sleep(SPI_BYTE_DELAY_US / 1_000_000.0)
+        return response
+
+    def _transport_reset(self) -> int:
+        return self._xfer_byte(SNIFFER_SPI_TRANSPORT_RESET)
+
+    def _transport_send_request(self, packet: bytes) -> None:
+        for byte in packet:
+            self._xfer_byte(byte)
+
+    def _transport_read_response(self) -> bytes:
+        return bytes(
+            self._xfer_byte(SNIFFER_SPI_TRANSPORT_IDLE)
+            for _ in range(SNIFFER_SPI_PACKET_SIZE)
+        )
+
     def exchange(self, command: int, payload: bytes = b"") -> dict:
         if self.spi is None:
             self.open()
 
         request_packet = build_packet(command, payload, sequence=self._next_sequence())
-        trailing_nop = build_packet(0x00, b"", sequence=self._next_sequence())
+        last_exc = None
 
-        self.spi.xfer2(list(request_packet))
-        response_raw = bytes(self.spi.xfer2(list(trailing_nop)))
-        return parse_packet(response_raw)
+        for _ in range(max(SPI_RESPONSE_RETRIES, 1)):
+            self._transport_reset()
+            self._transport_send_request(request_packet)
+
+            if SPI_RESPONSE_DELAY_SEC > 0.0:
+                time.sleep(SPI_RESPONSE_DELAY_SEC)
+
+            response_raw = self._transport_read_response()
+            try:
+                return parse_packet(response_raw)
+            except ProtocolError as exc:
+                last_exc = exc
+
+        raise last_exc or ProtocolError("no se pudo sincronizar la respuesta SPI del sniffer")
 
     def pop_event(self):
         response = self.exchange(CMD_POP_EVENT)
@@ -436,26 +525,34 @@ def filter_endpoint():
         with data_lock:
             return jsonify(dict(bridge_state["filter_config"]))
 
-    payload = request.get_json(force=True, silent=False)
-    pass_all, entries = parse_filter_request(payload)
-    with bridge_lock:
-        filter_payload = client.set_filter(pass_all=pass_all, entries=entries)
-    update_filter_state(filter_payload)
-    return jsonify(filter_payload)
+    try:
+        payload = request.get_json(force=True, silent=False)
+        pass_all, entries = parse_filter_request(payload)
+        with bridge_lock:
+            filter_payload = client.set_filter(pass_all=pass_all, entries=entries)
+        update_filter_state(filter_payload)
+        return jsonify(filter_payload)
+    except Exception as exc:  # pragma: no cover - depende del estado del hardware SPI
+        mark_bridge_error(exc)
+        return jsonify({"ok": False, "msg": str(exc)}), 502
 
 
 @app.route("/control/reset", methods=["POST"])
 def reset_endpoint():
-    with bridge_lock:
-        stats_payload = client.reset_stats()
-    update_sniffer_stats(stats_payload)
-    with data_lock:
-        records.clear()
-        bridge_state["total_events"] = 0
-        bridge_state["ack_events"] = 0
-        bridge_state["spi_drop_events"] = 0
-        bridge_state["last_rx_time"] = None
-    return jsonify({"ok": True, "stats": stats_payload})
+    try:
+        with bridge_lock:
+            stats_payload = client.reset_stats()
+        update_sniffer_stats(stats_payload)
+        with data_lock:
+            records.clear()
+            bridge_state["total_events"] = 0
+            bridge_state["ack_events"] = 0
+            bridge_state["spi_drop_events"] = 0
+            bridge_state["last_rx_time"] = None
+        return jsonify({"ok": True, "stats": stats_payload})
+    except Exception as exc:  # pragma: no cover - depende del estado del hardware SPI
+        mark_bridge_error(exc)
+        return jsonify({"ok": False, "msg": str(exc)}), 502
 
 
 @app.route("/metrics")
