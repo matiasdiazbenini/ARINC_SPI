@@ -14,6 +14,8 @@ CMD_GET_STATS = 0x03
 CMD_GET_FILTER = 0x04
 CMD_SET_FILTER = 0x05
 CMD_RESET_STATS = 0x06
+CMD_GET_LATEST_META = 0x07
+CMD_GET_LATEST_SLOT = 0x08
 
 STATUS_OK = 0x00
 STATUS_EMPTY = 0x01
@@ -28,6 +30,8 @@ RESP_EVENT = 0x11
 RESP_STATS = 0x12
 RESP_FILTER = 0x13
 RESP_ACK = 0x14
+RESP_LATEST_META = 0x15
+RESP_LATEST_SLOT = 0x16
 
 EVENT_DATA = 0x01
 EVENT_ACK = 0x02
@@ -39,6 +43,8 @@ PACKET_STRUCT = struct.Struct("<2sBBBBH22sH")
 EVENT_STRUCT = struct.Struct("<6BIiIHH")
 STATS_STRUCT = struct.Struct("<IIIIHHH")
 FILTER_STRUCT = struct.Struct("<BB20s")
+LATEST_META_STRUCT = struct.Struct("<BBBBIIIIH")
+LATEST_SLOT_STRUCT = struct.Struct("<BBBBBIiIIB")
 
 
 class ProtocolError(RuntimeError):
@@ -159,4 +165,41 @@ def unpack_filter(payload: bytes) -> dict:
         "mode": mode,
         "count": count,
         "entries": entries,
+    }
+
+
+def unpack_latest_meta(payload: bytes) -> dict:
+    slot_count, slot_capacity, flags, reserved0, snapshot_revision, slot_evictions, last_update_counter, reserved1, reserved2 = LATEST_META_STRUCT.unpack(
+        payload[:LATEST_META_STRUCT.size]
+    )
+    return {
+        "slot_count": slot_count,
+        "slot_capacity": slot_capacity,
+        "flags": flags,
+        "reserved0": reserved0,
+        "snapshot_revision": snapshot_revision,
+        "slot_evictions": slot_evictions,
+        "last_update_counter": last_update_counter,
+        "reserved1": reserved1,
+        "reserved2": reserved2,
+    }
+
+
+def unpack_latest_slot(payload: bytes) -> dict:
+    channel, label, sdi, ssm, flags, raw_value, scaled_tenths, update_counter, hit_count, reserved = LATEST_SLOT_STRUCT.unpack(
+        payload[:LATEST_SLOT_STRUCT.size]
+    )
+    return {
+        "channel": channel,
+        "label": label,
+        "sdi": sdi,
+        "ssm": ssm,
+        "valid": bool(flags & 0x01),
+        "parity_ok": bool(flags & 0x02),
+        "flags": flags,
+        "raw_value": raw_value,
+        "scaled_tenths": scaled_tenths,
+        "update_counter": update_counter,
+        "hit_count": hit_count,
+        "reserved": reserved,
     }

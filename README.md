@@ -123,3 +123,39 @@ La herramienta barre varias combinaciones de frecuencia SPI y espera entre reque
 - `todo_ff`: suele apuntar a linea flotante o dispositivo no seleccionado
 - `magic_desplazado_byte_N`: hay actividad, pero la trama esta corrida o desalineada
 - `sin_magic`: la respuesta no se parece al protocolo esperado
+
+## Prueba de capacidad por etapas
+
+Para medir estabilidad y limite operativo del bridge con distintos filtros, se puede usar:
+
+```bash
+cd ~/PAMPA/PI3_HOST
+source .venv/bin/activate
+python3 spi_capacity_runner.py --stages core4@180,known10@180,pass_all@60 --sample-sec 2
+```
+
+Presets disponibles:
+
+- `ack_temp`
+- `core4`
+- `known10`
+- `known11`
+- `pass_all`
+
+Notas:
+
+- `known11` existe como escenario de referencia, pero hoy excede la capacidad del filtro embebido (`10` entradas).
+- El runner la marca como `SKIP` de forma explicita en vez de caer con `502`.
+
+El runner:
+
+- aplica el filtro correspondiente a cada etapa
+- muestrea `/stats` durante la duracion indicada
+- resume throughput, reconexiones, `spi_errors`, `resync`, `slot_evictions`
+- guarda un reporte JSON en `spi_capacity_report.json`
+
+Si queres aislar cada etapa con contadores desde cero:
+
+```bash
+python3 spi_capacity_runner.py --reset-before-stage
+```

@@ -35,6 +35,30 @@ def env_flag(name: str, default: bool) -> bool:
     return value.strip().lower() not in ("0", "false", "no", "off")
 
 
+SPI_RESET_BURST = int(os.getenv("ARINC_SPI_RESET_BURST", "3"))
+SPI_RESPONSE_WINDOW_BYTES = int(os.getenv("ARINC_SPI_RESPONSE_WINDOW_BYTES", "48"))
+
+
+def parse_packet_with_resync(raw: bytes) -> dict:
+    try:
+        return parse_packet(raw[:SNIFFER_SPI_PACKET_SIZE])
+    except ProtocolError:
+        pass
+
+    magic = bytes((0xA4, 0x29))
+    start = raw.find(magic, 1)
+    while start >= 0:
+        end = start + SNIFFER_SPI_PACKET_SIZE
+        if end <= len(raw):
+            try:
+                return parse_packet(raw[start:end])
+            except ProtocolError:
+                pass
+        start = raw.find(magic, start + 1)
+
+    raise ProtocolError("magic SPI invalido")
+
+
 class ManualCsController:
     def __init__(self, gpio: int):
         self.gpio = gpio
@@ -74,20 +98,22 @@ def classify_raw_response(raw: bytes) -> str:
     if not raw:
         return "sin_bytes"
 
-    if all(byte == 0x00 for byte in raw):
+    window = raw[:max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE)]
+
+    if all(byte == 0x00 for byte in window):
         return "todo_cero"
 
-    if all(byte == 0xFF for byte in raw):
+    if all(byte == 0xFF for byte in window):
         return "todo_ff"
 
     magic = bytes((0xA4, 0x29))
-    pos = raw.find(magic)
+    pos = window.find(magic)
     if pos == 0:
         return "magic_ok_pero_crc_o_version_fallaron"
     if pos > 0:
         return f"magic_desplazado_byte_{pos}"
 
-    return f"sin_magic cabecera={raw[:8].hex()}"
+    return f"sin_magic cabecera={window[:8].hex()}"
 
 
 def xfer_byte(spi,
@@ -129,7 +155,8 @@ def transfer_request(spi,
     last_error = None
     raw_history = []
     for _ in range(max(retries, 1)):
-        xfer_byte(spi, SNIFFER_SPI_TRANSPORT_RESET, cs, cs_setup_us, cs_hold_us, byte_delay_us)
+        for _reset_index in range(max(SPI_RESET_BURST, 1)):
+            xfer_byte(spi, SNIFFER_SPI_TRANSPORT_RESET, cs, cs_setup_us, cs_hold_us, byte_delay_us)
         for byte in request_packet:
             xfer_byte(spi, byte, cs, cs_setup_us, cs_hold_us, byte_delay_us)
 
@@ -145,11 +172,11 @@ def transfer_request(spi,
                 cs_hold_us,
                 byte_delay_us,
             )
-            for _ in range(SNIFFER_SPI_PACKET_SIZE)
+            for _ in range(max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE))
         )
         raw_history.append(raw)
         try:
-            return parse_packet(raw), raw_history
+            return parse_packet_with_resync(raw), raw_history
         except ProtocolError as exc:
             last_error = exc
 
