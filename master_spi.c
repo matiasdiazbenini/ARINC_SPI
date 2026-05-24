@@ -18,10 +18,19 @@
  */
 #define ARINC_FWD_PIN_BASE      2u
 #define ARINC_REV_PIN_BASE      4u
-#define BIT_RATE_HZ             100000u
+#ifndef MASTER_BIT_RATE_HZ
+#define MASTER_BIT_RATE_HZ      100000u
+#endif
+#define BIT_RATE_HZ             ((uint32_t)MASTER_BIT_RATE_HZ)
 #define HALF_CYCLES             5u
-#define WORD_GAP_BITS           4u
-#define WORDS_PER_BATCH         1000u
+#ifndef MASTER_WORD_GAP_BITS
+#define MASTER_WORD_GAP_BITS    4u
+#endif
+#define WORD_GAP_BITS           ((uint32_t)MASTER_WORD_GAP_BITS)
+#ifndef MASTER_WORDS_PER_BATCH
+#define MASTER_WORDS_PER_BATCH  1000u
+#endif
+#define WORDS_PER_BATCH         ((uint32_t)MASTER_WORDS_PER_BATCH)
 #define TX_PATTERN_WORDS        10u
 #define VALID_PATTERN_WORDS     3u
 #define NOISE_PATTERN_WORDS     (TX_PATTERN_WORDS - VALID_PATTERN_WORDS)
@@ -29,9 +38,18 @@
 #define ACK_LABEL               0xACu
 #define ACK_SDI                 0x03u
 #define ACK_WAIT_LOG_MS         1500u
-#define POST_ACK_GUARD_US       500u
+#ifndef MASTER_POST_ACK_GUARD_US
+#define MASTER_POST_ACK_GUARD_US 500u
+#endif
+#define POST_ACK_GUARD_US       ((uint32_t)MASTER_POST_ACK_GUARD_US)
 #define ENABLE_TX_WORD_LOG      0u
-#define ENABLE_TX_BATCH_LOG     1u
+#ifndef MASTER_ENABLE_TX_BATCH_LOG
+#define MASTER_ENABLE_TX_BATCH_LOG 1u
+#endif
+#define ENABLE_TX_BATCH_LOG     MASTER_ENABLE_TX_BATCH_LOG
+#ifndef MASTER_PROFILE_VARIANT
+#define MASTER_PROFILE_VARIANT  0u
+#endif
 
 typedef struct {
     uint8_t label;
@@ -46,6 +64,9 @@ typedef struct {
     float altitude_ft;
     uint32_t rng_state;
 } signal_state_t;
+
+#define PROFILE_SIGNAL(label, sdi, name) {label, sdi, name, true}
+#define PROFILE_NOISE(label, sdi, name)  {label, sdi, name, false}
 
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     int ones = 0;
@@ -137,6 +158,10 @@ static uint32_t build_noise_payload(uint32_t *state, uint32_t slot) {
         default:
             return (sample + (slot * 137u)) & 0x7FFFFu;
     }
+}
+
+static const char *profile_variant_text(void) {
+    return (MASTER_PROFILE_VARIANT == 0u) ? "baseline" : "stress";
 }
 
 static const char *ssm_to_text(uint8_t ssm) {
@@ -307,10 +332,9 @@ int main(void) {
     printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
     printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
     printf("Batch: %u palabras | ACK label: 0x%02X\r\n\r\n", WORDS_PER_BATCH, ACK_LABEL);
-    printf("Patron TX: %u utiles + %u basura cada %u palabras\r\n\r\n",
-           VALID_PATTERN_WORDS,
-           NOISE_PATTERN_WORDS,
-           TX_PATTERN_WORDS);
+    printf("Guardia post-ACK: %u us | perfil: %s\r\n",
+           POST_ACK_GUARD_US,
+           profile_variant_text());
 
     PIO pio = pio0;
     const uint sm_fwd_tx = 0;
@@ -324,17 +348,41 @@ int main(void) {
     start_rx_channel(pio, sm_rev_rx, ARINC_REV_PIN_BASE);
 
     const arinc_profile_t profiles[] = {
-        {0xA5, 0x0, "TEMPERATURA", true},
-        {0xB1, 0x1, "VELOCIDAD", true},
-        {0xC2, 0x2, "ALTITUD", true},
-        {0x11, 0x0, "NOISE_NAV", false},
-        {0x24, 0x1, "NOISE_FMS", false},
-        {0x39, 0x2, "NOISE_MAINT", false},
-        {0x4E, 0x3, "NOISE_MISC", false},
-        {0x57, 0x0, "NOISE_TEST", false},
-        {0x6A, 0x2, "NOISE_DIAG", false},
-        {0x7D, 0x1, "NOISE_SPARE", false},
+        PROFILE_SIGNAL(0xA5, 0x0, "TEMPERATURA"),
+        PROFILE_SIGNAL(0xB1, 0x1, "VELOCIDAD"),
+        PROFILE_SIGNAL(0xC2, 0x2, "ALTITUD"),
+        PROFILE_NOISE(0x11, 0x0, "NOISE_NAV"),
+        PROFILE_NOISE(0x24, 0x1, "NOISE_FMS"),
+        PROFILE_NOISE(0x39, 0x2, "NOISE_MAINT"),
+        PROFILE_NOISE(0x4E, 0x3, "NOISE_MISC"),
+        PROFILE_NOISE(0x57, 0x0, "NOISE_TEST"),
+        PROFILE_NOISE(0x6A, 0x2, "NOISE_DIAG"),
+        PROFILE_NOISE(0x7D, 0x1, "NOISE_SPARE"),
+#if MASTER_PROFILE_VARIANT != 0u
+        PROFILE_NOISE(0x11, 0x1, "NOISE_NAV_SDI1"),
+        PROFILE_NOISE(0x24, 0x2, "NOISE_FMS_SDI2"),
+        PROFILE_NOISE(0x39, 0x3, "NOISE_MAINT_SDI3"),
+        PROFILE_NOISE(0x4E, 0x0, "NOISE_MISC_SDI0"),
+        PROFILE_NOISE(0x57, 0x1, "NOISE_TEST_SDI1"),
+        PROFILE_NOISE(0x6A, 0x3, "NOISE_DIAG_SDI3"),
+        PROFILE_NOISE(0x7D, 0x2, "NOISE_SPARE_SDI2"),
+        PROFILE_SIGNAL(0xA5, 0x1, "TEMPERATURA_SDI1"),
+        PROFILE_SIGNAL(0xB1, 0x2, "VELOCIDAD_SDI2"),
+        PROFILE_SIGNAL(0xC2, 0x3, "ALTITUD_SDI3"),
+        PROFILE_NOISE(0x11, 0x2, "NOISE_NAV_SDI2"),
+        PROFILE_NOISE(0x24, 0x3, "NOISE_FMS_SDI3"),
+        PROFILE_NOISE(0x39, 0x0, "NOISE_MAINT_SDI0"),
+        PROFILE_NOISE(0x57, 0x2, "NOISE_TEST_SDI2"),
+        PROFILE_NOISE(0x6A, 0x0, "NOISE_DIAG_SDI0"),
+        PROFILE_NOISE(0x7D, 0x3, "NOISE_SPARE_SDI3"),
+#endif
     };
+
+    printf("Patron TX: %u utiles + %u basura cada %u palabras | labels activas: %u\r\n\r\n",
+           VALID_PATTERN_WORDS,
+           NOISE_PATTERN_WORDS,
+           TX_PATTERN_WORDS,
+           (unsigned)count_of(profiles));
 
     signal_state_t signals = {
         .temp_c = 20.0f,

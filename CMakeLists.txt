@@ -28,8 +28,40 @@ add_executable(master_spi
     master_spi.c
 )
 
+add_executable(master_spi_stress
+    master_spi.c
+)
+
+add_executable(master_spi_gap2
+    master_spi.c
+)
+
+add_executable(master_spi_gap3
+    master_spi.c
+)
+
+add_executable(master_spi_gap0
+    master_spi.c
+)
+
 # Genera el header .pio.h a partir del ensamblador PIO del enlace.
 pico_generate_pio_header(master_spi
+    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
+)
+
+pico_generate_pio_header(master_spi_stress
+    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
+)
+
+pico_generate_pio_header(master_spi_gap2
+    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
+)
+
+pico_generate_pio_header(master_spi_gap3
+    ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
+)
+
+pico_generate_pio_header(master_spi_gap0
     ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
 )
 
@@ -40,8 +72,75 @@ target_link_libraries(master_spi
     hardware_clocks
 )
 
+target_link_libraries(master_spi_stress
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_link_libraries(master_spi_gap2
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_link_libraries(master_spi_gap3
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_link_libraries(master_spi_gap0
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_compile_definitions(master_spi_stress PRIVATE
+    MASTER_PROFILE_VARIANT=1
+    MASTER_WORDS_PER_BATCH=1000
+    MASTER_POST_ACK_GUARD_US=100
+    MASTER_ENABLE_TX_BATCH_LOG=0
+)
+
+target_compile_definitions(master_spi_gap2 PRIVATE
+    MASTER_PROFILE_VARIANT=0
+    MASTER_WORDS_PER_BATCH=1000
+    MASTER_WORD_GAP_BITS=2
+    MASTER_POST_ACK_GUARD_US=100
+    MASTER_ENABLE_TX_BATCH_LOG=0
+)
+
+target_compile_definitions(master_spi_gap3 PRIVATE
+    MASTER_PROFILE_VARIANT=0
+    MASTER_WORDS_PER_BATCH=1000
+    MASTER_WORD_GAP_BITS=3
+    MASTER_POST_ACK_GUARD_US=100
+    MASTER_ENABLE_TX_BATCH_LOG=0
+)
+
+target_compile_definitions(master_spi_gap0 PRIVATE
+    MASTER_PROFILE_VARIANT=0
+    MASTER_WORDS_PER_BATCH=1000
+    MASTER_WORD_GAP_BITS=0
+    MASTER_POST_ACK_GUARD_US=100
+    MASTER_ENABLE_TX_BATCH_LOG=0
+)
+
 # Log por USB para debug; UART tradicional desactivada.
 pico_enable_stdio_usb(master_spi 1)
 pico_enable_stdio_uart(master_spi 0)
+pico_enable_stdio_usb(master_spi_stress 1)
+pico_enable_stdio_uart(master_spi_stress 0)
+pico_enable_stdio_usb(master_spi_gap2 1)
+pico_enable_stdio_uart(master_spi_gap2 0)
+pico_enable_stdio_usb(master_spi_gap3 1)
+pico_enable_stdio_uart(master_spi_gap3 0)
+pico_enable_stdio_usb(master_spi_gap0 1)
+pico_enable_stdio_uart(master_spi_gap0 0)
 
 pico_add_extra_outputs(master_spi)
+pico_add_extra_outputs(master_spi_stress)
+pico_add_extra_outputs(master_spi_gap2)
+pico_add_extra_outputs(master_spi_gap3)
+pico_add_extra_outputs(master_spi_gap0)
