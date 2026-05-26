@@ -6,7 +6,13 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 
+#include "arinc429_logic.h"
+
+#if ARINC429_LOGIC_MODE
+#include "arinc429_logic.pio.h"
+#else
 #include "arinc_gpio_link.pio.h"
+#endif
 
 /*
  * Master con dos enlaces simplex ARINC-like:
@@ -50,6 +56,9 @@
 #ifndef MASTER_PROFILE_VARIANT
 #define MASTER_PROFILE_VARIANT  0u
 #endif
+#ifndef ARINC429_LOGIC_MODE
+#define ARINC429_LOGIC_MODE     0u
+#endif
 
 typedef struct {
     uint8_t label;
@@ -65,10 +74,21 @@ typedef struct {
     uint32_t rng_state;
 } signal_state_t;
 
+typedef struct {
+    uint32_t ack_ok;
+    uint32_t ack_bad_label;
+    uint32_t ack_bad_parity;
+    uint32_t ack_timeout;
+    uint32_t rx_invalid_symbol;
+} master_link_stats_t;
+
 #define PROFILE_SIGNAL(label, sdi, name) {label, sdi, name, true}
 #define PROFILE_NOISE(label, sdi, name)  {label, sdi, name, false}
 
 static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
+#if ARINC429_LOGIC_MODE
+    return arinc429_calc_odd_parity_31bits(word_without_parity);
+#else
     int ones = 0;
 
     for (int i = 0; i < 31; ++i) {
@@ -78,9 +98,13 @@ static uint8_t calc_odd_parity_31bits(uint32_t word_without_parity) {
     }
 
     return (ones % 2 == 0) ? 1u : 0u;
+#endif
 }
 
 static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint8_t ssm) {
+#if ARINC429_LOGIC_MODE
+    return arinc429_build_word_fields(label, sdi, data, ssm);
+#else
     uint32_t word = 0;
 
     word |= ((uint32_t)(label & 0xFFu)) << 0;
@@ -90,6 +114,7 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
     word |= ((uint32_t)calc_odd_parity_31bits(word)) << 31;
 
     return word;
+#endif
 }
 
 static float clamp_float(float value, float min_value, float max_value) {
@@ -164,6 +189,10 @@ static const char *profile_variant_text(void) {
     return (MASTER_PROFILE_VARIANT == 0u) ? "baseline" : "stress";
 }
 
+static const char *link_mode_text(void) {
+    return ARINC429_LOGIC_MODE ? "arinc429_logic" : "legacy";
+}
+
 static const char *ssm_to_text(uint8_t ssm) {
     switch (ssm) {
         case 3: return "NORMAL";
@@ -205,7 +234,11 @@ static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, 
     pio_gpio_init(pio, pin_base + 0);
     pio_gpio_init(pio, pin_base + 1);
 
+#if ARINC429_LOGIC_MODE
+    pio_sm_config c = arinc429_logic_tx_program_get_default_config(offset);
+#else
     pio_sm_config c = arinc_gpio_link_tx_program_get_default_config(offset);
+#endif
 
     sm_config_set_set_pins(&c, pin_base, 2);
     sm_config_set_out_shift(&c, true, false, 32);
@@ -226,7 +259,11 @@ static void arinc_rx_program_init(PIO pio, uint sm, uint offset, uint pin_base) 
     gpio_pull_down(pin_base + 0);
     gpio_pull_down(pin_base + 1);
 
+#if ARINC429_LOGIC_MODE
+    pio_sm_config c = arinc429_logic_rx_program_get_default_config(offset);
+#else
     pio_sm_config c = arinc_gpio_link_rx_program_get_default_config(offset);
+#endif
 
     sm_config_set_in_pins(&c, pin_base);
     sm_config_set_jmp_pin(&c, pin_base + 1);
@@ -269,22 +306,40 @@ static void wait_tx_drain(PIO pio, uint sm_tx) {
     sleep_us(word_time_us() + 50u);
 }
 
-static bool is_valid_ack(uint32_t word, uint32_t *ack_batch) {
+static bool is_valid_ack(uint32_t word, uint32_t *ack_batch, master_link_stats_t *stats) {
+#if ARINC429_LOGIC_MODE
+    const uint8_t label = arinc429_word_label(word);
+    const uint8_t sdi = arinc429_word_sdi(word);
+    const uint32_t raw = arinc429_word_data(word);
+    const uint8_t ssm = arinc429_word_ssm(word);
+    const bool parity_ok = arinc429_parity_check(word);
+#else
     const uint8_t label = (word >> 0) & 0xFFu;
     const uint8_t sdi = (word >> 8) & 0x03u;
     const uint32_t raw = (word >> 10) & 0x7FFFFu;
+    const uint8_t ssm = (word >> 29) & 0x03u;
     const uint8_t parity_rx = (word >> 31) & 0x01u;
     const uint8_t parity_exp = calc_odd_parity_31bits(word & 0x7FFFFFFFu);
+    const bool parity_ok = (parity_rx == parity_exp);
+#endif
 
-    if (label == ACK_LABEL && sdi == ACK_SDI && parity_rx == parity_exp) {
+    if (!parity_ok) {
+        ++stats->ack_bad_parity;
+        ++stats->rx_invalid_symbol;
+        return false;
+    }
+
+    if (label == ACK_LABEL && sdi == ACK_SDI && ssm == 3u) {
         *ack_batch = raw;
+        ++stats->ack_ok;
         return true;
     }
 
+    ++stats->ack_bad_label;
     return false;
 }
 
-static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number) {
+static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number, master_link_stats_t *stats) {
     absolute_time_t last_log_time = get_absolute_time();
 
     while (true) {
@@ -292,7 +347,7 @@ static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number) {
             const uint32_t word = pio_sm_get(pio, sm_ack_rx);
             uint32_t ack_batch = 0;
 
-            if (is_valid_ack(word, &ack_batch)) {
+            if (is_valid_ack(word, &ack_batch, stats)) {
                 printf("[ACK] MASTER <- ACK recibido | batch_rx=%lu | batch_tx=%lu\r\n",
                        (unsigned long)ack_batch,
                        (unsigned long)batch_number);
@@ -314,6 +369,7 @@ static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number) {
 
         const int64_t idle_us = absolute_time_diff_us(last_log_time, get_absolute_time());
         if (idle_us >= (int64_t)(ACK_WAIT_LOG_MS * 1000u)) {
+            ++stats->ack_timeout;
             printf("[INFO] MASTER -> esperando ACK del slave para batch %lu por GP4/GP5\r\n",
                    (unsigned long)batch_number);
             last_log_time = get_absolute_time();
@@ -335,12 +391,19 @@ int main(void) {
     printf("Guardia post-ACK: %u us | perfil: %s\r\n",
            POST_ACK_GUARD_US,
            profile_variant_text());
+    printf("Modo de enlace: %s\r\n",
+           link_mode_text());
 
     PIO pio = pio0;
     const uint sm_fwd_tx = 0;
     const uint sm_rev_rx = 1;
+#if ARINC429_LOGIC_MODE
+    const uint tx_offset = pio_add_program(pio, &arinc429_logic_tx_program);
+    const uint rx_offset = pio_add_program(pio, &arinc429_logic_rx_program);
+#else
     const uint tx_offset = pio_add_program(pio, &arinc_gpio_link_tx_program);
     const uint rx_offset = pio_add_program(pio, &arinc_gpio_link_rx_program);
+#endif
 
     arinc_tx_program_init(pio, sm_fwd_tx, tx_offset, ARINC_FWD_PIN_BASE, (float)BIT_RATE_HZ);
     arinc_rx_program_init(pio, sm_rev_rx, rx_offset, ARINC_REV_PIN_BASE);
@@ -393,6 +456,7 @@ int main(void) {
 
     uint32_t batch_number = 0;
     uint32_t global_word_index = 0;
+    master_link_stats_t link_stats = {0};
 
     while (true) {
         ++batch_number;
@@ -454,7 +518,16 @@ int main(void) {
                (unsigned long)noise_words_in_batch);
 #endif
 
-        (void)wait_for_ack(pio, sm_rev_rx, batch_number);
+        (void)wait_for_ack(pio, sm_rev_rx, batch_number, &link_stats);
         sleep_us(POST_ACK_GUARD_US);
+
+        if ((batch_number % 64u) == 0u) {
+            printf("[STATS] MASTER | ack_ok=%lu | ack_bad_label=%lu | ack_bad_parity=%lu | ack_timeout=%lu | rx_invalid=%lu\r\n",
+                   (unsigned long)link_stats.ack_ok,
+                   (unsigned long)link_stats.ack_bad_label,
+                   (unsigned long)link_stats.ack_bad_parity,
+                   (unsigned long)link_stats.ack_timeout,
+                   (unsigned long)link_stats.rx_invalid_symbol);
+        }
     }
 }
