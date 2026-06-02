@@ -1,5 +1,7 @@
 build/*
 !build/*.uf2
+**/build/*
+!**/build/*.uf2
 !.vscode/*
 
 **/.venv/

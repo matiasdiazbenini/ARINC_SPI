@@ -33,10 +33,8 @@ Quedo validado:
 
 ## Estructura del repo
 
-- raiz del repo:
-  - firmware `master_spi`
-  - documentos de resumen ya generados
-  - fuentes Overleaf/LaTeX
+- [master_spi](master_spi/README.md)
+  - firmware del nodo master
 - [slave_spi](slave_spi/README.md)
   - snapshot del firmware del slave usado en esta etapa
 - [ARINC_SNIFFER](ARINC_SNIFFER/README.md)
@@ -53,6 +51,11 @@ Quedo validado:
   - indice de documentacion y memoria externa del proyecto
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
   - archivo maestro de handoff para retomar rapido el trabajo
+- raiz del repo:
+  - documentacion general
+  - PDFs
+  - fuentes Overleaf/LaTeX
+  - evidencia e integracion de sistema
 
 ## Topologia actual recomendada
 
@@ -86,6 +89,23 @@ La configuracion que mejor resultado dio para estabilidad larga fue:
   - `192.168.50.2/24`
 
 Se observo que esta configuracion es mas robusta que dejar la 3B+ colgada por Wi-Fi para el trafico operativo del sistema.
+
+## Forma recomendada de trabajo
+
+Hay dos maneras comodas de trabajar:
+
+- abrir la raiz del repo para tener toda la arquitectura visible
+- abrir una subcarpeta puntual cuando quieras concentrarte en un componente
+
+Por ejemplo:
+
+- `master_spi/`
+- `slave_spi/`
+- `ARINC_SNIFFER/`
+- `PI3_HOST/`
+- `FLASK/arinc_dashboard/`
+
+Tambien se pueden abrir varias ventanas de VS Code en paralelo, una por componente, sin problema.
 
 ## Perfil operativo recomendado
 

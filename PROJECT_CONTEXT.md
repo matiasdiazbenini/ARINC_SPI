@@ -44,6 +44,19 @@ Recrear una arquitectura de comunicacion inspirada en ARINC 429 en un entorno de
 - `3B+ <-> notebook`
   - Ethernet directo recomendado
 
+### Layout recomendado del repositorio
+
+La rama `ARINC` organiza el sistema completo en un solo repo con subcarpetas por componente:
+
+- `master_spi/`
+- `slave_spi/`
+- `ARINC_SNIFFER/`
+- `PI3_HOST/`
+- `FLASK/arinc_dashboard/`
+- `prometheus/`
+- `imagenes/`
+- `docs/`
+
 ## 3. Estado funcional validado
 
 La fase `arinc429_logic` se considera validada.
