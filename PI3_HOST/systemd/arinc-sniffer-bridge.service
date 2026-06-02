@@ -1,0 +1,18 @@
+[Unit]
+Description=ARINC Sniffer SPI Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/PAMPA/PI3_HOST
+Environment=ARINC_SPI_BUS=0
+Environment=ARINC_SPI_DEVICE=0
+Environment=ARINC_SPI_HZ=200000
+Environment=ARINC_BRIDGE_PORT=5100
+ExecStart=/home/pi/PAMPA/PI3_HOST/.venv/bin/python spi_sniffer_bridge.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

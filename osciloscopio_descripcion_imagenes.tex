@@ -1,0 +1,227 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{enumitem}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdftitle={Descripcion de capturas de osciloscopio - ARINC429 logic},
+  pdfauthor={Proyecto ARINC 429 recreado}
+}
+
+\setstretch{1.15}
+\setlist[itemize]{itemsep=3pt,topsep=3pt}
+
+\title{Descripcion de capturas de osciloscopio\\Fase \texttt{arinc429\_logic}}
+\author{Base de redaccion para memoria tecnica / tesis}
+\date{\today}
+
+\newcommand{\scopeimg}[1]{%
+  \includegraphics[width=0.78\textwidth]{\detokenize{#1}}%
+}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Proposito del documento}
+
+Este documento deja asentada una descripcion base de las capturas de osciloscopio obtenidas durante la validacion de laboratorio de la fase \texttt{arinc429\_logic}. Su finalidad es servir como ayuda memoria para una futura redaccion de tesis, informe final o documentacion tecnica.
+
+Las imagenes incluidas corresponden a:
+
+\begin{itemize}
+    \item observacion individual de los hilos del canal directo FWD,
+    \item observacion individual de los hilos del canal reverso REV,
+    \item observacion diferencial mediante la funcion \texttt{MATH} aplicada a cada par.
+\end{itemize}
+
+En todos los casos, las mediciones fueron realizadas con sonda \texttt{x10}. La validacion buscada no fue la implementacion de la capa electrica real de ARINC 429, sino la verificacion de la recreacion logica y temporal de una senal bipolar con retorno a cero, coherente con la fase \texttt{arinc429\_logic}.
+
+\section{Canal FWD - observacion individual de GP2}
+
+Las siguientes capturas corresponden a una de las dos lineas del par del canal directo FWD. En ellas se observa el comportamiento individual del GPIO contra referencia de masa.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/GP2 (CH1)/TEK0000.JPG}
+    \caption{Captura individual de una linea del canal FWD. Se aprecia una amplitud del orden de 3.36 V y un pulso activo medido en aproximadamente 5 us. La forma de onda muestra un retorno claro al nivel bajo entre pulsos, lo que resulta coherente con la mitad activa del bit y la segunda mitad en reposo propia del esquema con retorno a cero.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/GP2 (CH1)/TEK0003.JPG}
+    \caption{Segunda captura individual del mismo hilo del canal FWD. La medicion automatica vuelve a mostrar una amplitud proxima a 3.36 V y un ancho positivo cercano a 5 us. Esta imagen refuerza la consistencia temporal de la linea y permite observar visualmente la repeticion del patron pulso-reposo.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item La amplitud observada es compatible con una salida GPIO de la Raspberry Pi Pico, es decir, aproximadamente 3.3 V.
+    \item El ancho positivo del pulso individual se mantiene alrededor de 5 us.
+    \item El retorno a cero se observa con claridad.
+    \item Las mediciones automaticas de periodo o frecuencia sobre una sola linea no se toman como referencia principal para el bitrate, ya que la linea individual no conmuta de forma periodica uniforme en todos los bits.
+\end{itemize}
+
+\section{Canal FWD - observacion individual de GP3}
+
+Las siguientes capturas corresponden al segundo hilo del canal directo FWD. El objetivo es verificar que ambas lineas del par presentan comportamiento coherente, misma amplitud y misma temporizacion de pulso activo.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/GP3 (CH2)/TEK0004.JPG}
+    \caption{Captura individual del segundo hilo del par FWD. La amplitud vuelve a ser del orden de 3.36 V y el ancho positivo medido ronda los 5 us. La forma de onda es limpia y consistente con la recreacion logica del canal directo.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/GP3 (CH2)/TEK0005.JPG}
+    \caption{Segunda captura del mismo hilo del canal FWD. Se aprecia nuevamente una amplitud de aproximadamente 3.36 V y un ancho positivo muy cercano a 5 us. La repetibilidad entre esta imagen y la anterior confirma que ambas lineas del canal directo trabajan con la misma escala temporal.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item El segundo hilo del canal FWD conserva el mismo nivel logico que el primero.
+    \item La duracion del pulso activo vuelve a ubicarse en torno a 5 us.
+    \item En conjunto, GP2 y GP3 muestran coherencia de amplitud y temporizacion.
+\end{itemize}
+
+\section{Canal FWD - observacion diferencial con funcion MATH}
+
+En esta seccion se aplica la funcion \texttt{MATH} del osciloscopio, utilizando la resta entre ambos canales del par FWD. Este conjunto de capturas es particularmente importante, ya que permite ver la bipolaridad logica resultante del par completo.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/CH1 - CH2/TEK0009.JPG}
+    \caption{Captura diferencial del par FWD con la funcion \texttt{MATH}. Se observan pulsos positivos y negativos alternados respecto del nivel cero, lo que muestra la construccion de una senal bipolar logica a partir de dos lineas GPIO complementarias.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/CH1 - CH2/TEK0010.JPG}
+    \caption{Segunda captura del \texttt{MATH} del par FWD. La imagen refuerza la presencia simultanea de niveles positivos y negativos, manteniendo el retorno a cero entre simbolos. Este comportamiento es una de las evidencias mas importantes de la fase \texttt{arinc429\_logic}.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/FWD/CH1 - CH2/TEK0011.JPG}
+    \caption{Captura diferencial mas representativa del canal FWD. Las mediciones muestran valores maximos y minimos del orden de +3.36 V y -3.44 V. Esta imagen resulta especialmente util para explicar la recreacion de una codificacion bipolar logica con retorno a cero, ya que la interpretacion visual es clara y directa.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item El \texttt{MATH} del par FWD muestra niveles diferenciales positivos, negativos y nivel nulo intermedio.
+    \item Los maximos y minimos observados son aproximadamente simetricos respecto de cero, del orden de $\pm 3.3$ V.
+    \item Esta es la mejor evidencia de la bipolaridad logica del canal directo.
+\end{itemize}
+
+\section{Canal REV - observacion individual del primer hilo}
+
+Las siguientes capturas corresponden a una de las dos lineas del canal reverso REV. A diferencia del canal FWD, en este caso la actividad aparece en rafagas asociadas a respuestas o ACK, por lo que la linea permanece gran parte del tiempo en reposo.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/GP4 (CH1)/TEK0012.JPG}
+    \caption{Captura individual del primer hilo del canal REV. Se observa actividad en rafagas cortas, con una amplitud del orden de 3.5 V y un pulso positivo de aproximadamente 5 us. Esta imagen muestra que el canal reverso no transmite de forma continua, sino solo cuando corresponde la respuesta del esclavo.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/GP4 (CH1)/TEK0014.JPG}
+    \caption{Segunda captura del mismo hilo del canal REV. La medicion automatica vuelve a indicar un ancho positivo del orden de 5 us y una amplitud proxima a 3.6 V. La forma de onda muestra retorno a cero entre pulsos y una actividad breve, consistente con transmisiones de ACK.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item La actividad del canal reverso aparece en bursts, no de manera continua.
+    \item El ancho temporal del pulso activo se mantiene en torno a 5 us.
+    \item La amplitud sigue siendo coherente con la logica GPIO de la Pico.
+\end{itemize}
+
+\section{Canal REV - observacion individual del segundo hilo}
+
+Estas capturas corresponden al segundo hilo del canal reverso REV. Su finalidad es corroborar que ambas lineas del par de ACK conservan la misma base temporal y la misma amplitud logica.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/GP5 (CH2)/TEK0015.JPG}
+    \caption{Captura individual del segundo hilo del canal REV. La amplitud observada es de aproximadamente 3.36 V y el ancho positivo medido ronda los 5 us. La imagen muestra varios pulsos de respuesta claramente definidos, con retorno a cero entre ellos.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/GP5 (CH2)/TEK0017.JPG}
+    \caption{Segunda captura del mismo hilo del canal REV. Se observa nuevamente una amplitud de 3.36 V y un ancho de pulso muy cercano a 5 us. La repeticion del patron confirma la consistencia del canal reverso individual.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item Ambos hilos del canal REV muestran niveles y anchos de pulso compatibles entre si.
+    \item El patron temporal es coherente con un canal de confirmacion, es decir, activo en rafagas puntuales.
+\end{itemize}
+
+\section{Canal REV - observacion diferencial con funcion MATH}
+
+En esta seccion se muestra la resta diferencial del par REV. Esta observacion permite verificar que el canal de ACK conserva la misma logica bipolar con retorno a cero que el canal directo, aunque aparezca solamente durante eventos de confirmacion.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/CH1 - CH2/TEK0018.JPG}
+    \caption{Captura diferencial del par REV mediante \texttt{MATH}. Se observan niveles positivos y negativos alternados respecto de cero, con maximos y minimos cercanos a +3.44 V y -3.52 V. Esta imagen permite afirmar que la respuesta o ACK tambien conserva la misma estructura bipolar logica con retorno a cero.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/CH1 - CH2/TEK0019.JPG}
+    \caption{Segunda captura del \texttt{MATH} del par REV. La actividad se presenta en rafaga, pero dentro de esa rafaga la forma diferencial vuelve a exhibir pulsos positivos, negativos y nivel nulo intermedio, confirmando la validez del modelo aplicado al canal reverso.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/REV/CH1 - CH2/TEK0020.JPG}
+    \caption{Tercera captura diferencial del par REV, con una ventana temporal mas amplia. Esta imagen es util para ilustrar la naturaleza agrupada de la actividad del ACK, mostrando que la bipolaridad logica se conserva incluso cuando la respuesta aparece en trenes cortos de pulsos.}
+\end{figure}
+
+\subsection*{Observaciones para redaccion futura}
+
+\begin{itemize}
+    \item El \texttt{MATH} del canal REV confirma la bipolaridad logica del camino de ACK.
+    \item Los niveles maximos y minimos vuelven a estar alrededor de $\pm 3.5$ V.
+    \item Se observa con claridad el retorno a cero entre simbolos y entre rafagas.
+\end{itemize}
+
+\section{Conclusiones de laboratorio asociadas a estas imagenes}
+
+A partir del conjunto de capturas seleccionadas, puede dejarse asentado lo siguiente:
+
+\begin{itemize}
+    \item En los canales individuales se observaron niveles compatibles con logica GPIO de 3.3 V.
+    \item La duracion del pulso activo se mantuvo sistematicamente en torno a 5 us.
+    \item Dado que cada bit se compone de una mitad activa y una mitad en reposo, la base temporal es coherente con un tiempo de bit de aproximadamente 10 us, es decir, una tasa del orden de 100 kbps.
+    \item La resta diferencial de ambos hilos, mediante la funcion \texttt{MATH}, evidencio la presencia de pulsos positivos y negativos respecto del nivel cero.
+    \item Tanto en el canal FWD como en el canal REV se verifico la presencia de retorno a cero entre simbolos.
+    \item Las capturas constituyen evidencia experimental suficiente para sostener que la fase \texttt{arinc429\_logic} logro recrear una codificacion logica/temporal de tipo bipolar con retorno a cero.
+\end{itemize}
+
+\section{Nota final}
+
+Este documento fue pensado como apoyo de memoria para la futura redaccion de tesis. Las leyendas aqui incluidas pueden copiarse, resumirse o reescribirse mas adelante, pero ya fijan el sentido tecnico de cada imagen y la interpretacion correcta de lo medido en laboratorio.
+
+\end{document}

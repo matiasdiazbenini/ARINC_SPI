@@ -1,0 +1,660 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{float}
+\usepackage{titlesec}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black,
+    citecolor=blue!50!black,
+    pdftitle={Arquitectura completa del sistema ARINC 429 recreado},
+    pdfauthor={Proyecto ARINC 429 con Raspberry Pi Pico y Raspberry Pi 3B+}
+}
+
+\setstretch{1.15}
+\setlist[itemize]{itemsep=4pt,topsep=4pt}
+\setlist[enumerate]{itemsep=4pt,topsep=4pt}
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\Huge}
+  {\chaptertitlename\ \thechapter}{10pt}{\LARGE}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\scshape\LARGE Documento de arquitectura del sistema \par}
+    \vspace{1.5cm}
+    {\huge\bfseries Sistema de adquisicion y visualizacion de trafico ARINC 429 recreado\par}
+    \vspace{1.5cm}
+    {\Large Arquitectura completa, topologia, puertos, cableado y capas funcionales\par}
+    \vfill
+    {\large Proyecto basado en Raspberry Pi Pico, Raspberry Pi 3B+, Flask, Prometheus y Grafana\par}
+    \vspace{0.5cm}
+    {\large Fecha: \today\par}
+    \vfill
+    {\large Este documento fue preparado como base extensa para memoria tecnica, tesis o informe final.\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\chapter{Proposito del documento}
+
+Este documento resume la arquitectura completa del sistema desarrollado hasta el estado actual del proyecto. Su objetivo es dejar expresado, de forma ordenada y util para futura redaccion de tesis, como se estructura la solucion extremo a extremo: desde las tres placas Raspberry Pi Pico que intervienen en la generacion, recepcion y captura del trafico, hasta la Raspberry Pi 3B+, la aplicacion web, Prometheus y Grafana.
+
+No se busca aqui profundizar al nivel de implementacion linea por linea del firmware o del software de host, sino describir con claridad:
+
+\begin{itemize}
+    \item que elementos componen el sistema,
+    \item como se conectan entre si,
+    \item que responsabilidad tiene cada uno,
+    \item por que capas viajan los datos,
+    \item que puertos, IPs y enlaces intervienen,
+    \item y como se organiza la arquitectura global de forma comparable a un enfoque por capas al estilo OSI.
+\end{itemize}
+
+\chapter{Vision general del sistema}
+
+El sistema implementado es una plataforma de laboratorio para recrear, observar, filtrar y visualizar trafico inspirado en ARINC 429. La arquitectura se compone de cuatro bloques principales:
+
+\begin{enumerate}
+    \item una \textbf{Pico maestra}, encargada de generar trafico,
+    \item una \textbf{Pico esclava}, encargada de recibirlo y responder con ACK,
+    \item una \textbf{Pico sniffer}, encargada de escuchar pasivamente ambos canales,
+    \item una \textbf{Raspberry Pi 3B+}, encargada de leer el snapshot del sniffer por SPI y exponerlo hacia capas superiores.
+\end{enumerate}
+
+Sobre esa base embebida se monta una segunda parte de software:
+
+\begin{itemize}
+    \item un \textbf{bridge SPI} en Python, que consulta a la Pico sniffer,
+    \item una aplicacion \textbf{Flask} que presenta un dashboard web,
+    \item un stack opcional de monitoreo con \textbf{Prometheus} y \textbf{Grafana}.
+\end{itemize}
+
+El sistema completo permite:
+
+\begin{itemize}
+    \item generar trafico de palabras con labels conocidos,
+    \item recibir confirmaciones por un canal reverso,
+    \item escuchar la comunicacion sin intervenir activamente,
+    \item filtrar labels y SDI relevantes,
+    \item exportar metricas y snapshots,
+    \item y visualizar el estado del sistema en tiempo real o cuasi-tiempo-real.
+\end{itemize}
+
+\chapter{Nodos fisicos del sistema}
+
+\section{Raspberry Pi Pico maestra}
+
+La placa maestra es responsable de producir la secuencia de palabras del sistema. En el estado actual del proyecto puede trabajar en modo legado o en modo \texttt{arinc429\_logic}. El modo validado y mas representativo es \texttt{arinc429\_logic}, donde la codificacion de cada bit adopta una recreacion temporal y logica de una senal bipolar con retorno a cero.
+
+Sus funciones principales son:
+
+\begin{itemize}
+    \item generar batches de palabras,
+    \item alternar palabras utiles y palabras de relleno o ``basura'' controlada,
+    \item enviar el flujo por el canal directo,
+    \item esperar el ACK proveniente del esclavo por el canal inverso,
+    \item mantener la semantica de labels y variables del sistema.
+\end{itemize}
+
+\section{Raspberry Pi Pico esclava}
+
+La placa esclava recibe el trafico generado por la maestra, procesa lotes de tamano fijo y emite confirmaciones de recepcion. Mantiene la logica funcional del sistema:
+
+\begin{itemize}
+    \item recepcion por el canal directo,
+    \item filtrado/aceptacion de palabras,
+    \item validacion de paridad y campos relevantes,
+    \item conteo de palabras por lote,
+    \item transmision de ACK por el canal reverso.
+\end{itemize}
+
+\section{Raspberry Pi Pico sniffer}
+
+La sniffer escucha pasivamente los dos canales simplex de la comunicacion:
+
+\begin{itemize}
+    \item \textbf{FWD} (\emph{forward}): trafico maestra $\rightarrow$ esclava,
+    \item \textbf{REV} (\emph{reverse}): trafico esclava $\rightarrow$ maestra.
+\end{itemize}
+
+Su objetivo no es participar en la comunicacion sino:
+
+\begin{itemize}
+    \item observar ambos canales,
+    \item decodificar palabras,
+    \item aplicar filtros por label y SDI,
+    \item mantener un snapshot compacto de las ultimas variables relevantes,
+    \item exponer esos datos a la Raspberry Pi 3B+ por SPI.
+\end{itemize}
+
+\section{Raspberry Pi 3B+}
+
+La Raspberry Pi 3B+ cumple el papel de concentrador de software de alto nivel. Desde el punto de vista funcional, es el nodo que:
+
+\begin{itemize}
+    \item consulta la sniffer por SPI,
+    \item consolida un estado legible para aplicaciones,
+    \item expone un bridge HTTP local,
+    \item alimenta el dashboard Flask,
+    \item y opcionalmente exporta metricas a Prometheus/Grafana.
+\end{itemize}
+
+\section{PC de desarrollo/monitoreo}
+
+La PC no forma parte del trayecto embebido principal, pero es importante en operacion, visualizacion y supervision. En el escenario actual:
+
+\begin{itemize}
+    \item Grafana corre en la PC en \texttt{127.0.0.1:3000},
+    \item Prometheus corre en la PC en \texttt{127.0.0.1:9090},
+    \item Prometheus consulta al bridge que corre en la Raspberry Pi 3B+,
+    \item la PC abre tambien el dashboard Flask servido desde la 3B+.
+\end{itemize}
+
+\chapter{Cableado y enlaces fisicos}
+
+\section{Enlace Pico maestra $\leftrightarrow$ Pico esclava}
+
+La comunicacion entre las placas maestra y esclava se realiza con dos canales simplex, cada uno representado por dos lineas GPIO:
+
+\begin{itemize}
+    \item \textbf{Canal directo FWD}:
+    \item \texttt{GP2 = FWD\_A}
+    \item \texttt{GP3 = FWD\_B}
+    \item \textbf{Canal reverso REV}:
+    \item \texttt{GP4 = REV\_A}
+    \item \texttt{GP5 = REV\_B}
+\end{itemize}
+
+Interpretacion funcional:
+
+\begin{itemize}
+    \item la maestra transmite por \texttt{GP2/GP3},
+    \item la esclava recibe por \texttt{GP2/GP3},
+    \item la esclava transmite ACK por \texttt{GP4/GP5},
+    \item la maestra recibe el ACK por \texttt{GP4/GP5}.
+\end{itemize}
+
+\section{Conexion pasiva de la sniffer}
+
+La sniffer se ``pincha'' sobre los mismos canales sin intervenir en la comunicacion:
+
+\begin{itemize}
+    \item escucha \texttt{GP2/GP3} como FWD,
+    \item escucha \texttt{GP4/GP5} como REV.
+\end{itemize}
+
+En terminos fisicos, esto significa que la sniffer comparte el punto electrico de observacion de ambos pares, pero no es quien conduce la linea.
+
+\section{Enlace SPI sniffer $\leftrightarrow$ Raspberry Pi 3B+}
+
+La Raspberry Pi 3B+ consulta a la Pico sniffer mediante SPI. El mapeo funcional vigente es:
+
+\begin{itemize}
+    \item \texttt{GP16} en la Pico sniffer: MOSI recibido desde la Pi,
+    \item \texttt{GP17}: \texttt{CSn},
+    \item \texttt{GP18}: \texttt{SCK},
+    \item \texttt{GP19}: MISO hacia la Pi,
+    \item \texttt{GP20}: senal opcional de \texttt{DRDY}/diagnostico.
+\end{itemize}
+
+En el lado de la 3B+, este enlace se usa como \texttt{spi0.0}.
+
+\section{Conexion de red}
+
+La Raspberry Pi 3B+ se encuentra accesible en la red local con IP:
+
+\begin{itemize}
+    \item \texttt{192.168.0.200}
+\end{itemize}
+
+Esa IP es la usada actualmente por Prometheus en la PC para consultar el bridge ARINC.
+
+\chapter{Puertos y servicios}
+
+\section{Servicios en la Raspberry Pi 3B+}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm} >{\raggedright\arraybackslash}p{2cm} >{\raggedright\arraybackslash}p{8cm}}
+\toprule
+Servicio & Puerto & Funcion \\
+\midrule
+\endfirsthead
+\toprule
+Servicio & Puerto & Funcion \\
+\midrule
+\endhead
+Bridge SPI ARINC & 5100 & Consulta a la Pico sniffer por SPI y expone endpoints HTTP con estado, snapshot y metricas. \\
+Flask dashboard & 5000 & Interfaz web principal de visualizacion operativa del sistema. \\
+\bottomrule
+\end{longtable}
+
+\section{Servicios en la PC}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm} >{\raggedright\arraybackslash}p{2cm} >{\raggedright\arraybackslash}p{8cm}}
+\toprule
+Servicio & Puerto & Funcion \\
+\midrule
+\endfirsthead
+\toprule
+Servicio & Puerto & Funcion \\
+\midrule
+\endhead
+Prometheus & 9090 & Recolecta metricas del bridge ARINC remoto y permite consultas temporales. \\
+Grafana & 3000 & Visualizacion historica y paneles graficos basados en Prometheus. \\
+\bottomrule
+\end{longtable}
+
+\section{Origen y destino de los datos}
+
+\begin{itemize}
+    \item La 3B+ expone el bridge en \texttt{http://192.168.0.200:5100}.
+    \item La 3B+ expone el dashboard Flask en \texttt{http://192.168.0.200:5000}.
+    \item La PC ejecuta Prometheus en \texttt{http://127.0.0.1:9090}.
+    \item La PC ejecuta Grafana en \texttt{http://127.0.0.1:3000}.
+    \item Prometheus scrapea al bridge en \texttt{192.168.0.200:5100/metrics}.
+\end{itemize}
+
+\chapter{Arquitectura por capas, estilo OSI}
+
+\section{Motivacion}
+
+El sistema no implementa literalmente un stack OSI tradicional como el de una red Ethernet completa entre todos sus nodos. Sin embargo, describirlo por capas resulta muy util para entender donde se resuelve cada responsabilidad:
+
+\begin{itemize}
+    \item donde nace la senal,
+    \item donde se empaquetan palabras,
+    \item donde se filtra,
+    \item donde se consulta el snapshot,
+    \item donde se expone por HTTP,
+    \item y donde finalmente se visualiza.
+\end{itemize}
+
+\section{Capa fisica}
+
+En esta capa se ubican los medios concretos de transmision y observacion.
+
+\subsection*{Entre Pico maestra y Pico esclava}
+
+\begin{itemize}
+    \item GPIO \texttt{GP2/GP3} para el canal FWD.
+    \item GPIO \texttt{GP4/GP5} para el canal REV.
+    \item En fase 2, codificacion \texttt{arinc429\_logic} con recreacion logica y temporal tipo bipolar con retorno a cero.
+\end{itemize}
+
+\subsection*{Entre sniffer y Raspberry Pi 3B+}
+
+\begin{itemize}
+    \item enlace SPI fisico cableado,
+    \item pines \texttt{GP16..GP20} en la sniffer,
+    \item \texttt{spi0.0} en la 3B+.
+\end{itemize}
+
+\subsection*{Entre la 3B+ y la PC}
+
+\begin{itemize}
+    \item red local IP,
+    \item acceso por navegador,
+    \item trafico HTTP para dashboard,
+    \item trafico Prometheus scrape.
+\end{itemize}
+
+\section{Capa de enlace de datos}
+
+Esta capa resuelve como se interpretan las unidades de informacion inmediatas sobre cada medio.
+
+\subsection*{Enlace maestra-esclava}
+
+\begin{itemize}
+    \item palabra de 32 bits con estructura tipo ARINC,
+    \item label, SDI, dato, SSM y paridad,
+    \item canal FWD para trafico normal,
+    \item canal REV para ACK.
+\end{itemize}
+
+\subsection*{Enlace sniffer-3B+}
+
+\begin{itemize}
+    \item protocolo SPI byte-a-byte,
+    \item secuencia del tipo \texttt{RESET + request[32] + response[32]} ampliada con ventana de respuesta robusta,
+    \item comandos para metadata, stats, filtros y slots.
+\end{itemize}
+
+\section{Capa de red}
+
+Esta capa aparece principalmente entre la Raspberry Pi 3B+ y la PC.
+
+\begin{itemize}
+    \item La 3B+ se identifica en la LAN como \texttt{192.168.0.200}.
+    \item El bridge HTTP escucha en \texttt{5100}.
+    \item Flask escucha en \texttt{5000}.
+    \item Prometheus y Grafana corren localmente en la PC.
+\end{itemize}
+
+\section{Capa de transporte}
+
+En el tramo de alto nivel se utiliza el transporte TCP subyacente a HTTP.
+
+\begin{itemize}
+    \item navegador $\leftrightarrow$ Flask,
+    \item Flask $\leftrightarrow$ bridge,
+    \item Prometheus $\leftrightarrow$ bridge.
+\end{itemize}
+
+Aunque el proyecto no profundiza en control de transporte custom, esta capa es importante porque determina latencia percibida, frecuencia de consulta y robustez de las interfaces web.
+
+\section{Capa de sesion}
+
+La capa de sesion puede interpretarse aqui como la logica de continuidad del estado entre procesos.
+
+\begin{itemize}
+    \item el bridge mantiene una sesion logica de polling sobre la sniffer,
+    \item Flask mantiene una sesion de consulta hacia el bridge,
+    \item Grafana/Prometheus mantienen sesiones periodicas de scrape y visualizacion.
+\end{itemize}
+
+\section{Capa de presentacion}
+
+La presentacion se resuelve en:
+
+\begin{itemize}
+    \item conversion de datos crudos a unidades fisicas,
+    \item nombres de variables (\texttt{TEMPERATURA}, \texttt{VELOCIDAD}, \texttt{ALTITUD}, \texttt{ACK\_BATCH}),
+    \item textos de SSM,
+    \item visualizacion HTML/Flask,
+    \item visualizacion Grafana/Prometheus.
+\end{itemize}
+
+\section{Capa de aplicacion}
+
+La capa de aplicacion es donde el sistema se vuelve operativamente util. Incluye:
+
+\begin{itemize}
+    \item generacion de trafico desde la Pico maestra,
+    \item recepcion y ACK desde la Pico esclava,
+    \item filtrado y snapshot desde la Pico sniffer,
+    \item bridge SPI en Python,
+    \item API HTTP para stats y metricas,
+    \item dashboard Flask,
+    \item monitoreo con Prometheus y Grafana.
+\end{itemize}
+
+\chapter{Descripcion funcional de cada tramo}
+
+\section{Tramo 1: generacion de palabras}
+
+La Pico maestra produce palabras agrupadas en lotes. Dentro de cada batch se combinan palabras utiles y palabras de relleno. Se mantienen labels conocidos y coherentes con el dashboard:
+
+\begin{itemize}
+    \item \texttt{0xA5} para temperatura,
+    \item \texttt{0xB1} para velocidad,
+    \item \texttt{0xC2} para altitud,
+    \item \texttt{0xAC} para ACK de batch.
+\end{itemize}
+
+\section{Tramo 2: recepcion y confirmacion}
+
+La Pico esclava:
+
+\begin{itemize}
+    \item recibe el lote,
+    \item valida y contabiliza palabras,
+    \item y una vez alcanzado el umbral esperado, emite el ACK correspondiente por el canal reverso.
+\end{itemize}
+
+\section{Tramo 3: captura pasiva}
+
+La Pico sniffer observa en simultaneo:
+
+\begin{itemize}
+    \item el canal FWD con las variables emitidas por la maestra,
+    \item el canal REV con las confirmaciones emitidas por la esclava.
+\end{itemize}
+
+Sobre esa captura realiza:
+
+\begin{itemize}
+    \item filtro por \texttt{label/SDI},
+    \item conteo de aceptadas y rechazadas,
+    \item armado de snapshot de ultimos valores.
+\end{itemize}
+
+\section{Tramo 4: snapshot SPI}
+
+La Pico sniffer no transmite cada palabra individual hacia la 3B+. En su lugar, mantiene un estado compacto:
+
+\begin{itemize}
+    \item cantidad de slots validos,
+    \item revision del snapshot,
+    \item valores mas recientes,
+    \item contadores de eventos y errores.
+\end{itemize}
+
+La Raspberry Pi 3B+ consulta ese estado periodicamente.
+
+\section{Tramo 5: bridge en Python}
+
+El bridge:
+
+\begin{itemize}
+    \item consulta metadata y slots,
+    \item reconstruye el estado completo para consumo superior,
+    \item expone endpoints HTTP,
+    \item genera salida \texttt{/metrics} compatible con Prometheus.
+\end{itemize}
+
+\section{Tramo 6: visualizacion}
+
+La visualizacion se dividio en dos caminos:
+
+\begin{itemize}
+    \item \textbf{Flask dashboard}, orientado a operacion casi en vivo,
+    \item \textbf{Grafana}, orientado a historico, paneles y supervision por Prometheus.
+\end{itemize}
+
+\chapter{Snapshot y slots activos}
+
+\section{Que es un slot}
+
+Un slot del snapshot representa una entrada de ultimo valor conocido para una determinada combinacion observada. En el firmware actual del sniffer, un slot guarda al menos:
+
+\begin{itemize}
+    \item label,
+    \item SDI,
+    \item canal,
+    \item valor crudo,
+    \item valor escalado,
+    \item SSM,
+    \item estado de paridad,
+    \item contador de actualizacion,
+    \item cantidad de veces observado.
+\end{itemize}
+
+\section{Capacidad maxima}
+
+La capacidad maxima actual del snapshot esta fijada en firmware por:
+
+\begin{itemize}
+    \item \texttt{LATEST\_SLOT\_CAPACITY = 16}
+\end{itemize}
+
+Por lo tanto:
+
+\begin{itemize}
+    \item \textbf{maximo}: 16 slots activos,
+    \item \textbf{minimo}: 0 slots activos.
+\end{itemize}
+
+\section{Interpretacion del valor observado}
+
+Si en una prueba aparecen \textbf{11 slots activos}, eso significa que en ese momento el sistema estaba manteniendo once entradas distintas dentro del snapshot. En la practica, esos slots se relacionan con las palabras observadas y aceptadas por el sniffer. En muchas pruebas, esto coincide con labels diferentes; sin embargo, conceptualmente el slot no es solo ``un label'' sino una entrada mas completa asociada al trafico observado, incluyendo el SDI.
+
+\section{Que pasa si se supera el maximo}
+
+Si el trafico aceptado supera la cantidad de slots disponibles:
+
+\begin{itemize}
+    \item se producen reemplazos de slots,
+    \item el contador \texttt{slot\_evictions} comienza a crecer,
+    \item lo cual indica que el snapshot ya no alcanza para representar simultaneamente todas las entradas activas.
+\end{itemize}
+
+En las corridas estables realizadas hasta el momento:
+
+\begin{itemize}
+    \item el sistema ha mostrado 4 slots activos en configuraciones base,
+    \item 10 u 11 slots activos en pruebas mas cargadas,
+    \item y \texttt{slot\_evictions = 0} en las validaciones satisfactorias.
+\end{itemize}
+
+\chapter{Topologia resumida}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,>=latex]
+    \tikzstyle{box}=[draw,rounded corners,align=center,minimum width=3.2cm,minimum height=1.4cm]
+    \tikzstyle{smallbox}=[draw,rounded corners,align=center,minimum width=2.8cm,minimum height=1.1cm]
+
+    \node[box] (master) at (0,0) {Pico maestra\\TX FWD\\RX ACK};
+    \node[box] (slave) at (9,0) {Pico esclava\\RX FWD\\TX ACK};
+    \node[box] (sniffer) at (4.5,-3) {Pico sniffer\\escucha FWD y REV\\snapshot SPI};
+    \node[box] (pi) at (4.5,-6) {Raspberry Pi 3B+\\bridge SPI + Flask};
+    \node[smallbox] (prom) at (1.5,-9) {Prometheus\\PC\\:9090};
+    \node[smallbox] (graf) at (7.5,-9) {Grafana\\PC\\:3000};
+
+    \draw[<->,thick] (master) -- node[above]{FWD: GP2/GP3} (slave);
+    \draw[<->,thick] (slave) to[bend left=25] node[above]{REV: GP4/GP5} (master);
+    \draw[dashed,thick] (sniffer) -- node[left]{escucha FWD} (master);
+    \draw[dashed,thick] (sniffer) -- node[right]{escucha REV} (slave);
+    \draw[thick] (sniffer) -- node[right]{SPI\\GP16..GP20} (pi);
+    \draw[thick] (prom) -- node[above]{scrape /metrics\\192.168.0.200:5100} (pi);
+    \draw[thick] (graf) -- node[above]{queries a Prometheus} (prom);
+\end{tikzpicture}
+\caption{Topologia simplificada del sistema completo}
+\end{figure}
+
+\chapter{Direccionamiento, servicios y flujo de informacion}
+
+\section{Direccionamiento practico}
+
+\begin{itemize}
+    \item Raspberry Pi 3B+: \texttt{192.168.0.200}
+    \item Bridge SPI HTTP: \texttt{192.168.0.200:5100}
+    \item Dashboard Flask: \texttt{192.168.0.200:5000}
+    \item Prometheus en PC: \texttt{127.0.0.1:9090}
+    \item Grafana en PC: \texttt{127.0.0.1:3000}
+\end{itemize}
+
+\section{Secuencia logica de flujo}
+
+\begin{enumerate}
+    \item La Pico maestra genera palabras y las emite por FWD.
+    \item La Pico esclava recibe, procesa y responde ACK por REV.
+    \item La Pico sniffer escucha ambos canales y actualiza su snapshot.
+    \item La Raspberry Pi 3B+ consulta el snapshot via SPI.
+    \item El bridge expone el estado consolidado por HTTP.
+    \item Flask muestra el estado al usuario en formato dashboard.
+    \item Prometheus scrapea metricas desde el bridge.
+    \item Grafana consulta a Prometheus y grafica las series temporales.
+\end{enumerate}
+
+\chapter{Capas de software}
+
+\section{Firmware embebido}
+
+En las tres Pico existen dos familias de firmware:
+
+\begin{itemize}
+    \item \textbf{modo legado}, correspondiente a la fase de emulacion funcional,
+    \item \textbf{modo \texttt{arinc429\_logic}}, correspondiente a la recreacion logica/temporal validada.
+\end{itemize}
+
+En el estado actual, el modo de interes principal es \texttt{arinc429\_logic}.
+
+\section{Bridge SPI}
+
+El bridge es el punto de union entre el mundo embebido y el mundo de aplicaciones.
+
+Responsabilidades:
+
+\begin{itemize}
+    \item temporizar consultas SPI,
+    \item reconectar ante errores recuperables,
+    \item reconstruir slots y stats,
+    \item exponer un formato amigable para HTTP y Prometheus.
+\end{itemize}
+
+\section{Flask dashboard}
+
+Es la interfaz operativa principal. Su foco es la lectura directa y rapida del estado actual.
+
+\section{Prometheus}
+
+Prometheus cumple el rol de recolector de metricas. No reemplaza al dashboard vivo sino que sirve como fuente de series temporales y supervision.
+
+\section{Grafana}
+
+Grafana es el nivel de visualizacion historica. Es util para paneles, seguimiento y presentacion, pero por su propia naturaleza de scrape no es el camino principal para latencia minima.
+
+\chapter{Notas operativas y de interpretacion}
+
+\section{Latencia}
+
+La experiencia visual mas rapida se obtuvo en el dashboard Flask directo, mientras que Grafana queda condicionado por el ciclo de scrape de Prometheus.
+
+\section{Slots y lectura del dashboard}
+
+No siempre la cantidad de slots activos coincide exactamente con ``cantidad de variables distintas mostradas'' en la interfaz superior. El dashboard presenta una vista ya consolidada por nombre de variable, mientras que internamente el snapshot y los slots se gestionan como entradas concretas del trafico observado.
+
+\section{IP y contexto}
+
+La direccion \texttt{192.168.0.200} debe entenderse como configuracion actual de la 3B+ en la red del laboratorio o entorno de pruebas. Si la IP cambia, deben ajustarse:
+
+\begin{itemize}
+    \item Prometheus en la PC,
+    \item accesos directos al dashboard Flask,
+    \item cualquier documentacion operativa basada en la direccion fija.
+\end{itemize}
+
+\chapter{Conclusion}
+
+La arquitectura del sistema, en su estado actual, ya no es una coleccion aislada de pruebas, sino una cadena funcional completa con division clara de responsabilidades:
+
+\begin{itemize}
+    \item generacion de trafico,
+    \item recepcion y ACK,
+    \item captura pasiva,
+    \item snapshot SPI,
+    \item bridge HTTP,
+    \item dashboard operativo,
+    \item monitoreo con Prometheus y Grafana.
+\end{itemize}
+
+Describirla por capas permite ver con claridad donde se apoya cada funcion y deja una base util para futuras etapas del proyecto:
+
+\begin{itemize}
+    \item validacion instrumental con osciloscopio,
+    \item migracion a capa electrica ARINC real,
+    \item evolucion hacia hardware dedicado o PCB.
+\end{itemize}
+
+Este documento puede utilizarse como anexo tecnico, base de memoria de proyecto o insumo directo para una tesis mas extensa.
+
+\end{document}

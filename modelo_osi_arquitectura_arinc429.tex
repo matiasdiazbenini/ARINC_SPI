@@ -1,0 +1,181 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{lmodern}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{enumitem}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdftitle={Arquitectura del sistema en formato OSI},
+  pdfauthor={Proyecto ARINC 429 recreado}
+}
+
+\setstretch{1.12}
+\setlist[itemize]{itemsep=3pt,topsep=3pt}
+
+\begin{document}
+
+\section*{Arquitectura del sistema en formato OSI}
+
+El sistema desarrollado puede describirse como una arquitectura hibrida por capas. No todos los tramos implementan un stack OSI completo en el sentido tradicional, pero el modelo resulta muy util para ubicar responsabilidades, medios fisicos, enlaces, protocolos, servicios y software de aplicacion.
+
+En la practica, el sistema se organiza en tres grandes tramos:
+
+\begin{itemize}
+    \item \textbf{Tramo A:} comunicacion entre Raspberry Pi Pico maestra y Raspberry Pi Pico esclava.
+    \item \textbf{Tramo B:} captura pasiva en la Pico sniffer y exportacion de snapshot hacia la Raspberry Pi 3B+ por SPI.
+    \item \textbf{Tramo C:} exposicion del estado hacia capas superiores mediante HTTP, Flask, Prometheus y Grafana.
+\end{itemize}
+
+\subsection*{Tabla general por capas}
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{>{\raggedright\arraybackslash}p{1.5cm} >{\raggedright\arraybackslash}p{3.3cm} >{\raggedright\arraybackslash}p{4.8cm} >{\raggedright\arraybackslash}p{5.1cm}}
+\toprule
+\textbf{Capa OSI} & \textbf{Nombre} & \textbf{Implementacion en el proyecto} & \textbf{Elementos concretos} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Capa OSI} & \textbf{Nombre} & \textbf{Implementacion en el proyecto} & \textbf{Elementos concretos} \\
+\midrule
+\endhead
+7 & Aplicacion & Servicios y aplicaciones que consumen, exponen o visualizan la informacion del sistema. & Bridge HTTP, dashboard Flask, Prometheus, Grafana, navegador web, endpoints \texttt{/stats} y \texttt{/metrics}. \\
+\midrule
+6 & Presentacion & Formato de datos consumido por software superior. Conversión a nombres, unidades y textos legibles. & JSON, exposicion Prometheus, nombres como \texttt{TEMPERATURA}, \texttt{VELOCIDAD}, \texttt{ALTITUD}, \texttt{ACK\_BATCH}, textos de SSM. \\
+\midrule
+5 & Sesion & Continuidad logica de las interacciones entre procesos y clientes. & Polling del bridge hacia la sniffer, polling del dashboard hacia Flask/bridge, scrape periodico de Prometheus, sesiones del navegador con Grafana y Flask. \\
+\midrule
+4 & Transporte & Transporte extremo a extremo entre procesos de alto nivel. & TCP sobre puertos \texttt{5000}, \texttt{5100}, \texttt{9090} y \texttt{3000}. \\
+\midrule
+3 & Red & Direccionamiento IP y alcance entre nodos de la red local. & Raspberry Pi 3B+ en \texttt{192.168.0.200}, loopback \texttt{127.0.0.1} para Prometheus/Grafana locales, acceso HTTP desde la PC a la 3B+. \\
+\midrule
+2 & Enlace de datos & Protocolos locales sobre medios fisicos especificos. & Palabra ARINC recreada en \texttt{arinc429\_logic}; batches y ACK entre Pico master y slave; protocolo SPI custom de 32 bytes entre sniffer y 3B+. \\
+\midrule
+1 & Fisica & Medios fisicos, cableado y senales electricas/logicas. & GPIO \texttt{GP2/GP3} y \texttt{GP4/GP5} para FWD/REV, SPI \texttt{GP16..GP20} entre sniffer y 3B+, Ethernet o Wi-Fi entre 3B+ y PC. \\
+\bottomrule
+\end{longtable}
+
+\subsection*{Tabla por tramo}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{2.2cm} >{\raggedright\arraybackslash}p{4.2cm} >{\raggedright\arraybackslash}p{5.8cm}}
+\toprule
+\textbf{Tramo} & \textbf{Capas relevantes} & \textbf{Descripcion} & \textbf{Elementos concretos} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Tramo} & \textbf{Capas relevantes} & \textbf{Descripcion} & \textbf{Elementos concretos} \\
+\midrule
+\endhead
+A: Pico maestra $\leftrightarrow$ Pico esclava & 1 y 2 & Comunicacion embebida de laboratorio, con dos canales simplex y palabra recreada tipo ARINC 429. & \texttt{GP2/GP3} como canal directo FWD, \texttt{GP4/GP5} como canal reverso REV, labels, SDI, SSM, paridad, ACK por \texttt{0xAC/SDI=3}. \\
+\midrule
+B: Pico sniffer $\leftrightarrow$ Raspberry Pi 3B+ & 1 y 2 & Exportacion del estado observado por la sniffer hacia la 3B+ mediante SPI y protocolo propietario robustecido. & \texttt{GP16=MOSI}, \texttt{GP17=CSn}, \texttt{GP18=SCK}, \texttt{GP19=MISO}, \texttt{GP20=DRDY} opcional, transporte \texttt{RESET + request[32] + response[32]}. \\
+\midrule
+C: Raspberry Pi 3B+ $\leftrightarrow$ PC / navegador / monitoreo & 3 a 7 & Exposicion de estado del sistema a traves de software de aplicacion sobre red IP local. & Bridge en \texttt{:5100}, Flask en \texttt{:5000}, Prometheus en \texttt{:9090}, Grafana en \texttt{:3000}, IP \texttt{192.168.0.200}. \\
+\bottomrule
+\end{longtable}
+
+\subsection*{Servicios de capa de aplicacion}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3cm} >{\raggedright\arraybackslash}p{2cm} X}
+\toprule
+\textbf{Servicio} & \textbf{Capa principal} & \textbf{Funcion en el sistema} \\
+\midrule
+Bridge HTTP & 7 & Actua como gateway entre el mundo embebido y el mundo de aplicaciones. Interroga a la sniffer por SPI, reconstruye el snapshot, maneja errores, reintentos y resincronizacion, y expone endpoints consumibles por software superior. \\
+\midrule
+Dashboard Flask & 7 & Presenta una visualizacion operativa del estado del sistema, orientada a uso rapido, lectura humana directa y validacion de laboratorio. \\
+\midrule
+Prometheus & 7 & Recolecta metricas temporales desde el endpoint \texttt{/metrics}, permitiendo historico, consultas y supervision. \\
+\midrule
+Grafana & 7 & Consume series temporales desde Prometheus y construye paneles graficos, tableros historicos y vistas de monitoreo. \\
+\bottomrule
+\end{tabularx}
+\caption{Ubicacion funcional de los servicios de alto nivel}
+\end{table}
+
+\subsection*{Topologia completa del sistema}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,>=latex]
+    \tikzstyle{nodebox}=[draw,rounded corners,align=center,minimum width=3.5cm,minimum height=1.2cm,fill=blue!5]
+    \tikzstyle{softbox}=[draw,rounded corners,align=center,minimum width=3.6cm,minimum height=1.2cm,fill=green!5]
+    \tikzstyle{netbox}=[draw,rounded corners,align=center,minimum width=3.2cm,minimum height=1.1cm,fill=orange!8]
+
+    \node[nodebox] (master) at (0,0) {Pico maestra\\TX FWD\\RX ACK};
+    \node[nodebox] (slave) at (10,0) {Pico esclava\\RX FWD\\TX ACK};
+    \node[nodebox] (sniffer) at (5,-3) {Pico sniffer\\escucha FWD/REV\\snapshot SPI};
+    \node[softbox] (bridge) at (5,-6) {Raspberry Pi 3B+\\Bridge HTTP\\\texttt{:5100}};
+    \node[softbox] (flask) at (0,-9) {Flask dashboard\\\texttt{:5000}};
+    \node[softbox] (prom) at (5,-9) {Prometheus\\PC\\\texttt{:9090}};
+    \node[softbox] (graf) at (10,-9) {Grafana\\PC\\\texttt{:3000}};
+    \node[netbox] (pc) at (5,-11.5) {PC / navegador};
+
+    \draw[<->,thick] (master) -- node[above]{FWD: GP2 / GP3} (slave);
+    \draw[<->,thick] (slave) to[bend left=20] node[above]{REV: GP4 / GP5} (master);
+
+    \draw[dashed,thick] (sniffer) -- node[left]{pinchado\\FWD} (master);
+    \draw[dashed,thick] (sniffer) -- node[right]{pinchado\\REV} (slave);
+
+    \draw[thick] (sniffer) -- node[right]{SPI\\GP16..GP20} (bridge);
+
+    \draw[thick] (bridge) -- node[above left]{HTTP\\\texttt{192.168.0.200:5000}} (flask);
+    \draw[thick] (bridge) -- node[right]{\texttt{/metrics}\\\texttt{192.168.0.200:5100}} (prom);
+    \draw[thick] (prom) -- node[above]{fuente de datos} (graf);
+
+    \draw[thick] (pc) -- node[left]{navegador} (flask);
+    \draw[thick] (pc) -- node[right]{navegador} (graf);
+\end{tikzpicture}
+\caption{Topologia funcional completa del sistema}
+\end{figure}
+
+\subsection*{Esquema tipo stack por capas}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+    \tikzstyle{layer}=[draw,minimum width=13cm,minimum height=0.9cm,align=left]
+
+    \node[layer,fill=red!10]    (l7) at (0,7.0) {\textbf{Capa 7 - Aplicacion:} Bridge HTTP, Flask, Prometheus, Grafana};
+    \node[layer,fill=orange!12] (l6) at (0,5.9) {\textbf{Capa 6 - Presentacion:} JSON, \texttt{/metrics}, nombres, unidades, textos SSM};
+    \node[layer,fill=yellow!12] (l5) at (0,4.8) {\textbf{Capa 5 - Sesion:} polling, scrape periodico, sesiones de navegador};
+    \node[layer,fill=green!10]  (l4) at (0,3.7) {\textbf{Capa 4 - Transporte:} TCP sobre puertos 5000, 5100, 9090, 3000};
+    \node[layer,fill=cyan!10]   (l3) at (0,2.6) {\textbf{Capa 3 - Red:} IP local, Raspberry Pi 3B+ en 192.168.0.200, loopback 127.0.0.1};
+    \node[layer,fill=blue!10]   (l2) at (0,1.5) {\textbf{Capa 2 - Enlace:} palabra \texttt{arinc429\_logic}, ACK, protocolo SPI propietario};
+    \node[layer,fill=purple!10] (l1) at (0,0.4) {\textbf{Capa 1 - Fisica:} GPIO GP2/GP3, GP4/GP5, SPI GP16..GP20, Ethernet/Wi-Fi};
+\end{tikzpicture}
+\caption{Representacion resumida del sistema segun una lectura por capas estilo OSI}
+\end{figure}
+
+\subsection*{Resumen interpretativo}
+
+Desde el punto de vista de arquitectura, el sistema puede entenderse asi:
+
+\begin{itemize}
+    \item En la parte inferior, las tres Pico trabajan sobre medios fisicos simples y protocolos locales propios o recreados, sin usar IP.
+    \item La Raspberry Pi 3B+ funciona como pasarela entre el mundo embebido y el mundo de aplicaciones.
+    \item A partir del bridge, el sistema pasa a usar una arquitectura clasica basada en HTTP sobre TCP/IP.
+    \item Flask cubre la necesidad de visualizacion operativa inmediata, mientras que Prometheus y Grafana cubren la necesidad de monitoreo historico.
+\end{itemize}
+
+\subsection*{Nota sobre los slots del snapshot}
+
+En el estado actual del firmware de la sniffer, la capacidad maxima del snapshot es de \textbf{16 slots}. Esto significa que el subsistema embebido puede mantener hasta 16 entradas activas simultaneas en su estructura de ``ultimo valor conocido''. Ese limite no proviene del protocolo ARINC en si, sino de una decision de implementacion del firmware y del protocolo SPI interno.
+
+\end{document}

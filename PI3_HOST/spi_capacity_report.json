@@ -1,0 +1,349 @@
+{
+  "bridge_url": "http://127.0.0.1:5100",
+  "sample_sec": 2.0,
+  "reset_before_stage": false,
+  "settle_sec": 3.0,
+  "started_at": "2026-05-23 04:40:07",
+  "stages": [
+    {
+      "stage": "core4",
+      "duration_sec": 300,
+      "filter_mode": "WHITELIST",
+      "filter_entries": [
+        {
+          "label": 165,
+          "sdi": 0
+        },
+        {
+          "label": 177,
+          "sdi": 1
+        },
+        {
+          "label": 194,
+          "sdi": 2
+        },
+        {
+          "label": 172,
+          "sdi": 3
+        }
+      ],
+      "filter_text": "0xA5/0, 0xB1/1, 0xC2/2, 0xAC/3",
+      "accepted_delta": 184502,
+      "ack_delta": 613,
+      "parity_error_delta": 0,
+      "spi_errors_delta": 0,
+      "spi_drop_delta": 0,
+      "overflow_delta": 0,
+      "fwd_resync_delta": 0,
+      "rev_resync_delta": 0,
+      "slot_evictions_delta": 0,
+      "snapshot_revision_delta": 184489,
+      "throughput_words_per_sec": 615.01,
+      "connected_samples": 151,
+      "disconnected_samples": 0,
+      "estimated_disconnected_sec": 0.0,
+      "end_connected": true,
+      "end_last_error": "",
+      "end_slot_count": 4,
+      "end_latest_by_name": {
+        "ACK_BATCH": {
+          "label": "0xAC",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:45:11",
+          "unit": "batch",
+          "value": "634.0"
+        },
+        "ALTITUD": {
+          "label": "0xC2",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:45:11",
+          "unit": "ft",
+          "value": "12000.0"
+        },
+        "TEMPERATURA": {
+          "label": "0xA5",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:45:11",
+          "unit": "C",
+          "value": "60.0"
+        },
+        "VELOCIDAD": {
+          "label": "0xB1",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:45:11",
+          "unit": "kt",
+          "value": "315.0"
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "stage": "known10",
+      "duration_sec": 300,
+      "filter_mode": "WHITELIST",
+      "filter_entries": [
+        {
+          "label": 17,
+          "sdi": 255
+        },
+        {
+          "label": 36,
+          "sdi": 255
+        },
+        {
+          "label": 57,
+          "sdi": 255
+        },
+        {
+          "label": 78,
+          "sdi": 255
+        },
+        {
+          "label": 87,
+          "sdi": 255
+        },
+        {
+          "label": 106,
+          "sdi": 255
+        },
+        {
+          "label": 165,
+          "sdi": 0
+        },
+        {
+          "label": 177,
+          "sdi": 1
+        },
+        {
+          "label": 194,
+          "sdi": 2
+        },
+        {
+          "label": 172,
+          "sdi": 3
+        }
+      ],
+      "filter_text": "0x11/ANY, 0x24/ANY, 0x39/ANY, 0x4E/ANY, 0x57/ANY, 0x6A/ANY, 0xA5/0, 0xB1/1, 0xC2/2, 0xAC/3",
+      "accepted_delta": 551010,
+      "ack_delta": 614,
+      "parity_error_delta": 0,
+      "spi_errors_delta": 0,
+      "spi_drop_delta": 0,
+      "overflow_delta": 0,
+      "fwd_resync_delta": 0,
+      "rev_resync_delta": 0,
+      "slot_evictions_delta": 0,
+      "snapshot_revision_delta": 553334,
+      "throughput_words_per_sec": 1836.7,
+      "connected_samples": 151,
+      "disconnected_samples": 0,
+      "estimated_disconnected_sec": 0.0,
+      "end_connected": true,
+      "end_last_error": "",
+      "end_slot_count": 10,
+      "end_latest_by_name": {
+        "ACK_BATCH": {
+          "label": "0xAC",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "batch",
+          "value": "1255.0"
+        },
+        "ALTITUD": {
+          "label": "0xC2",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "ft",
+          "value": "12000.0"
+        },
+        "LABEL_0x11": {
+          "label": "0x11",
+          "parity": "OK",
+          "ssm_txt": "FAILURE",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "225161.0"
+        },
+        "LABEL_0x24": {
+          "label": "0x24",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "414116.0"
+        },
+        "LABEL_0x39": {
+          "label": "0x39",
+          "parity": "OK",
+          "ssm_txt": "FUNCTIONAL_TEST",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "480915.0"
+        },
+        "LABEL_0x4E": {
+          "label": "0x4E",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "96687.0"
+        },
+        "LABEL_0x57": {
+          "label": "0x57",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "262465.0"
+        },
+        "LABEL_0x6A": {
+          "label": "0x6A",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "raw",
+          "value": "289616.0"
+        },
+        "TEMPERATURA": {
+          "label": "0xA5",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "C",
+          "value": "60.0"
+        },
+        "VELOCIDAD": {
+          "label": "0xB1",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "04:50:17",
+          "unit": "kt",
+          "value": "305.0"
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "stage": "pass_all",
+      "duration_sec": 600,
+      "filter_mode": "PASS_ALL",
+      "filter_entries": [],
+      "filter_text": "(vacio)",
+      "accepted_delta": 1223667,
+      "ack_delta": 1222,
+      "parity_error_delta": 0,
+      "spi_errors_delta": 0,
+      "spi_drop_delta": 0,
+      "overflow_delta": 0,
+      "fwd_resync_delta": 0,
+      "rev_resync_delta": 0,
+      "slot_evictions_delta": 0,
+      "snapshot_revision_delta": 1223469,
+      "throughput_words_per_sec": 2039.44,
+      "connected_samples": 300,
+      "disconnected_samples": 0,
+      "estimated_disconnected_sec": 0.0,
+      "end_connected": true,
+      "end_last_error": "",
+      "end_slot_count": 11,
+      "end_latest_by_name": {
+        "ACK_BATCH": {
+          "label": "0xAC",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "batch",
+          "value": "2486.0"
+        },
+        "ALTITUD": {
+          "label": "0xC2",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "ft",
+          "value": "12000.0"
+        },
+        "LABEL_0x11": {
+          "label": "0x11",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "247173.0"
+        },
+        "LABEL_0x24": {
+          "label": "0x24",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "51064.0"
+        },
+        "LABEL_0x39": {
+          "label": "0x39",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "26123.0"
+        },
+        "LABEL_0x4E": {
+          "label": "0x4E",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "91079.0"
+        },
+        "LABEL_0x57": {
+          "label": "0x57",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "417441.0"
+        },
+        "LABEL_0x6A": {
+          "label": "0x6A",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "415736.0"
+        },
+        "LABEL_0x7D": {
+          "label": "0x7D",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "raw",
+          "value": "511107.0"
+        },
+        "TEMPERATURA": {
+          "label": "0xA5",
+          "parity": "OK",
+          "ssm_txt": "NORMAL",
+          "timestamp": "05:00:22",
+          "unit": "C",
+          "value": "54.8"
+        },
+        "VELOCIDAD": {
+          "label": "0xB1",
+          "parity": "OK",
+          "ssm_txt": "FUNCTIONAL_TEST",
+          "timestamp": "05:00:22",
+          "unit": "kt",
+          "value": "320.0"
+        }
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "finished_at": "2026-05-23 05:00:22"
+}

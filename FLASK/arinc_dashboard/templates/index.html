@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard ARINC</title>
+  <style>
+    :root {
+      --bg: #eef4fb;
+      --surface: #ffffff;
+      --ink: #172033;
+      --muted: #5b677d;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --ok: #166534;
+      --ok-soft: #dcfce7;
+      --err: #b91c1c;
+      --err-soft: #fee2e2;
+      --border: #dce6f2;
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background:
+        radial-gradient(circle at top left, #dbeafe 0, transparent 24%),
+        radial-gradient(circle at top right, #d1fae5 0, transparent 22%),
+        var(--bg);
+      color: var(--ink);
+    }
+
+    .page {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero,
+    .card,
+    .stat-box,
+    .instrument-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      border-radius: 20px;
+      padding: 24px;
+      background: linear-gradient(135deg, #0f172a, #164e63);
+      color: white;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #dbeafe;
+      max-width: 920px;
+      line-height: 1.5;
+    }
+
+    .status-strip {
+      margin-top: 14px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .card {
+      border-radius: 18px;
+      padding: 18px;
+      margin-top: 18px;
+    }
+
+    .row,
+    .stats-row {
+      display: grid;
+      gap: 14px;
+    }
+
+    .row {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      align-items: end;
+    }
+
+    .stats-row {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-top: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: white;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+      background: #f8fafc;
+      transition: transform 0.12s ease, background 0.12s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: #eef6ff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .actions button {
+      width: auto;
+      min-width: 140px;
+    }
+
+    .stat-box,
+    .instrument-box {
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .stat-title,
+    .instrument-title {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .stat-value {
+      font-size: 30px;
+      font-weight: 800;
+    }
+
+    .instrument-value {
+      font-size: 30px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .instrument-meta {
+      font-size: 13px;
+      color: #405168;
+      line-height: 1.5;
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .err {
+      color: var(--err);
+      font-weight: 700;
+    }
+
+    .soft-ok {
+      background: var(--ok-soft);
+    }
+
+    .soft-err {
+      background: var(--err-soft);
+    }
+
+    h3 {
+      margin-top: 0;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.6;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+    }
+
+    @media (max-width: 900px) {
+      .actions {
+        flex-direction: column;
+      }
+
+      .actions button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>Dashboard ARINC 429 logico</h1>
+      <p>
+        {% if source_mode == "bridge" %}
+        Visualizacion desde la Raspberry Pi 3B+ a traves del bridge SPI del sniffer. Flask consume eventos ya filtrados por la Pico
+        y Grafana puede apoyarse sobre las metricas consolidadas de este mismo dashboard.
+        {% else %}
+        Captura serial desde la Pico ARINC_SNIFFER con parseo de lineas <code>MATCH -&gt;</code> o <code>MATCH,...</code>.
+        El filtro de esta pantalla es post-captura; el filtrado primario lo hace la Raspberry sniffer antes de llegar al dashboard.
+        {% endif %}
+      </p>
+      <div class="status-strip" id="status-strip">Sesion inactiva</div>
+    </section>
+
+    <section class="card">
+      {% if source_mode == "bridge" %}
+      <div class="row">
+        <div>
+          <label>Fuente activa</label>
+          <input type="text" value="Bridge SPI en {{ bridge_url }}" readonly>
+        </div>
+
+        <div>
+          <label for="filter_entries">Filtro embebido del sniffer</label>
+          <input id="filter_entries" type="text" placeholder="Ej: 0xA5/0, 0xB1/1, 0xC2/2">
+        </div>
+
+        <div>
+          <label for="pass_all">Modo pass-all</label>
+          <input id="pass_all" type="checkbox" style="width:auto; transform: scale(1.15); margin-top: 12px;">
+        </div>
+      </div>
+
+      <p style="margin: 14px 0 0; color: #405168; font-size: 14px; line-height: 1.5;">
+        El sniffer sigue haciendo el filtrado primario en la Pico. Desde aca solo se consulta o reconfigura esa whitelist a traves del bridge SPI de la Raspberry Pi 3B+.
+      </p>
+
+      <div class="actions">
+        <button onclick="applyBridgeFilter()">Aplicar filtro</button>
+        <button onclick="refreshBridgeFilter()">Leer filtro actual</button>
+        <button onclick="resetBridgeCounters()">Resetear contadores</button>
+      </div>
+      {% else %}
+      <div class="row">
+        <div>
+          <label for="port">Puerto</label>
+          <select id="port">
+            {% for p in ports %}
+              <option value="{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="baudrate">Baudrate</label>
+          <input id="baudrate" type="number" value="{{ baudrate }}">
+        </div>
+
+        <div>
+          <label for="filter_text">Filtro de visualizacion</label>
+          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TEMPERATURA o SSM_TXT: NORMAL">
+        </div>
+      </div>
+
+      <p style="margin: 14px 0 0; color: #405168; font-size: 14px; line-height: 1.5;">
+        Fuente esperada: el puerto COM de la tercera Pico con firmware <code>ARINC_SNIFFER</code>.
+        No abras ese mismo COM con Tera Term mientras Flask este capturando.
+      </p>
+
+      <div class="actions">
+        <button onclick="startCapture()">Iniciar</button>
+        <button onclick="stopCapture()">Detener</button>
+        <button onclick="clearConsole()">Limpiar</button>
+        <button onclick="refreshPorts()">Actualizar puertos</button>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="stats-row">
+      <div class="stat-box">
+        <div class="stat-title">Tramas capturadas</div>
+        <div class="stat-value" id="stat-total">0</div>
+      </div>
+      <div class="stat-box soft-ok">
+        <div class="stat-title">Parity OK</div>
+        <div class="stat-value ok" id="stat-ok">0</div>
+      </div>
+      <div class="stat-box soft-err">
+        <div class="stat-title">Parity ERROR</div>
+        <div class="stat-value err" id="stat-err">0</div>
+      </div>
+    </section>
+
+    <section class="stats-row">
+      <div class="instrument-box">
+        <div class="instrument-title">Temperatura actual</div>
+        <div class="instrument-value" id="temp-value">--</div>
+        <div class="instrument-meta" id="temp-meta">Sin datos</div>
+      </div>
+
+      <div class="instrument-box">
+        <div class="instrument-title">Velocidad actual</div>
+        <div class="instrument-value" id="speed-value">--</div>
+        <div class="instrument-meta" id="speed-meta">Sin datos</div>
+      </div>
+
+      <div class="instrument-box">
+        <div class="instrument-title">Altitud actual</div>
+        <div class="instrument-value" id="alt-value">--</div>
+        <div class="instrument-meta" id="alt-meta">Sin datos</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Resumen por Label</h3>
+      <ul id="label-summary"></ul>
+    </section>
+
+    <section class="card">
+      <h3>Resumen por SSM</h3>
+      <ul id="ssm-summary"></ul>
+    </section>
+
+    <section class="card">
+      <h3>Estado del Sniffer</h3>
+      <ul id="sniffer-summary"></ul>
+    </section>
+
+  </div>
+
+  <script>
+    const REFRESH_MS = 33;
+    const SOURCE_MODE = "{{ source_mode }}";
+    const BRIDGE_URL = "{{ bridge_url }}";
+
+    function fetchNoStore(path) {
+      const separator = path.includes("?") ? "&" : "?";
+      return fetch(`${path}${separator}_ts=${Date.now()}`, { cache: "no-store" });
+    }
+
+    function setInstrument(prefix, rec) {
+      const valueEl = document.getElementById(`${prefix}-value`);
+      const metaEl = document.getElementById(`${prefix}-meta`);
+
+      if (!rec) {
+        valueEl.textContent = "--";
+        valueEl.className = "instrument-value";
+        metaEl.textContent = "Sin datos";
+        return;
+      }
+
+      valueEl.textContent = `${rec.value} ${rec.unit}`;
+      valueEl.className = `instrument-value ${rec.parity === "OK" ? "ok" : "err"}`;
+      metaEl.textContent = `Label ${rec.label} | ${rec.ssm_txt} | Parity ${rec.parity} | ${rec.timestamp}`;
+    }
+
+    function updateStatusStrip(data) {
+      const strip = document.getElementById("status-strip");
+      if (SOURCE_MODE === "bridge") {
+        if (data.running && data.connected) {
+          strip.textContent = `Bridge SPI activo en ${data.port || "-"} | refresco ${REFRESH_MS} ms | host ${BRIDGE_URL}`;
+        } else if (data.running) {
+          strip.textContent = `Bridge SPI reconectando en ${data.port || "-"} | refresco ${REFRESH_MS} ms | host ${BRIDGE_URL}`;
+          if (data.last_error) {
+            strip.textContent += ` | ultimo error ${data.last_error}`;
+          }
+        } else {
+          strip.textContent = `Bridge SPI inactivo | host ${BRIDGE_URL}`;
+          if (data.last_error) {
+            strip.textContent += ` | error ${data.last_error}`;
+          }
+        }
+        return;
+      }
+
+      if (data.running) {
+        strip.textContent = `Sesion activa en ${data.port || "-"} | refresco ${REFRESH_MS} ms`;
+      } else {
+        strip.textContent = "Sesion inactiva";
+      }
+    }
+
+    async function refreshStats() {
+      try {
+        const response = await fetchNoStore("/stats");
+        const data = await response.json();
+
+        document.getElementById("stat-total").textContent = data.total;
+        document.getElementById("stat-ok").textContent = data.parity_ok;
+        document.getElementById("stat-err").textContent = data.parity_error;
+
+        const labelSummary = document.getElementById("label-summary");
+        labelSummary.innerHTML = "";
+        for (const [label, count] of Object.entries(data.by_label)) {
+          const li = document.createElement("li");
+          li.textContent = `${label}: ${count}`;
+          labelSummary.appendChild(li);
+        }
+
+        const ssmSummary = document.getElementById("ssm-summary");
+        ssmSummary.innerHTML = "";
+        for (const [ssm, count] of Object.entries(data.by_ssm)) {
+          const li = document.createElement("li");
+          li.textContent = `${ssm}: ${count}`;
+          ssmSummary.appendChild(li);
+        }
+
+        const snifferSummary = document.getElementById("sniffer-summary");
+        snifferSummary.innerHTML = "";
+        const summaryItems = [
+          `Estado del enlace: ${data.connected ? "CONECTADO" : "RECONECTANDO"}`,
+          `ACK observados: ${data.ack_events ?? 0}`,
+          `Palabras aceptadas por sniffer: ${data.accepted_words ?? 0}`,
+          `Palabras descartadas por filtro: ${data.filtered_words ?? 0}`,
+          `Overflow de captura: ${data.overflow_events ?? 0}`,
+          `Resync FWD: ${data.fwd_resync_events ?? 0}`,
+          `Resync REV: ${data.rev_resync_events ?? 0}`,
+          `Drops SPI: ${data.spi_drop_events ?? 0}`,
+          `Slots activos: ${data.slot_count ?? 0}`,
+          `Evictions snapshot: ${data.slot_evictions ?? 0}`,
+          `Revision snapshot: ${data.snapshot_revision ?? 0}`
+        ];
+        if (SOURCE_MODE === "bridge") {
+          const filterModeText = (data.filter_mode ?? 0) === 1 ? "PASS_ALL" : "WHITELIST";
+          const filterEntriesText = (data.filter_entries || []).length ? data.filter_entries.join(", ") : "(vacío)";
+          summaryItems.push(`Modo de filtro: ${filterModeText}`);
+          summaryItems.push(`Whitelist activa: ${filterEntriesText}`);
+        }
+        for (const item of summaryItems) {
+          const li = document.createElement("li");
+          li.textContent = item;
+          snifferSummary.appendChild(li);
+        }
+
+        const latest = data.latest_by_name || {};
+        setInstrument("temp", latest["TEMPERATURA"]);
+        setInstrument("speed", latest["VELOCIDAD"]);
+        setInstrument("alt", latest["ALTITUD"]);
+        updateStatusStrip(data);
+        if (data.last_rx_time) {
+          const counterLabel = SOURCE_MODE === "bridge" ? "tramas" : "lineas";
+          const counterValue = SOURCE_MODE === "bridge" ? (data.total ?? 0) : (data.serial_lines ?? 0);
+          document.getElementById("status-strip").textContent += ` | ultima RX ${data.last_rx_time} | ${counterLabel} ${counterValue}`;
+        }
+      } catch (err) {
+      }
+    }
+
+    async function startCapture() {
+      const form = new FormData();
+      form.append("port", document.getElementById("port").value);
+      form.append("baudrate", document.getElementById("baudrate").value);
+      form.append("filter_text", document.getElementById("filter_text").value);
+
+      const response = await fetch("/start", {
+        method: "POST",
+        body: form,
+        cache: "no-store"
+      });
+      const data = await response.json();
+      alert(data.msg);
+      refreshStats();
+    }
+
+    async function stopCapture() {
+      const response = await fetch("/stop", { method: "POST", cache: "no-store" });
+      const data = await response.json();
+      alert(data.msg);
+      refreshStats();
+    }
+
+    async function clearConsole() {
+      await fetch("/clear", { method: "POST", cache: "no-store" });
+      refreshStats();
+    }
+
+    async function refreshPorts() {
+      if (SOURCE_MODE === "bridge") {
+        return;
+      }
+
+      const response = await fetchNoStore("/ports");
+      const data = await response.json();
+
+      const select = document.getElementById("port");
+      select.innerHTML = "";
+
+      for (const port of data.ports) {
+        const option = document.createElement("option");
+        option.value = port;
+        option.textContent = port;
+        select.appendChild(option);
+      }
+    }
+
+    async function refreshBridgeFilter() {
+      if (SOURCE_MODE !== "bridge") {
+        return;
+      }
+
+      const response = await fetchNoStore("/filter_config");
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        alert(data.msg || "No se pudo leer el filtro del bridge");
+        return;
+      }
+
+      document.getElementById("filter_entries").value = data.entries_text || "";
+      document.getElementById("pass_all").checked = (data.mode === 1);
+    }
+
+    async function applyBridgeFilter() {
+      if (SOURCE_MODE !== "bridge") {
+        return;
+      }
+
+      const form = new FormData();
+      form.append("filter_entries", document.getElementById("filter_entries").value);
+      if (document.getElementById("pass_all").checked) {
+        form.append("pass_all", "on");
+      }
+
+      const response = await fetch("/filter_config", {
+        method: "POST",
+        body: form,
+        cache: "no-store"
+      });
+      const data = await response.json();
+      alert(data.ok ? "Filtro aplicado en el sniffer" : (data.msg || "No se pudo aplicar el filtro"));
+      refreshStats();
+    }
+
+    async function resetBridgeCounters() {
+      if (SOURCE_MODE !== "bridge") {
+        return;
+      }
+
+      const response = await fetch("/bridge_reset", {
+        method: "POST",
+        cache: "no-store"
+      });
+      const data = await response.json();
+      alert(data.ok ? data.msg : (data.msg || "No se pudo resetear el bridge"));
+      refreshStats();
+    }
+
+    setInterval(() => {
+      refreshStats();
+    }, REFRESH_MS);
+
+    if (SOURCE_MODE === "bridge") {
+      refreshBridgeFilter();
+    }
+    refreshStats();
+  </script>
+</body>
+</html>

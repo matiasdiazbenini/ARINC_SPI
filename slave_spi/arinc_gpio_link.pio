@@ -1,0 +1,86 @@
+.program arinc_gpio_link_tx
+
+.define public HALF_CYCLES 5
+.define public WORD_GAP_HALVES 8
+
+; TX por dos pines, sin SYNC externo.
+; El mismo programa se usa para cualquier canal simplex configurando
+; "pin_base" y "pin_base + 1" desde C.
+; Cada bit ocupa dos mitades:
+; - bit 0: pin_base activo, luego idle 00
+; - bit 1: pin_base + 1 activo, luego idle 00
+;
+; El programa hace "pull" palabra por palabra. Eso permite que el gap
+; entre palabras quede dentro de la state machine y no dependa de sleeps
+; del CPU.
+
+.wrap_target
+word_start:
+    pull block
+    set y, 31
+
+bitloop:
+    out x, 1
+    jmp !x send_zero
+
+send_one:
+    set pins, 2        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp bit_done
+
+send_zero:
+    set pins, 1        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+
+bit_done:
+    jmp y-- bitloop
+
+gap_setup:
+    set x, 7
+
+gap_loop:
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp x-- gap_loop
+.wrap
+
+
+.program arinc_gpio_link_rx
+
+; RX por PIO:
+; 1. Espera cualquier actividad en el par configurado.
+; 2. Clasifica el bit usando "pin_base + 1" como bit logico.
+; 3. Espera el retorno a idle 00 para marcar el fin del simbolo.
+; 4. Repite 32 veces y empuja la palabra completa a la FIFO RX.
+;
+; El filtrado NO se hace aca: la PIO solo reconstruye la palabra.
+; El filtro conviene aplicarlo luego en C, cuando ya existen label, SDI,
+; dato y paridad decodificados.
+
+.wrap_target
+word_start:
+    mov isr, null
+    set x, 31
+
+wait_active:
+    mov y, pins
+    jmp !y wait_active
+    jmp pin bit_one
+
+bit_zero:
+    set y, 0
+    in y, 1
+    jmp wait_idle
+
+bit_one:
+    set y, 1
+    in y, 1
+
+wait_idle:
+    mov y, pins
+    jmp !y bit_done
+    jmp wait_idle
+
+bit_done:
+    jmp x-- wait_active
+    push block
+.wrap

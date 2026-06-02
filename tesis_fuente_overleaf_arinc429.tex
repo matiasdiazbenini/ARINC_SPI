@@ -1,0 +1,755 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{amsmath}
+
+\geometry{
+  left=2.8cm,
+  right=2.8cm,
+  top=3cm,
+  bottom=3cm
+}
+
+\onehalfspacing
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Proyecto ARINC 429}
+\fancyhead[R]{\leftmark}
+\fancyfoot[C]{\thepage}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black,
+  pdftitle={Fuente de tesis - Proyecto ARINC 429},
+  pdfauthor={Completar},
+  pdfsubject={Sistema de sniffing, filtrado y visualizacion de tramas ARINC 429},
+  pdfkeywords={ARINC 429, Raspberry Pi Pico, Raspberry Pi 3B+, SPI, sniffer, dashboard}
+}
+
+\titleformat{\chapter}[display]
+  {\bfseries\Large}
+  {\filleft\Huge\thechapter}
+  {1ex}
+  {\titlerule\vspace{1ex}\filright}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{black!2},
+  columns=fullflexible
+}
+
+% ------------------------------------------------------------------
+% Datos editables para Overleaf
+% ------------------------------------------------------------------
+\newcommand{\TituloTesis}{Desarrollo incremental de un sistema de sniffing, filtrado y visualizacion de comunicacion tipo ARINC 429}
+\newcommand{\AutorTesis}{Completar nombre del autor}
+\newcommand{\CoautorTesis}{Completar si corresponde}
+\newcommand{\DirectorTesis}{Completar director o tutor}
+\newcommand{\InstitucionTesis}{Completar institucion}
+\newcommand{\CarreraTesis}{Completar carrera}
+\newcommand{\CiudadTesis}{Completar ciudad}
+\newcommand{\FechaTesis}{Completar fecha}
+
+% ------------------------------------------------------------------
+% Documento
+% ------------------------------------------------------------------
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\Large \InstitucionTesis \par}
+    \vspace{0.8cm}
+    {\large \CarreraTesis \par}
+    \vspace{2.5cm}
+    {\Huge \bfseries \TituloTesis \par}
+    \vspace{2cm}
+    {\Large Documento fuente para memoria tecnica / tesis \par}
+    \vfill
+    \begin{tabular}{ll}
+        Autor: & \AutorTesis \\
+        Coautor: & \CoautorTesis \\
+        Director / Tutor: & \DirectorTesis \\
+        Ciudad: & \CiudadTesis \\
+        Fecha: & \FechaTesis \\
+    \end{tabular}
+    \vfill
+    {\large Version extensa en formato Overleaf / LaTeX \par}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+
+El presente documento resume, estructura y deja asentado el trabajo realizado hasta el momento en el desarrollo de un sistema de sniffing, filtrado y visualizacion de una comunicacion tipo ARINC 429 utilizando tres placas Raspberry Pi Pico y una Raspberry Pi 3B+. El objetivo principal del proyecto es interceptar una linea de transmision, filtrar en hardware solo la informacion relevante y entregar a la Raspberry Pi 3B+ un subconjunto util y procesado para su presentacion mediante bridge SPI, Flask y dashboard web.
+
+El trabajo se organizo en fases. En una primera etapa se construyo y valido una arquitectura funcional completa basada en un canal de transmision directo, un canal de ACK inverso, una Pico sniffer intermedia y un enlace SPI con la Raspberry Pi 3B+. Luego se estabilizo el transporte SPI entre la Pico sniffer y la 3B+ mediante un esquema byte a byte y una logica de snapshots robustos. Posteriormente se optimizo el bridge y el dashboard para mejorar fluidez visual y estabilidad de largo plazo. Finalmente se desarrollo una nueva fase denominada \textit{ARINC429 logic}, en la cual se mantuvo la arquitectura general y se reemplazo la generacion/captura de tramas por una recreacion logica y temporal mas fiel, con simbolos bipolares logicos y retorno a cero.
+
+Los resultados obtenidos son positivos. Se valido el funcionamiento del sistema completo, se comprobaron corridas largas de muchas horas sin caidas funcionales y se definio un perfil operativo recomendado para uso continuo, asi como un perfil de estres util para explorar los limites del enlace SPI con la 3B+. El siguiente paso natural del proyecto es la validacion instrumental mediante osciloscopio y, a futuro, la incorporacion de transceptores y adaptacion electrica real ARINC 429 para evolucionar desde una recreacion logica/temporal hacia una implementacion plug and play sobre una linea fisica real.
+
+\chapter{Introduccion}
+
+\section{Motivacion}
+
+El proyecto nace de la necesidad de contar con una plataforma flexible, de bajo costo y extensible que permita interceptar una comunicacion de interes, filtrar localmente solo la informacion relevante y exponerla hacia una plataforma de visualizacion y monitoreo. La idea de fondo es avanzar paso a paso hasta alcanzar una solucion que, en el futuro, pueda conectarse a una linea ARINC 429 real de forma practica, estable y lo mas cercana posible a un comportamiento plug and play.
+
+Desde el principio se tomo una decision metodologica importante: no intentar resolver simultaneamente la capa de aplicacion, la capa de monitoreo, la capa de integracion SPI y la capa electrica real. En cambio, se eligio dividir el problema en fases. Este enfoque permitio cerrar primero la arquitectura digital y de software, y dejar la futura interfaz electrica como una etapa posterior, mas acotada y mejor informada.
+
+\section{Problema abordado}
+
+El sistema final deseado no se limita a ``mostrar datos''. Debe cumplir simultaneamente varias funciones:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item Capturar tramas transmitidas por un emisor.
+    \item Procesarlas y filtrarlas en hardware local.
+    \item Exportar a una Raspberry Pi 3B+ solo el subconjunto de datos util.
+    \item Visualizar esos datos con herramientas accesibles.
+    \item Mantener estabilidad operativa durante corridas largas.
+    \item Evolucionar despues hacia una capa electrica ARINC 429 real.
+\end{itemize}
+
+Estas exigencias convierten al problema en uno de integracion de sistemas embebidos mas que en una simple prueba de comunicacion entre placas.
+
+\section{Hipotesis de trabajo}
+
+La hipotesis general que guio el desarrollo fue la siguiente: si se logra separar correctamente la arquitectura en capas, entonces es posible validar primero la logica funcional completa del sistema y despues reemplazar progresivamente la forma de generacion/captura de la senal sin rediseñar la Raspberry Pi 3B+, el bridge, el dashboard ni la semantica de los datos exportados.
+
+Esa hipotesis termino siendo acertada y es uno de los resultados metodologicos mas valiosos del proyecto.
+
+\chapter{Objetivos}
+
+\section{Objetivo general}
+
+Desarrollar una arquitectura de prueba y validacion para una futura solucion de sniffing ARINC 429, basada en Raspberry Pi Pico y Raspberry Pi 3B+, capaz de:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item interceptar una comunicacion,
+    \item filtrar informacion relevante en hardware,
+    \item exportar snapshots robustos por SPI,
+    \item y presentar el estado del sistema mediante un dashboard web.
+\end{itemize}
+
+\section{Objetivos especificos}
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item Construir una arquitectura con tres Pico y una Raspberry Pi 3B+.
+    \item Validar una primera fase de emulacion funcional.
+    \item Estabilizar el enlace SPI sniffer--3B+.
+    \item Implementar un bridge HTTP y un dashboard web.
+    \item Ajustar el sistema para corridas largas.
+    \item Migrar la capa de generacion/captura de tramas hacia una recreacion logica/temporal mas fiel.
+    \item Preparar el sistema para una futura etapa de capa electrica ARINC 429 real.
+\end{enumerate}
+
+\chapter{Alcance del trabajo realizado}
+
+\section{Lo que ya se logro}
+
+Hasta el momento se logro:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item Una arquitectura funcional completa basada en:
+    \begin{itemize}
+        \item Pico master,
+        \item Pico slave,
+        \item Pico sniffer,
+        \item Raspberry Pi 3B+,
+        \item bridge SPI,
+        \item Flask,
+        \item dashboard web.
+    \end{itemize}
+    \item Un modo de emulacion funcional estable.
+    \item Un modo \texttt{arinc429\_logic} estable y validado.
+    \item Un transporte SPI robusto entre sniffer y 3B+.
+    \item Un perfil operativo recomendado para uso continuo.
+\end{itemize}
+
+\section{Lo que todavia no se pretende cerrar en esta etapa}
+
+No forma parte de la etapa actual:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item la capa electrica real ARINC 429,
+    \item el uso de transceptores/line drivers ARINC reales,
+    \item la version final en placa PCB,
+    \item el producto final plug and play sobre una linea aeronautica real.
+\end{itemize}
+
+Sin embargo, el trabajo realizado deja preparado el terreno para abordar esas tareas mas adelante.
+
+\chapter{Plataforma utilizada}
+
+\section{Hardware}
+
+La plataforma de trabajo utilizada se compone de:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item una Raspberry Pi Pico configurada como \textbf{master},
+    \item una Raspberry Pi Pico configurada como \textbf{slave},
+    \item una Raspberry Pi Pico configurada como \textbf{sniffer},
+    \item una Raspberry Pi 3B+ como nodo de bridge, servidor y visualizacion.
+\end{itemize}
+
+\section{Software y herramientas}
+
+Del lado software se utilizaron:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item firmware en C para las tres Pico,
+    \item PIO para la generacion y captura de enlaces tipo ARINC,
+    \item Python en la 3B+ para el bridge SPI,
+    \item Flask para exponer el dashboard,
+    \item navegador web para visualizacion,
+    \item y herramientas auxiliares de prueba y diagnostico.
+\end{itemize}
+
+\section{Roles funcionales por nodo}
+
+\begin{longtable}{p{0.20\textwidth} p{0.72\textwidth}}
+\toprule
+\textbf{Nodo} & \textbf{Rol} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Nodo} & \textbf{Rol} \\
+\midrule
+\endhead
+Pico master & Genera tramas, transmite por el canal directo FWD y espera ACK del canal REV. \\
+Pico slave & Recibe el canal FWD, procesa lotes de palabras, aplica logica local y transmite ACK por REV. \\
+Pico sniffer & Escucha pasivamente ambos canales, filtra labels, mantiene snapshots y exporta el estado por SPI a la 3B+. \\
+Raspberry Pi 3B+ & Interroga a la sniffer por SPI, mantiene bridge HTTP, expone endpoints y sirve el dashboard web. \\
+\bottomrule
+\end{longtable}
+
+\chapter{Arquitectura general del sistema}
+
+\section{Canales de comunicacion}
+
+La arquitectura se organizo en dos canales simplex entre master y slave:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \textbf{FWD}: master $\rightarrow$ slave
+    \item \textbf{REV}: slave $\rightarrow$ master
+\end{itemize}
+
+La Pico sniffer escucha ambos canales de manera pasiva:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item FWD sobre un par de pines dedicado
+    \item REV sobre otro par de pines dedicado
+\end{itemize}
+
+De este modo, la topologia general resulta conceptualmente mas cercana a un sistema con separacion de sentidos que a un enlace half duplex sobre una sola linea.
+
+\section{Integracion con la 3B+}
+
+La Pico sniffer exporta su estado hacia la Raspberry Pi 3B+ por SPI. La 3B+ no interpreta directamente la señal tipo ARINC entre master y slave; en cambio, consulta a la sniffer por medio de un bridge SPI y recibe snapshots de estado y contadores.
+
+Este desacople fue una decision de arquitectura muy importante porque:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item simplifica la integracion con Flask y dashboard,
+    \item evita sobrecargar a la 3B+ con capturas crudas de alto volumen,
+    \item y deja preparada una frontera mas limpia para la futura capa electrica real.
+\end{itemize}
+
+\section{Pipeline de datos}
+
+La cadena completa de datos actual puede resumirse asi:
+
+\begin{center}
+\texttt{master -> slave -> sniffer -> SPI -> bridge -> Flask -> dashboard}
+\end{center}
+
+En este pipeline, el filtrado principal ocurre en la sniffer, no en Flask.
+
+\chapter{Fase 1: Emulacion funcional}
+
+\section{Proposito}
+
+La primera gran meta fue demostrar que la arquitectura completa era viable. Esto incluia no solo la transmision y recepcion entre Pico, sino tambien la capacidad de:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item filtrar labels de interes,
+    \item capturar ACK,
+    \item exportar informacion por SPI,
+    \item y visualizarla desde un dashboard web.
+\end{itemize}
+
+\section{Lo que se construyo}
+
+En esta fase se implemento:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item un Pico master transmisor,
+    \item un Pico slave receptor con respuesta ACK,
+    \item un Pico sniffer intermedio,
+    \item y el entorno de consumo en la 3B+.
+\end{itemize}
+
+El objetivo no era aun respetar la capa electrica ARINC 429 real, sino cerrar la funcion general del sistema.
+
+\section{Problemas encontrados}
+
+Uno de los problemas mas importantes aparecio en el comportamiento del SPI slave hardware de la Pico cuando se intento transportar una estructura de datos mas rica y extensa. La investigacion mostro que:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item el cableado no era el problema,
+    \item la topologia general estaba bien,
+    \item la continuidad GPIO estaba validada,
+    \item pero el framing completo por SPI slave hardware no resultaba confiable tal como se lo estaba usando inicialmente.
+\end{itemize}
+
+\section{Resolucion}
+
+La salida efectiva fue cambiar el modelo de transporte y pasar a un esquema SPI byte a byte, con secuencia de reset, request y response. Ese cambio permitio estabilizar la integracion entre sniffer y 3B+, sin necesidad de rediseñar por completo el resto del sistema.
+
+\chapter{Fase 1B: Robustecimiento del bridge SPI y del dashboard}
+
+\section{Motivacion}
+
+Una vez que la arquitectura funcional quedo estable, surgio una segunda necesidad: mejorar la forma en que el estado filtrado era consumido por la Raspberry Pi 3B+ y visualizado desde el dashboard.
+
+Inicialmente el sistema se comportaba como si intentara drenar eventos uno por uno. Eso era menos robusto y menos escalable en corridas largas.
+
+\section{Cambio de modelo de datos}
+
+Se paso de un modelo centrado en cola de eventos a un modelo basado en snapshots robustos. Conceptualmente, la sniffer paso a mantener:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item los ultimos valores vigentes por label,
+    \item contadores,
+    \item metadatos de snapshot,
+    \item y un subconjunto corto de historial para depuracion.
+\end{itemize}
+
+Este cambio trajo varias ventajas:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item redujo la presion sobre el enlace SPI,
+    \item hizo al dashboard mucho mas estable,
+    \item y permitio razonamientos mas claros sobre estado actual del sistema.
+\end{itemize}
+
+\section{Ajuste del bridge}
+
+El bridge de la 3B+ se fue optimizando para:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item consultar snapshots de forma periodica,
+    \item recuperar sincronizacion en caso de error,
+    \item y ofrecer una experiencia visual mas fluida sin comprometer tanto la estabilidad.
+\end{itemize}
+
+\section{Busqueda del perfil operativo}
+
+Se compararon distintos perfiles de velocidad SPI, delay por byte, frecuencia de polling y refresco del dashboard. Este trabajo permitio distinguir claramente entre:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item un \textbf{perfil recomendado} para uso continuo,
+    \item y un \textbf{perfil de estres} util para medir limites.
+\end{itemize}
+
+\chapter{Fase 2: ARINC429 logic}
+
+\section{Motivacion}
+
+Una vez cerrada la fase de emulacion funcional, se abrio una nueva etapa con un objetivo distinto: acercar la forma de generacion y captura de la trama a un comportamiento mas fiel a ARINC 429 desde el punto de vista logico y temporal.
+
+La consigna era cambiar la senal entre las Pico sin tocar:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item la 3B+,
+    \item el bridge,
+    \item Flask,
+    \item el dashboard,
+    \item ni la semantica de labels y ACK.
+\end{itemize}
+
+\section{Idea principal}
+
+La idea de esta fase fue agregar un segundo modo, denominado \texttt{arinc429\_logic}, que conviviera con el modo anterior (\texttt{legacy}) y permitiera comparar ambos caminos.
+
+\section{Representacion logica utilizada}
+
+Se definieron simbolos logicos de linea:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \texttt{HI = 10}
+    \item \texttt{LO = 01}
+    \item \texttt{NULL = 00}
+\end{itemize}
+
+Cada bit se representa como:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item primera mitad: actividad (\texttt{HI} o \texttt{LO}),
+    \item segunda mitad: retorno a \texttt{NULL}.
+\end{itemize}
+
+Esto constituye una recreacion de una codificacion bipolar logica con retorno a cero.
+
+\section{Modo dual}
+
+La implementacion se organizo de modo que cada firmware pudiera existir en dos variantes:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \texttt{legacy}
+    \item \texttt{arinc429\_logic}
+\end{itemize}
+
+Los firmwares nuevos de esta fase quedaron nombrados como:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \texttt{master\_arinc429\_logic}
+    \item \texttt{slave\_arinc429\_logic}
+    \item \texttt{sniffer\_arinc429\_logic}
+\end{itemize}
+
+\section{Que se mantuvo sin cambios}
+
+Fue una decision de diseno muy importante conservar:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item las labels semanticas,
+    \item el concepto de lotes,
+    \item el ACK por label y SDI definidos,
+    \item el snapshot SPI,
+    \item el bridge,
+    \item y el dashboard.
+\end{itemize}
+
+Eso permitio validar la nueva capa de senal sin tener que rediseñar la arquitectura superior.
+
+\chapter{Pruebas y validaciones realizadas}
+
+\section{Validaciones parciales}
+
+El proceso no se encaro como una sola prueba global, sino en etapas:
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item master + slave
+    \item master + slave + sniffer
+    \item master + slave + sniffer + 3B+
+    \item corridas largas de estabilidad
+    \item comparacion de perfiles del bridge
+\end{enumerate}
+
+\section{Master + slave}
+
+Primero se verifico que el nuevo modo \texttt{arinc429\_logic} no hubiera roto la comunicacion base entre master y slave. Esta fase permitio detectar y corregir varios detalles de PIO y recepcion antes de sumar la Pico sniffer.
+
+\section{Suma de la sniffer}
+
+En una segunda etapa se incorporo la sniffer en modo \texttt{arinc429\_logic}. Fue necesario ajustar la logica de recepcion y depuracion para distinguir entre:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item ausencia de palabras,
+    \item palabras vistas pero rechazadas,
+    \item timeouts reales,
+    \item y resincronizaciones.
+\end{itemize}
+
+Tras esos ajustes, el sistema quedo capturando, filtrando y exportando correctamente tambien en el modo nuevo.
+
+\section{Integracion con la 3B+}
+
+Una vez validada la senal nueva del lado de las Pico, se reuso la misma 3B+ sin cambios funcionales. Esto fue un resultado muy importante, porque demuestra que el cambio de fase se logro sin afectar el software superior.
+
+\section{Corridas largas}
+
+Se realizaron corridas largas para validar estabilidad:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item varias de decenas de minutos,
+    \item algunas de varias horas,
+    \item y validaciones de aproximadamente 8 a 12 horas.
+\end{itemize}
+
+Esas pruebas mostraron que:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item el sistema se mantiene conectado,
+    \item el bridge no colapsa,
+    \item no aparecen overflows ni drops SPI relevantes,
+    \item y la semantica de las variables visibles se conserva.
+\end{itemize}
+
+\chapter{Resultados consolidados}
+
+\section{Estado general}
+
+La fase \texttt{arinc429\_logic} se considera validada en:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item funcionalidad,
+    \item integracion con la 3B+,
+    \item estabilidad de largo plazo.
+\end{itemize}
+
+\section{Indicadores observados}
+
+En las corridas largas se verifico consistentemente:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \texttt{connected = true}
+    \item \texttt{last\_error = ""}
+    \item \texttt{spi\_drop\_events = 0}
+    \item \texttt{overflow\_events = 0}
+    \item \texttt{parity\_error = 0}
+    \item \texttt{slot\_evictions = 0}
+    \item \texttt{rev\_resync\_events = 0}
+\end{itemize}
+
+Asimismo, los valores visibles del dashboard se mantuvieron plausibles y consistentes con la logica esperada de:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item temperatura,
+    \item velocidad,
+    \item altitud,
+    \item y ACK de lote.
+\end{itemize}
+
+\section{Comparacion entre perfil recomendado y perfil de estres}
+
+El trabajo de tuning permitio distinguir dos perfiles:
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item un perfil recomendado, mas equilibrado para uso continuo,
+    \item y un perfil de estres, mas agresivo y orientado a explorar limites.
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Comparacion resumida de perfiles}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.34\textwidth} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Parametro} & \textbf{Perfil recomendado} & \textbf{Perfil de estres} \\
+\midrule
+Velocidad SPI bridge & 800 kHz & 1.2 MHz \\
+Delay por byte & 25 us & 0 us \\
+Polling bridge & 6 ms & 5 ms \\
+Stats bridge & 60 ms & 50 ms \\
+Refresh dashboard & 33 ms & 25 ms \\
+Comportamiento observado & Muy estable en corridas largas & Funciona, pero con crecimiento apreciable de \texttt{spi\_errors} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Lectura tecnica de la comparacion}
+
+El perfil de estres resulto util para mostrar que el sistema puede sostenerse incluso en condiciones muy agresivas. Sin embargo, al analizar el numero de \texttt{spi\_errors} a lo largo de muchas horas, se concluyo que la configuracion agresiva ya trabaja demasiado cerca del borde practico.
+
+En cambio, el perfil recomendado ofrece:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item buena sensacion visual del dashboard,
+    \item mucha menos tasa de errores SPI,
+    \item y mejor balance entre rendimiento y estabilidad.
+\end{itemize}
+
+Por ese motivo fue adoptado como configuracion operativa continua.
+
+\chapter{Lecciones aprendidas}
+
+\section{Sobre la arquitectura}
+
+Una de las lecciones mas importantes es que la arquitectura modular elegida fue correcta. El hecho de poder modificar profundamente la capa de generacion/captura de senal sin rediseñar la 3B+, el bridge ni el dashboard es una evidencia de buen desacople entre capas.
+
+\section{Sobre el bridge}
+
+Otra leccion relevante es que la interfaz web no era el cuello principal. Reducir el intervalo de refresco del dashboard por si solo no resolvia nada si el bridge no podia producir snapshots nuevos a la misma velocidad. El verdadero cuello estaba en el costo del transporte SPI byte a byte y en la politica de polling y tiempos del bridge.
+
+\section{Sobre la instrumentacion}
+
+Tambien quedo claro que los contadores deben interpretarse con cuidado. Los valores absolutos no siempre son suficientes; a veces la tasa por unidad de tiempo o por cantidad de palabras procesadas da una imagen mas fiel de la salud del sistema.
+
+\section{Sobre la validacion incremental}
+
+El proyecto se beneficio mucho de un enfoque incremental:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item primero master + slave,
+    \item luego master + slave + sniffer,
+    \item despues integracion con 3B+,
+    \item y recien entonces corridas largas y perfilado de limites.
+\end{itemize}
+
+Ese orden redujo mucho la complejidad del debugging.
+
+\chapter{Guia de validacion con osciloscopio}
+
+\section{Proposito}
+
+El siguiente paso natural del proyecto no es un nuevo gran cambio de firmware, sino la obtencion de evidencia instrumental. El objetivo es demostrar visualmente que la fase \texttt{arinc429\_logic} ya implementa una recreacion logica/temporal con retorno a cero.
+
+\section{Conexion sugerida}
+
+\subsection{Canal directo FWD}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item CH1 a \texttt{FWD\_A}
+    \item CH2 a \texttt{FWD\_B}
+    \item masa del osciloscopio a GND comun
+\end{itemize}
+
+\subsection{Canal inverso REV}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item CH1 a \texttt{REV\_A}
+    \item CH2 a \texttt{REV\_B}
+    \item masa del osciloscopio a GND comun
+\end{itemize}
+
+\section{Modos de observacion recomendados}
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item Medir cada hilo contra GND para verificar el retorno a cero.
+    \item Si el osciloscopio lo permite, usar una vista diferencial \texttt{CH1 - CH2}.
+\end{enumerate}
+
+\section{Lo que deberia verse}
+
+En la fase actual:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item la primera mitad del bit debe mostrar actividad en una de las dos lineas,
+    \item la segunda mitad del bit debe volver a cero,
+    \item y entre palabras debe observarse una zona \texttt{NULL} mas prolongada.
+\end{itemize}
+
+En vista diferencial conceptual, deberian aparecer tres estados:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item positivo,
+    \item cero,
+    \item negativo.
+\end{itemize}
+
+\section{Aclaracion importante}
+
+La validacion con osciloscopio en esta fase no demuestra todavia la capa electrica ARINC 429 real. Lo que valida es la recreacion logica y temporal implementada con GPIO y PIO. La futura fase electrica real requerira drivers, receptores y adaptacion de linea especifica.
+
+\chapter{Trabajo futuro}
+
+\section{Fase electrica ARINC 429 real}
+
+El gran paso pendiente es reemplazar la frontera GPIO actual por una interfaz electrica real de linea ARINC 429. Eso implica incorporar hardware especifico para transmision, recepcion y adaptacion.
+
+\section{Componentes de interes para esa futura etapa}
+
+Los elementos que se anticipa que haran falta son:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item receptores ARINC 429,
+    \item transmisores o transceptores ARINC 429,
+    \item adaptacion de niveles de tension,
+    \item protecciones de linea,
+    \item posiblemente aislamiento,
+    \item y una placa intermedia o PCB de integracion.
+\end{itemize}
+
+\section{Migracion a PCB}
+
+Tambien quedo anticipado que en el futuro habra que migrar el sistema a una implementacion sobre PCB. La buena noticia es que la capa logica y la arquitectura general ya estan bastante maduras, de modo que la futura placa no deberia obligar a reescribir todo el software, sino principalmente a adaptar la frontera fisica y el cableado.
+
+\section{Otras posibles mejoras}
+
+Aunque esta etapa puede darse por cerrada, todavia existen mejoras optativas:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item limpieza adicional de logs,
+    \item mas configurabilidad de perfiles del bridge,
+    \item mayor automatizacion de arranque y monitoreo,
+    \item instrumentacion adicional para estadisticas de largo plazo,
+    \item y futuras integraciones con herramientas de visualizacion complementarias.
+\end{itemize}
+
+\chapter{Conclusion general}
+
+El proyecto se encuentra en un punto muy favorable. Se logro construir una base funcional completa, estabilizar la integracion SPI con la Raspberry Pi 3B+, validar un dashboard operativo, y evolucionar hacia una fase \texttt{arinc429\_logic} que ya ofrece una recreacion logica y temporal mucho mas fiel de la senal de interes.
+
+La arquitectura demostro ser robusta y flexible. El trabajo realizado hasta aqui no solo cumple objetivos funcionales inmediatos, sino que ordena claramente la siguiente fase del proyecto: la validacion con osciloscopio y, posteriormente, la incorporacion de una capa electrica ARINC 429 real.
+
+En este sentido, el proyecto ya no se encuentra en una etapa exploratoria inicial, sino en una fase madura de consolidacion. La documentacion, los perfiles operativos definidos, las pruebas de largo plazo y la modularidad alcanzada constituyen una base muy util para la futura redaccion de la tesis completa y para las siguientes iteraciones del desarrollo.
+
+\appendix
+
+\chapter{Firmwares y objetivos utilizados}
+
+\section{Firmwares principales}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \texttt{master\_spi}
+    \item \texttt{slave\_spi}
+    \item \texttt{ARINC\_SNIFFER}
+    \item \texttt{master\_arinc429\_logic}
+    \item \texttt{slave\_arinc429\_logic}
+    \item \texttt{sniffer\_arinc429\_logic}
+\end{itemize}
+
+\section{Utilidades auxiliares relevantes}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item bridge SPI en Python
+    \item Flask dashboard
+    \item runner de capacidad
+    \item herramientas de reset y lectura de filtro
+    \item utilidades de diagnostico SPI y GPIO
+\end{itemize}
+
+\chapter{Checklist sugerido para laboratorio}
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item Verificar que las tres Pico esten en el modo esperado.
+    \item Verificar que la 3B+ use el perfil recomendado.
+    \item Confirmar que el dashboard muestre labels y ACK coherentes.
+    \item Conectar el osciloscopio sobre FWD.
+    \item Capturar una vista simple de ambos hilos.
+    \item Capturar una vista diferencial.
+    \item Repetir sobre REV si se desea documentar tambien el ACK.
+    \item Guardar imagenes y anexarlas a la memoria tecnica o tesis.
+\end{enumerate}
+
+\chapter{Notas para completar mas adelante}
+
+Este archivo esta pensado como fuente viva de tesis. Conviene completarlo con:
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item nombres institucionales reales,
+    \item caratula formal,
+    \item capturas del dashboard,
+    \item fotos del montaje,
+    \item capturas del osciloscopio,
+    \item y referencias bibliograficas especificas sobre ARINC 429.
+\end{itemize}
+
+Tambien puede ampliarse con una seccion metodologica mas academica o con un capitulo especifico de estado del arte si la tesis formal lo requiere.
+
+\end{document}

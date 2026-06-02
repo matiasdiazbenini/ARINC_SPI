@@ -1,0 +1,65 @@
+.program arinc429_logic_tx
+
+.define public HALF_CYCLES 5
+.define public WORD_GAP_HALVES 8
+
+.wrap_target
+word_start:
+    pull block
+    set y, 31
+
+bitloop:
+    out x, 1
+    jmp !x send_lo
+
+send_hi:
+    set pins, 2        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp bit_done
+
+send_lo:
+    set pins, 1        [HALF_CYCLES - 1]
+    set pins, 0        [HALF_CYCLES - 1]
+
+bit_done:
+    jmp y-- bitloop
+
+gap_setup:
+    set x, 7
+
+gap_loop:
+    set pins, 0        [HALF_CYCLES - 1]
+    jmp x-- gap_loop
+.wrap
+
+
+.program arinc429_logic_rx
+
+.wrap_target
+word_start:
+    mov isr, null
+    set x, 31
+
+wait_active:
+    mov y, pins
+    jmp !y wait_active
+    jmp pin bit_hi
+
+bit_lo:
+    set y, 0
+    in y, 1
+    jmp wait_null
+
+bit_hi:
+    set y, 1
+    in y, 1
+
+wait_null:
+    mov y, pins
+    jmp !y bit_done
+    jmp wait_null
+
+bit_done:
+    jmp x-- wait_active
+    push block
+.wrap
