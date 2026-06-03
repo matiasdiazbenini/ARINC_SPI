@@ -301,7 +301,7 @@ def fetch_stats_once(bus: int,
 def main():
     manual_cs_default = env_flag("ARINC_SPI_MANUAL_CS", False)
     parser = argparse.ArgumentParser(
-        description="Diagnostico de conectividad SPI entre Raspberry Pi 3B+ y Pico ARINC_SNIFFER."
+        description="Diagnostico de conectividad SPI entre Raspberry Pi 3B+ y Pico ARINC-SNIFFER."
     )
     parser.add_argument("--bus", type=int, default=0, help="SPI bus de Linux, por defecto 0")
     parser.add_argument("--device",

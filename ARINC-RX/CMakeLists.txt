@@ -18,50 +18,50 @@ set(PICO_BOARD pico2_w)
 
 include(pico_sdk_import.cmake)
 
-project(slave_spi C CXX ASM)
+project(ARINC_RX C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
-add_executable(slave_spi
-    slave_spi.c
+add_executable(arinc_rx
+    arinc_rx.c
 )
 
-add_executable(slave_arinc429_logic
-    slave_spi.c
+add_executable(arinc_rx_arinc429_logic
+    arinc_rx.c
 )
 
 # Genera el header .pio.h para las state machines RX y TX.
-pico_generate_pio_header(slave_spi
+pico_generate_pio_header(arinc_rx
     ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
 )
 
-pico_generate_pio_header(slave_arinc429_logic
+pico_generate_pio_header(arinc_rx_arinc429_logic
     ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic.pio
 )
 
-target_link_libraries(slave_spi
+target_link_libraries(arinc_rx
     pico_stdlib
     hardware_pio
     hardware_clocks
 )
 
-target_link_libraries(slave_arinc429_logic
+target_link_libraries(arinc_rx_arinc429_logic
     pico_stdlib
     hardware_pio
     hardware_clocks
 )
 
-target_compile_definitions(slave_arinc429_logic PRIVATE
+target_compile_definitions(arinc_rx_arinc429_logic PRIVATE
     ARINC429_LOGIC_MODE=1
 )
 
 # Log por USB para debug; UART tradicional desactivada.
-pico_enable_stdio_usb(slave_spi 1)
-pico_enable_stdio_uart(slave_spi 0)
-pico_enable_stdio_usb(slave_arinc429_logic 1)
-pico_enable_stdio_uart(slave_arinc429_logic 0)
+pico_enable_stdio_usb(arinc_rx 1)
+pico_enable_stdio_uart(arinc_rx 0)
+pico_enable_stdio_usb(arinc_rx_arinc429_logic 1)
+pico_enable_stdio_uart(arinc_rx_arinc429_logic 0)
 
-pico_add_extra_outputs(slave_spi)
-pico_add_extra_outputs(slave_arinc429_logic)
+pico_add_extra_outputs(arinc_rx)
+pico_add_extra_outputs(arinc_rx_arinc429_logic)

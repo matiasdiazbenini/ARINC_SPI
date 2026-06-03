@@ -4,7 +4,7 @@ Esta integracion deja a Flask como tablero operativo rapido y a Prometheus/Grafa
 
 ## 1. Flujo recomendado
 
-- `ARINC_SNIFFER` entrega datos al bridge por SPI
+- `ARINC-SNIFFER` entrega datos al bridge por SPI
 - `spi_sniffer_bridge.py` publica `/metrics`
 - Flask consume al bridge en `http://127.0.0.1:5100`
 - Prometheus, corriendo en la notebook, scrapea:
@@ -16,7 +16,7 @@ Esta integracion deja a Flask como tablero operativo rapido y a Prometheus/Grafa
 ### Bridge
 
 ```bash
-cd ~/PAMPA/PI3_HOST
+cd ~/PAMPA/HOST_3b+
 source .venv/bin/activate
 python3 spi_sniffer_bridge.py
 ```
@@ -24,7 +24,7 @@ python3 spi_sniffer_bridge.py
 ### Flask en modo bridge
 
 ```bash
-cd ~/PAMPA/FLASK/arinc_dashboard
+cd ~/PAMPA/DASHBOARD_WEB/arinc_dashboard
 source .venv/bin/activate
 export ARINC_SOURCE_MODE=bridge
 export ARINC_BRIDGE_URL=http://127.0.0.1:5100

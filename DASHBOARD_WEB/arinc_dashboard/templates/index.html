@@ -238,7 +238,7 @@
         Visualizacion desde la Raspberry Pi 3B+ a traves del bridge SPI del sniffer. Flask consume eventos ya filtrados por la Pico
         y Grafana puede apoyarse sobre las metricas consolidadas de este mismo dashboard.
         {% else %}
-        Captura serial desde la Pico ARINC_SNIFFER con parseo de lineas <code>MATCH -&gt;</code> o <code>MATCH,...</code>.
+        Captura serial desde la Pico ARINC-SNIFFER con parseo de lineas <code>MATCH -&gt;</code> o <code>MATCH,...</code>.
         El filtro de esta pantalla es post-captura; el filtrado primario lo hace la Raspberry sniffer antes de llegar al dashboard.
         {% endif %}
       </p>
@@ -296,7 +296,7 @@
       </div>
 
       <p style="margin: 14px 0 0; color: #405168; font-size: 14px; line-height: 1.5;">
-        Fuente esperada: el puerto COM de la tercera Pico con firmware <code>ARINC_SNIFFER</code>.
+        Fuente esperada: el puerto COM de la tercera Pico con firmware <code>ARINC-SNIFFER</code>.
         No abras ese mismo COM con Tera Term mientras Flask este capturando.
       </p>
 

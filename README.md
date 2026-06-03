@@ -8,7 +8,7 @@ Repositorio de trabajo del proyecto PAMPA orientado a la recreacion logica/tempo
 - bridge HTTP/SPI
 - Prometheus + Grafana
 
-Este repositorio estaba originalmente centrado en `master_spi`, pero fue ampliado para conservar en un solo lugar el estado real de la fase `arinc429_logic`, su documentacion y la evidencia de laboratorio.
+Este repositorio estuvo originalmente centrado en el firmware del transmisor, pero fue ampliado y reorganizado para conservar en un solo lugar el estado real de la fase `arinc429_logic`, su documentacion y la evidencia de laboratorio.
 
 ## Estado actual
 
@@ -20,7 +20,7 @@ Quedo validado:
 
 - enlace `master -> slave` en `100 kbps`
 - ACK reverso `slave -> master`
-- captura pasiva con `ARINC_SNIFFER`
+- captura pasiva con `ARINC-SNIFFER`
 - exportacion por SPI hacia la Raspberry Pi 3B+
 - bridge HTTP
 - dashboard Flask
@@ -33,15 +33,15 @@ Quedo validado:
 
 ## Estructura del repo
 
-- [master_spi](master_spi/README.md)
-  - firmware del nodo master
-- [slave_spi](slave_spi/README.md)
-  - snapshot del firmware del slave usado en esta etapa
-- [ARINC_SNIFFER](ARINC_SNIFFER/README.md)
+- [ARINC-TX](ARINC-TX/README.md)
+  - firmware del nodo transmisor
+- [ARINC-RX](ARINC-RX/README.md)
+  - snapshot del firmware del nodo receptor usado en esta etapa
+- [ARINC-SNIFFER](ARINC-SNIFFER/README.md)
   - snapshot del firmware sniffer y protocolo SPI asociado
-- [PI3_HOST](PI3_HOST/README.md)
+- [HOST_3b+](HOST_3b+/README.md)
   - bridge SPI/HTTP, diagnosticos y scripts de host
-- [FLASK/arinc_dashboard](FLASK/arinc_dashboard/README.md)
+- [DASHBOARD_WEB/arinc_dashboard](DASHBOARD_WEB/arinc_dashboard/README.md)
   - dashboard web operativo
 - [prometheus](prometheus/README.md)
   - configuracion de Prometheus usada en la notebook
@@ -59,9 +59,9 @@ Quedo validado:
 
 ## Topologia actual recomendada
 
-- Pico master:
+- Pico transmisor:
   - genera `FWD` por `GP2/GP3`
-- Pico slave:
+- Pico receptor:
   - recibe `FWD`
   - responde `ACK` por `GP4/GP5`
 - Pico sniffer:
@@ -99,11 +99,11 @@ Hay dos maneras comodas de trabajar:
 
 Por ejemplo:
 
-- `master_spi/`
-- `slave_spi/`
-- `ARINC_SNIFFER/`
-- `PI3_HOST/`
-- `FLASK/arinc_dashboard/`
+- `ARINC-TX/`
+- `ARINC-RX/`
+- `ARINC-SNIFFER/`
+- `HOST_3b+/`
+- `DASHBOARD_WEB/arinc_dashboard/`
 
 Tambien se pueden abrir varias ventanas de VS Code en paralelo, una por componente, sin problema.
 

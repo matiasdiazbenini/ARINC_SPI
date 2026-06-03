@@ -1,6 +1,6 @@
-# PI3_HOST
+# HOST_3b+
 
-Bridge HTTP que corre en la Raspberry Pi 3B+ y consume por SPI los datos filtrados entregados por `ARINC_SNIFFER`.
+Bridge HTTP que corre en la Raspberry Pi 3B+ y consume por SPI los datos filtrados entregados por `ARINC-SNIFFER`.
 
 ## Rol
 
@@ -30,7 +30,7 @@ El perfil operativo continuo que mejor resultado dio fue:
 ## Despliegue basico en la 3B+
 
 ```bash
-cd ~/PAMPA/PI3_HOST
+cd ~/PAMPA/HOST_3b+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -59,7 +59,7 @@ Por defecto queda disponible en:
 Desde la 3B+:
 
 ```bash
-cd ~/PAMPA/FLASK/arinc_dashboard
+cd ~/PAMPA/DASHBOARD_WEB/arinc_dashboard
 source .venv/bin/activate
 export ARINC_SOURCE_MODE=bridge
 export ARINC_BRIDGE_URL=http://127.0.0.1:5100

@@ -1,6 +1,6 @@
-# master_spi
+# ARINC-TX
 
-Firmware del nodo master de la fase `arinc429_logic`.
+Firmware del nodo transmisor de la fase `arinc429_logic`.
 
 ## Rol
 
@@ -19,12 +19,12 @@ Firmware del nodo master de la fase `arinc429_logic`.
 
 ## Estado dentro del repo
 
-En la rama `ARINC`, este firmware fue movido a subcarpeta propia para que el repositorio represente al sistema completo y no solo al maestro.
+En la rama `ARINC`, este firmware fue movido a subcarpeta propia para que el repositorio represente al sistema completo y no solo al transmisor.
 
 ## Build historico
 
 Se conservaron UF2 versionados en:
 
-- `master_spi/build/`
+- `ARINC-TX/build/`
 
 como referencia de esta etapa del proyecto.

@@ -1,4 +1,4 @@
-# arinc_dashboard
+# DASHBOARD_WEB / arinc_dashboard
 
 Dashboard web principal del sistema.
 

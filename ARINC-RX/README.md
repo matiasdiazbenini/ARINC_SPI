@@ -1,10 +1,10 @@
-# slave_spi
+# ARINC-RX
 
-Firmware del nodo slave de la fase `arinc429_logic`.
+Firmware del nodo receptor de la fase `arinc429_logic`.
 
 ## Rol
 
-- recibe palabras del master en `FWD`
+- recibe palabras del transmisor en `FWD`
 - valida integridad logica
 - reconoce batches
 - emite `ACK` por `REV`

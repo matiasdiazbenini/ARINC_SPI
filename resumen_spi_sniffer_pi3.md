@@ -24,14 +24,14 @@ Conectar la Pico `sniffer` a la `Raspberry Pi 3B+` por `SPI` para que la Pi reci
 
 | Prueba | Herramienta/Firmware | Resultado |
 |---|---|---|
-| Continuidad GPIO Pi->Pico | `gpio_spi_continuity_test.py` + `ARINC_SNIFFER_GPIO_TEST` | OK en `CS`, `MOSI`, `SCLK` |
-| Continuidad GPIO Pico->Pi | `gpio_spi_continuity_test.py` + `ARINC_SNIFFER_GPIO_TEST` | OK en `MISO` y `GP20/GPIO25` |
+| Continuidad GPIO Pi->Pico | `gpio_spi_continuity_test.py` + `ARINC-SNIFFER_GPIO_TEST` | OK en `CS`, `MOSI`, `SCLK` |
+| Continuidad GPIO Pico->Pi | `gpio_spi_continuity_test.py` + `ARINC-SNIFFER_GPIO_TEST` | OK en `MISO` y `GP20/GPIO25` |
 | Heartbeat GP20 | `gpio25_probe.py` | OK, la Pi ve transiciones |
-| Observador GPIO de SPI | `ARINC_SNIFFER_SPI_SCOPE` | `CS` unico, `256` clocks, `MOSI` correcto |
-| SPI slave minimo por frame | `ARINC_SNIFFER_SPI_MIN` + `spi_slave_min_test.py` | La Pico ve solo `len=1`, la respuesta sale de a un byte por intento |
-| Pico master -> Pico slave | `ARINC_SNIFFER_SPI_MASTER_MIN` | Reproduce el mismo patron, no es exclusivo de la 3B+ |
-| SPI hardware byte a byte | `ARINC_SNIFFER_SPI_BYTE_SLAVE` + `spi_byte_proto_test.py` | OK, la firma `A4 29 53 50 49 4D 49 4E` sale completa |
-| Sniffer real sobre transporte byte a byte | `ARINC_SNIFFER` + `spi_link_diagnostic.py` | No quedo estable aun; el bridge recibe `EE 00 00 ...` |
+| Observador GPIO de SPI | `ARINC-SNIFFER_SPI_SCOPE` | `CS` unico, `256` clocks, `MOSI` correcto |
+| SPI slave minimo por frame | `ARINC-SNIFFER_SPI_MIN` + `spi_slave_min_test.py` | La Pico ve solo `len=1`, la respuesta sale de a un byte por intento |
+| Pico master -> Pico slave | `ARINC-SNIFFER_SPI_MASTER_MIN` | Reproduce el mismo patron, no es exclusivo de la 3B+ |
+| SPI hardware byte a byte | `ARINC-SNIFFER_SPI_BYTE_SLAVE` + `spi_byte_proto_test.py` | OK, la firma `A4 29 53 50 49 4D 49 4E` sale completa |
+| Sniffer real sobre transporte byte a byte | `ARINC-SNIFFER` + `spi_link_diagnostic.py` | No quedo estable aun; el bridge recibe `EE 00 00 ...` |
 
 ## Lectura tecnica actual
 La evidencia ya no apunta a:

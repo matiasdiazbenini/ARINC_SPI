@@ -5,10 +5,10 @@ After=network.target arinc-sniffer-bridge.service
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/PAMPA/FLASK/arinc_dashboard
+WorkingDirectory=/home/pi/PAMPA/DASHBOARD_WEB/arinc_dashboard
 Environment=ARINC_SOURCE_MODE=bridge
 Environment=ARINC_BRIDGE_URL=http://127.0.0.1:5100
-ExecStart=/home/pi/PAMPA/FLASK/arinc_dashboard/.venv/bin/python app.py
+ExecStart=/home/pi/PAMPA/DASHBOARD_WEB/arinc_dashboard/.venv/bin/python app.py
 Restart=always
 RestartSec=2
 

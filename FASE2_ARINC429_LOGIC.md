@@ -6,8 +6,8 @@
 - La `3B+` se mantiene sin cambios funcionales.
 
 ## Firmware de esta fase
-- `master_arinc429_logic`
-- `slave_arinc429_logic`
+- `arinc_tx_arinc429_logic`
+- `arinc_rx_arinc429_logic`
 - `sniffer_arinc429_logic`
 
 ## Objetivo logrado
@@ -33,8 +33,8 @@
 - Sniffer con snapshot SPI byte-a-byte compatible con la fase anterior.
 
 ## Resultado de validacion
-- `master_arinc429_logic + slave_arinc429_logic`: operativo.
-- `master_arinc429_logic + slave_arinc429_logic + sniffer_arinc429_logic`: operativo.
+- `arinc_tx_arinc429_logic + arinc_rx_arinc429_logic`: operativo.
+- `arinc_tx_arinc429_logic + arinc_rx_arinc429_logic + sniffer_arinc429_logic`: operativo.
 - `3B+` con bridge + Flask + dashboard: operativo sin cambios funcionales.
 - Corrida larga aproximada de `12 horas`: estable.
 

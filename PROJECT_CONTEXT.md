@@ -18,11 +18,11 @@ Recrear una arquitectura de comunicacion inspirada en ARINC 429 en un entorno de
 
 ### Nodos
 
-- Pico `master_spi`
+- Pico `ARINC-TX`
   - transmite palabras sobre `FWD`
-- Pico `slave_spi`
+- Pico `ARINC-RX`
   - recibe palabras y devuelve ACK sobre `REV`
-- Pico `ARINC_SNIFFER`
+- Pico `ARINC-SNIFFER`
   - observa ambas direcciones
   - filtra por `label + SDI`
   - exporta snapshot y estadisticas por SPI
@@ -48,11 +48,11 @@ Recrear una arquitectura de comunicacion inspirada en ARINC 429 en un entorno de
 
 La rama `ARINC` organiza el sistema completo en un solo repo con subcarpetas por componente:
 
-- `master_spi/`
-- `slave_spi/`
-- `ARINC_SNIFFER/`
-- `PI3_HOST/`
-- `FLASK/arinc_dashboard/`
+- `ARINC-TX/`
+- `ARINC-RX/`
+- `ARINC-SNIFFER/`
+- `HOST_3b+/`
+- `DASHBOARD_WEB/arinc_dashboard/`
 - `prometheus/`
 - `imagenes/`
 - `docs/`

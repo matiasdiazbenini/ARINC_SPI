@@ -113,7 +113,7 @@ def main() -> int:
     backend = GpioBackend()
 
     print("=== GPIO SPI CONTINUITY TEST ===")
-    print("1. Flashear la Pico con ARINC_SNIFFER_GPIO_TEST.uf2")
+    print("1. Flashear la Pico con ARINC-SNIFFER_GPIO_TEST.uf2")
     print("2. Abrir Tera Term sobre la Pico y dejar visible su salida USB")
     print("3. Mantener solo estas conexiones:")
     print("   Pi GPIO8  <-> Pico GP17")

@@ -1,6 +1,6 @@
-# ARINC_SNIFFER
+# ARINC-SNIFFER
 
-Firmware del tercer nodo Pico encargado de observar el enlace entre `master_spi` y `slave_spi` sin intervenir en la comunicacion principal.
+Firmware del tercer nodo Pico encargado de observar el enlace entre `ARINC-TX` y `ARINC-RX` sin intervenir en la comunicacion principal.
 
 ## Rol
 

@@ -122,7 +122,7 @@ def should_store(line: str, filter_text: str) -> bool:
 
 def parse_match_line(line: str):
     """
-    Parsea las lineas MATCH emitidas por la Pico ARINC_SNIFFER.
+    Parsea las lineas MATCH emitidas por la Pico ARINC-SNIFFER.
 
     Soporta:
     1. Formato nuevo compacto CSV:
@@ -235,7 +235,7 @@ def serial_worker(port: str, baudrate: int, filter_text: str):
             # Se limpian residuos previos para arrancar la sesion desde cero.
             ser.reset_input_buffer()
             append_line(f"[INFO] Conectado a {port} @ {baudrate}")
-            append_line("[INFO] Esperando datos del ARINC_SNIFFER...")
+            append_line("[INFO] Esperando datos del ARINC-SNIFFER...")
             pending_text = ""
 
             while not serial_stop.is_set():
