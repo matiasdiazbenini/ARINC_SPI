@@ -52,10 +52,12 @@ Quedo validado:
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
   - archivo maestro de handoff para retomar rapido el trabajo
 - raiz del repo:
+  - README, contexto maestro y estado de fase
+- `docs/`:
   - documentacion general
-  - PDFs
+  - PDFs generados
   - fuentes Overleaf/LaTeX
-  - evidencia e integracion de sistema
+  - scripts generadores
 
 ## Topologia actual recomendada
 
@@ -125,11 +127,11 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
 - [FASE2_ARINC429_LOGIC.md](FASE2_ARINC429_LOGIC.md)
-- [resumen_proyecto_arinc429.md](resumen_proyecto_arinc429.md)
-- [instructivo_osciloscopio_arinc429_logic.md](instructivo_osciloscopio_arinc429_logic.md)
-- [tesis_fuente_overleaf_arinc429.tex](tesis_fuente_overleaf_arinc429.tex)
-- [modelo_osi_arquitectura_arinc429.tex](modelo_osi_arquitectura_arinc429.tex)
-- [osciloscopio_descripcion_imagenes.tex](osciloscopio_descripcion_imagenes.tex)
+- [resumen_proyecto_arinc429.md](docs/resumen_proyecto_arinc429.md)
+- [instructivo_osciloscopio_arinc429_logic.md](docs/instructivo_osciloscopio_arinc429_logic.md)
+- [tesis_fuente_overleaf_arinc429.tex](docs/tex/tesis_fuente_overleaf_arinc429.tex)
+- [modelo_osi_arquitectura_arinc429.tex](docs/tex/modelo_osi_arquitectura_arinc429.tex)
+- [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)
 
 ## Nota sobre ramas
 

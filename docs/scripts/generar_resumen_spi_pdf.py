@@ -6,8 +6,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import FancyArrowPatch, Rectangle
 
 
-BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_PDF = BASE_DIR / "resumen_spi_sniffer_pi3.pdf"
+DOCS_DIR = Path(__file__).resolve().parents[1]
+PDF_DIR = DOCS_DIR / "pdf"
+OUTPUT_PDF = PDF_DIR / "resumen_spi_sniffer_pi3.pdf"
 
 
 def wrapped_lines(text, width):
@@ -183,6 +184,8 @@ def page_two(pdf):
 
 
 def main():
+    PDF_DIR.mkdir(exist_ok=True)
+
     with PdfPages(OUTPUT_PDF) as pdf:
         page_one(pdf)
         page_two(pdf)

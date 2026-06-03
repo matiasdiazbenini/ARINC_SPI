@@ -7,9 +7,10 @@ from matplotlib.patches import FancyArrowPatch, Rectangle
 import numpy as np
 
 
-BASE_DIR = Path(__file__).resolve().parent
-SUMMARY_PDF = BASE_DIR / "resumen_proyecto_arinc429.pdf"
-SCOPE_PDF = BASE_DIR / "instructivo_osciloscopio_arinc429_logic.pdf"
+DOCS_DIR = Path(__file__).resolve().parents[1]
+PDF_DIR = DOCS_DIR / "pdf"
+SUMMARY_PDF = PDF_DIR / "resumen_proyecto_arinc429.pdf"
+SCOPE_PDF = PDF_DIR / "instructivo_osciloscopio_arinc429_logic.pdf"
 
 
 def wrap(text: str, width: int) -> str:
@@ -354,6 +355,8 @@ def scope_page_3(pdf):
 
 
 def main():
+    PDF_DIR.mkdir(exist_ok=True)
+
     with PdfPages(SUMMARY_PDF) as pdf:
         summary_page_1(pdf)
         summary_page_2(pdf)

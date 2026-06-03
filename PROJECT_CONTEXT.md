@@ -161,8 +161,8 @@ Configuracion recomendada:
 
 ### Archivos relacionados
 
-- [instructivo_osciloscopio_arinc429_logic.md](instructivo_osciloscopio_arinc429_logic.md)
-- [osciloscopio_descripcion_imagenes.tex](osciloscopio_descripcion_imagenes.tex)
+- [instructivo_osciloscopio_arinc429_logic.md](docs/instructivo_osciloscopio_arinc429_logic.md)
+- [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)
 - carpeta [imagenes](imagenes/)
 
 ## 8. Limites actuales conocidos
