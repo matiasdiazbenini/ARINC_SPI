@@ -1,8 +1,8 @@
-build/*
-!build/*.uf2
-**/build/*
-!**/build/*.uf2
+build/
+**/build/
+**/.vscode/*
 !.vscode/*
+**/build_*/
 
 **/.venv/
 **/__pycache__/
