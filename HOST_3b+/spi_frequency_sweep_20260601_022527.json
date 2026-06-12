@@ -1,0 +1,221 @@
+{
+  "started_at": "2026-06-01 02:25:27",
+  "bus": 0,
+  "device": 0,
+  "transfer_mode": "pio-frame",
+  "requested_hz": [
+    100000,
+    200000,
+    400000,
+    800000,
+    1000000,
+    2000000,
+    4000000,
+    8000000,
+    16000000,
+    32000000,
+    50000000
+  ],
+  "attempts": 24,
+  "warmup_attempts": 3,
+  "retries": 1,
+  "delay_ms": 2,
+  "recovery_gap_ms": 12,
+  "manual_cs": true,
+  "cs_gpio": 8,
+  "cs_setup_us": 100,
+  "cs_hold_us": 100,
+  "continue_after_fail": false,
+  "results": [
+    {
+      "requested_hz": 100000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 2232,
+        "accepted_words": 2232,
+        "filtered_words": 5205,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 200000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 2714,
+        "accepted_words": 2714,
+        "filtered_words": 6328,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 400000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 3153,
+        "accepted_words": 3153,
+        "filtered_words": 7351,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 800000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 3600,
+        "accepted_words": 3600,
+        "filtered_words": 8396,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 1000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 4032,
+        "accepted_words": 4032,
+        "filtered_words": 9401,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 2000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 4470,
+        "accepted_words": 4470,
+        "filtered_words": 10425,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 4000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 4950,
+        "accepted_words": 4950,
+        "filtered_words": 11548,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 8000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 5472,
+        "accepted_words": 5472,
+        "filtered_words": 12768,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 16000000,
+      "verdict": "FAIL",
+      "warmup_success": 0,
+      "warmup_attempts": 3,
+      "success": 0,
+      "attempts": 24,
+      "failures": {
+        "magic SPI invalido | sin_magic cabecera=d21400080000f200": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f300": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f400": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f500": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f600": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f700": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f800": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000f900": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000fa00": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000fb00": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000fc00": 2,
+        "magic SPI invalido | sin_magic cabecera=d21400080000fd00": 2
+      },
+      "stats_ok": false,
+      "stats_error": "",
+      "stats": null
+    }
+  ],
+  "note": "Las frecuencias son valores solicitados a spidev. Para medir el clock fisico efectivo se necesita osciloscopio o analizador logico.",
+  "stopped_after_hz": 16000000,
+  "finished_at": "2026-06-01 02:25:34",
+  "highest_pass_hz": 8000000,
+  "contiguous_pass_ceiling_hz": 8000000
+}

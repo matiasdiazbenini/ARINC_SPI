@@ -4,13 +4,24 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/PAMPA/HOST_3b+
+User=mdiaz501
+WorkingDirectory=/home/mdiaz501/PAMPA/HOST_3b+
 Environment=ARINC_SPI_BUS=0
 Environment=ARINC_SPI_DEVICE=0
-Environment=ARINC_SPI_HZ=200000
+Environment=ARINC_SPI_HZ=8000000
+Environment=ARINC_SPI_TRANSFER_MODE=pio-frame
+Environment=ARINC_SPI_MANUAL_CS=1
+Environment=ARINC_SPI_CS_GPIO=8
+Environment=ARINC_SPI_CS_SETUP_US=100
+Environment=ARINC_SPI_CS_HOLD_US=100
+Environment=ARINC_SPI_BYTE_DELAY_US=0
+Environment=ARINC_SPI_FRAME_RESPONSE_DELAY_SEC=0.002
+Environment=ARINC_SPI_POLL_SEC=0.006
+Environment=ARINC_SPI_STATS_SEC=0.06
+Environment=ARINC_SPI_RECOVERY_GAP_SEC=0.012
+Environment=ARINC_BRIDGE_HOST=127.0.0.1
 Environment=ARINC_BRIDGE_PORT=5100
-ExecStart=/home/pi/PAMPA/HOST_3b+/.venv/bin/python spi_sniffer_bridge.py
+ExecStart=/home/mdiaz501/PAMPA/HOST_3b+/.venv/bin/python spi_sniffer_bridge.py
 Restart=always
 RestartSec=2
 

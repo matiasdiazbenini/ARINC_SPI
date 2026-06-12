@@ -1,0 +1,216 @@
+{
+  "baseline": {
+    "accepted_words": 21823,
+    "ack_events": 0,
+    "by_label": {
+      "0xA5 (TEMPERATURA)": 6768,
+      "0xB1 (VELOCIDAD)": 7513,
+      "0xC2 (ALTITUD)": 7516
+    },
+    "by_ssm": {
+      "NORMAL": 3
+    },
+    "connected": true,
+    "filter_entries": [
+      "0xA5/0",
+      "0xB1/1",
+      "0xC2/2",
+      "0xAC/3"
+    ],
+    "filter_mode": 0,
+    "filtered_words": 52675,
+    "fwd_operational_resync_events": 0,
+    "fwd_resync_events": 3,
+    "fwd_startup_resync_events": 3,
+    "last_error": "",
+    "last_rx_time": "01:57:41",
+    "last_update_counter": 21776,
+    "latest_by_name": {
+      "ALTITUD": {
+        "label": "0xC2",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "01:57:41",
+        "unit": "ft",
+        "value": "11960.0"
+      },
+      "TEMPERATURA": {
+        "label": "0xA5",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "01:57:41",
+        "unit": "C",
+        "value": "54.8"
+      },
+      "VELOCIDAD": {
+        "label": "0xB1",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "01:57:41",
+        "unit": "kt",
+        "value": "320.0"
+      }
+    },
+    "max_console_lines": 0,
+    "max_records": 500,
+    "overflow_events": 0,
+    "parity_error": 753,
+    "parity_errors_sniffer": 753,
+    "parity_ok": 21823,
+    "port": "spi0.0+gpio8",
+    "received_words": 75251,
+    "rev_resync_events": 0,
+    "running": true,
+    "serial_lines": 21823,
+    "serial_records": 500,
+    "slot_count": 3,
+    "slot_evictions": 0,
+    "snapshot_revision": 21776,
+    "source_mode": "spi_bridge",
+    "spi_cs_hold_us": 100,
+    "spi_cs_setup_us": 100,
+    "spi_drop_events": 0,
+    "spi_error_armed": true,
+    "spi_errors": 0,
+    "spi_manual_cs": true,
+    "spi_requested_hz": 8000000,
+    "spi_startup_errors": 21,
+    "spi_transfer_mode": "pio-frame",
+    "total": 21823
+  },
+  "configuration": {
+    "bridge_url": "http://127.0.0.1:5100",
+    "disconnect_timeout_sec": 30.0,
+    "duration_sec": 300.0,
+    "expect_parity_errors": true,
+    "fsync_every_samples": 12,
+    "notes": "Validacion de rechazo estricto; una paridad invertida cada 100 palabras",
+    "port": "spi0.0+gpio8",
+    "rx_firmware": "arinc_rx_arinc429_logic_stream",
+    "sample_interval_sec": 2.0,
+    "sniffer_firmware": "sniffer_arinc429_logic_pio_frame",
+    "source_mode": "spi_bridge",
+    "spi_cs_hold_us": 100,
+    "spi_cs_setup_us": 100,
+    "spi_manual_cs": true,
+    "spi_requested_hz": 8000000,
+    "spi_transfer_mode": "pio-frame",
+    "start_condition": "traffic",
+    "start_timeout_sec": 300.0,
+    "tx_firmware": "arinc_tx_arinc429_logic_parity_test",
+    "word_target": null
+  },
+  "counters": {
+    "accepted_words": 177163,
+    "filtered_words": 427633,
+    "fwd_operational_resync_events": 0,
+    "fwd_resync_events": 0,
+    "fwd_startup_resync_events": 0,
+    "overflow_events": 0,
+    "parity_errors_sniffer": 6109,
+    "received_words": 610905,
+    "rev_resync_events": 0,
+    "spi_drop_events": 0,
+    "spi_errors": 0,
+    "spi_startup_errors": 0
+  },
+  "duration_sec": 300.061,
+  "ended_at": "2026-06-06T02:02:43-03:00",
+  "final_stats": {
+    "accepted_words": 198986,
+    "ack_events": 0,
+    "by_label": {
+      "0xA5 (TEMPERATURA)": 61749,
+      "0xB1 (VELOCIDAD)": 68601,
+      "0xC2 (ALTITUD)": 68605
+    },
+    "by_ssm": {
+      "NORMAL": 3
+    },
+    "connected": true,
+    "filter_entries": [
+      "0xA5/0",
+      "0xB1/1",
+      "0xC2/2",
+      "0xAC/3"
+    ],
+    "filter_mode": 0,
+    "filtered_words": 480308,
+    "fwd_operational_resync_events": 0,
+    "fwd_resync_events": 3,
+    "fwd_startup_resync_events": 3,
+    "last_error": "",
+    "last_rx_time": "02:02:43",
+    "last_update_counter": 198931,
+    "latest_by_name": {
+      "ALTITUD": {
+        "label": "0xC2",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "02:02:43",
+        "unit": "ft",
+        "value": "12000.0"
+      },
+      "TEMPERATURA": {
+        "label": "0xA5",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "02:02:43",
+        "unit": "C",
+        "value": "59.0"
+      },
+      "VELOCIDAD": {
+        "label": "0xB1",
+        "parity": "OK",
+        "ssm_txt": "NORMAL",
+        "timestamp": "02:02:43",
+        "unit": "kt",
+        "value": "301.0"
+      }
+    },
+    "max_console_lines": 0,
+    "max_records": 500,
+    "overflow_events": 0,
+    "parity_error": 6862,
+    "parity_errors_sniffer": 6862,
+    "parity_ok": 198986,
+    "port": "spi0.0+gpio8",
+    "received_words": 686156,
+    "rev_resync_events": 0,
+    "running": true,
+    "serial_lines": 198986,
+    "serial_records": 500,
+    "slot_count": 3,
+    "slot_evictions": 0,
+    "snapshot_revision": 198931,
+    "source_mode": "spi_bridge",
+    "spi_cs_hold_us": 100,
+    "spi_cs_setup_us": 100,
+    "spi_drop_events": 0,
+    "spi_error_armed": true,
+    "spi_errors": 0,
+    "spi_manual_cs": true,
+    "spi_requested_hz": 8000000,
+    "spi_startup_errors": 21,
+    "spi_transfer_mode": "pio-frame",
+    "total": 198986
+  },
+  "quality": {
+    "classified_words": 610905,
+    "counter_balance_tolerance_words": 16384,
+    "counter_balance_words": 0,
+    "counter_semantics_consistent": true,
+    "parity_error_ratio_received": 0.009999918154213831
+  },
+  "rates": {
+    "accepted_average_wps": 590.423,
+    "accepted_max_wps": 629.807
+  },
+  "sample_count": 150,
+  "schema_version": 1,
+  "session_name": "20260606_015741_prueba_paridad_estricta_5m",
+  "started_at": "2026-06-06T01:57:43-03:00",
+  "termination_reason": "duration_reached",
+  "verdict": "PASS",
+  "verdict_detail": "Se detectaron 6109 errores de paridad inyectados."
+}

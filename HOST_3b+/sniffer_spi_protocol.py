@@ -43,7 +43,7 @@ PACKET_STRUCT = struct.Struct("<2sBBBBH22sH")
 EVENT_STRUCT = struct.Struct("<6BIiIHH")
 STATS_STRUCT = struct.Struct("<IIIIHHH")
 FILTER_STRUCT = struct.Struct("<BB20s")
-LATEST_META_STRUCT = struct.Struct("<BBBBIIIIH")
+LATEST_META_STRUCT = struct.Struct("<BBBBIIIHHH")
 LATEST_SLOT_STRUCT = struct.Struct("<BBBBBIiIIB")
 
 
@@ -169,7 +169,7 @@ def unpack_filter(payload: bytes) -> dict:
 
 
 def unpack_latest_meta(payload: bytes) -> dict:
-    slot_count, slot_capacity, flags, reserved0, snapshot_revision, slot_evictions, last_update_counter, reserved1, reserved2 = LATEST_META_STRUCT.unpack(
+    slot_count, slot_capacity, flags, reserved0, snapshot_revision, slot_evictions, last_update_counter, fwd_startup_resync_events, fwd_operational_resync_events, reserved1 = LATEST_META_STRUCT.unpack(
         payload[:LATEST_META_STRUCT.size]
     )
     return {
@@ -180,8 +180,9 @@ def unpack_latest_meta(payload: bytes) -> dict:
         "snapshot_revision": snapshot_revision,
         "slot_evictions": slot_evictions,
         "last_update_counter": last_update_counter,
+        "fwd_startup_resync_events": fwd_startup_resync_events,
+        "fwd_operational_resync_events": fwd_operational_resync_events,
         "reserved1": reserved1,
-        "reserved2": reserved2,
     }
 
 

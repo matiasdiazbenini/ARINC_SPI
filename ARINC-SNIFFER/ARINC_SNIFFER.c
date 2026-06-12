@@ -5,8 +5,10 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
+#include "hardware/irq.h"
 #include "hardware/pio.h"
 #include "hardware/regs/spi.h"
+#include "hardware/sync.h"
 #include "hardware/spi.h"
 
 #include "arinc429_logic.h"
@@ -15,6 +17,12 @@
 #include "arinc429_logic.pio.h"
 #else
 #include "arinc_gpio_link.pio.h"
+#endif
+#ifndef SNIFFER_SPI_PIO_FRAME_TRANSPORT
+#define SNIFFER_SPI_PIO_FRAME_TRANSPORT 0u
+#endif
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
+#include "spi_frame_slave.pio.h"
 #endif
 #include "sniffer_spi_protocol.h"
 
@@ -52,7 +60,17 @@
 #define SPI_EVENT_QUEUE_DEPTH     512u
 #define LATEST_SLOT_CAPACITY      16u
 #define ENABLE_SPI_EVENT_DEBUG_QUEUE 0u
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
+#define ENABLE_SPI_IRQ_TRANSPORT 0u
+#else
+#define ENABLE_SPI_IRQ_TRANSPORT 1u
+#endif
+#define ENABLE_SPI_TX_DMA 0u
 #define SNIFFER_SPI_PORT          spi0
+#define SNIFFER_SPI_IRQ           SPI0_IRQ
+#define SNIFFER_SPI_PIO           pio1
+#define SNIFFER_SPI_PIO_SM_RX     0u
+#define SNIFFER_SPI_PIO_SM_TX     1u
 #define SNIFFER_SPI_RX_PIN        16u
 #define SNIFFER_SPI_CSN_PIN       17u
 #define SNIFFER_SPI_SCK_PIN       18u
@@ -61,10 +79,14 @@
 #ifndef ARINC429_LOGIC_MODE
 #define ARINC429_LOGIC_MODE       0u
 #endif
-#if ARINC429_LOGIC_MODE
-#define SNIFFER_BUILD_TAG         "SPI-BYTEPACKET-ARINC429"
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT && ARINC429_LOGIC_MODE
+#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-V2"
+#elif SNIFFER_SPI_PIO_FRAME_TRANSPORT
+#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-RL1"
+#elif ARINC429_LOGIC_MODE
+#define SNIFFER_BUILD_TAG         "SPI-IRQFRAME-ARINC429"
 #else
-#define SNIFFER_BUILD_TAG         "SPI-BYTEPACKET-RL1"
+#define SNIFFER_BUILD_TAG         "SPI-IRQFRAME-RL1"
 #endif
 #define SPI_DIAG_HEARTBEAT_HALF_PERIOD_US 500000u
 #define SPI_DIAG_PULSE_US         120000u
@@ -88,6 +110,8 @@ typedef struct {
     uint32_t overflow_events;
     uint32_t fwd_resync_events;
     uint32_t rev_resync_events;
+    uint32_t fwd_startup_resync_events;
+    uint32_t fwd_operational_resync_events;
     uint32_t spi_drop_events;
     uint32_t fwd_invalid_symbol_events;
     uint32_t rev_invalid_symbol_events;
@@ -97,6 +121,7 @@ typedef struct {
     uint32_t rev_raw_words;
     uint32_t fwd_rejected_words;
     uint32_t rev_rejected_words;
+    bool fwd_link_armed;
 } rx_stats_t;
 
 typedef struct {
@@ -148,6 +173,7 @@ typedef struct {
 typedef enum {
     SPI_LINK_PHASE_IDLE = 0,
     SPI_LINK_PHASE_COLLECT_REQUEST,
+    SPI_LINK_PHASE_REQUEST_READY,
     SPI_LINK_PHASE_STREAM_RESPONSE,
 } spi_link_phase_t;
 
@@ -157,9 +183,32 @@ typedef struct {
     uint8_t next_tx;
     uint16_t rx_count;
     uint16_t tx_index;
+    uint16_t response_rx_count;
     uint16_t next_sequence;
     uint32_t transaction_counter;
     uint32_t reset_counter;
+    uint32_t irq_count;
+    uint32_t rx_irq_count;
+    uint32_t tx_irq_count;
+    uint32_t rt_irq_count;
+    uint32_t ror_irq_count;
+    int tx_dma_chan;
+    uint32_t tx_dma_start_count;
+    uint32_t tx_dma_done_count;
+    uint32_t tx_dma_abort_count;
+    PIO pio_spi;
+    uint pio_sm_rx;
+    uint pio_sm_tx;
+    uint pio_rx_offset;
+    uint pio_tx_offset;
+    uint32_t pio_frame_count;
+    uint32_t pio_request_frame_count;
+    uint32_t pio_response_frame_count;
+    uint32_t pio_discarded_frame_count;
+    bool tx_dma_ready;
+    volatile bool tx_dma_active;
+    volatile bool request_ready;
+    volatile bool request_overrun;
     uint64_t last_byte_us;
     spi_link_phase_t phase;
 } spi_link_state_t;
@@ -173,6 +222,9 @@ typedef struct {
 
 static capture_entry_t capture_buffer[CAPTURE_BUFFER_WORDS];
 static spi_diag_gpio_state_t g_spi_diag_gpio = {0};
+static spi_link_state_t *g_spi_irq_link = NULL;
+
+static void __not_in_flash_func(spi_irq_handler)(void);
 
 static const arinc_filter_entry_t k_default_filter_entries[] = {
     {0xA5, 0x0},
@@ -442,6 +494,13 @@ static void note_channel_resync(uint8_t channel, const char *reason, rx_stats_t 
     uint32_t *counter = (channel == CHANNEL_FWD) ? &stats->fwd_resync_events : &stats->rev_resync_events;
 
     ++(*counter);
+    if (channel == CHANNEL_FWD) {
+        if (stats->fwd_link_armed) {
+            ++stats->fwd_operational_resync_events;
+        } else {
+            ++stats->fwd_startup_resync_events;
+        }
+    }
     if (ARINC429_LOGIC_MODE && strcmp(reason, "invalid_streak") == 0) {
         if (channel == CHANNEL_FWD) {
             ++stats->fwd_invalid_symbol_events;
@@ -662,6 +721,20 @@ static void enqueue_from_sm(PIO pio,
         } else {
             ++stats->rev_raw_words;
         }
+        ++stats->received_words;
+
+        if (!parity_is_ok(word)) {
+            ++stats->parity_errors;
+            log_logic_rejected_word(word, channel, filter, stats);
+            ++(*invalid_streak);
+            if (*invalid_streak >= RESYNC_WORD_THRESHOLD) {
+                restart_rx_state_machine(pio, sm);
+                note_channel_resync(channel, "invalid_streak", stats);
+                *invalid_streak = 0u;
+                return;
+            }
+            continue;
+        }
 
         if (!should_buffer_word(word, channel, filter)) {
             ++stats->filtered_words;
@@ -875,6 +948,7 @@ static void build_spi_filter_packet(sniffer_spi_packet_t *packet,
 static void build_spi_latest_meta_packet(sniffer_spi_packet_t *packet,
                                          const latest_snapshot_state_t *snapshot,
                                          const filter_state_t *filter,
+                                         const rx_stats_t *stats,
                                          uint16_t sequence,
                                          uint16_t queued_events) {
     const sniffer_spi_latest_meta_payload_t payload = {
@@ -885,8 +959,9 @@ static void build_spi_latest_meta_packet(sniffer_spi_packet_t *packet,
         .snapshot_revision = snapshot->snapshot_revision,
         .slot_evictions = snapshot->slot_evictions,
         .last_update_counter = snapshot->last_update_counter,
+        .fwd_startup_resync_events = u16_saturated(stats->fwd_startup_resync_events),
+        .fwd_operational_resync_events = u16_saturated(stats->fwd_operational_resync_events),
         .reserved1 = 0u,
-        .reserved2 = 0u,
     };
 
     build_spi_packet(packet,
@@ -973,31 +1048,296 @@ static void spi_prefill_tx_byte(uint8_t value) {
     }
 }
 
-static void spi_transport_to_idle(spi_link_state_t *spi_link) {
+static void __not_in_flash_func(spi_irq_tx_disable)(void) {
+    spi_get_hw(SNIFFER_SPI_PORT)->imsc &= ~SPI_SSPIMSC_TXIM_BITS;
+}
+
+static void __not_in_flash_func(spi_irq_tx_enable)(void) {
+    spi_get_hw(SNIFFER_SPI_PORT)->imsc |= SPI_SSPIMSC_TXIM_BITS;
+}
+
+static void __not_in_flash_func(spi_irq_prefill_response)(spi_link_state_t *spi_link) {
+    spi_hw_t *hw = spi_get_hw(SNIFFER_SPI_PORT);
+    const uint8_t *response_bytes = (const uint8_t *)&spi_link->tx_packet;
+
+    while ((hw->sr & SPI_SSPSR_TNF_BITS) && spi_link->tx_index < SNIFFER_SPI_PACKET_SIZE) {
+        hw->dr = response_bytes[spi_link->tx_index++];
+    }
+
+    if (spi_link->tx_index >= SNIFFER_SPI_PACKET_SIZE) {
+        spi_irq_tx_disable();
+    }
+}
+
+static void __not_in_flash_func(spi_irq_flush_rx_fifo)(void) {
+    spi_hw_t *hw = spi_get_hw(SNIFFER_SPI_PORT);
+
+    while (hw->sr & SPI_SSPSR_RNE_BITS) {
+        (void)hw->dr;
+    }
+    hw->icr = SPI_SSPICR_RORIC_BITS | SPI_SSPICR_RTIC_BITS;
+}
+
+static void __not_in_flash_func(spi_clear_fifos_between_transfers)(void) {
+    spi_hw_t *hw = spi_get_hw(SNIFFER_SPI_PORT);
+    const uint32_t cr1 = hw->cr1;
+
+    hw->cr1 = cr1 & ~SPI_SSPCR1_SSE_BITS;
+    while (hw->sr & SPI_SSPSR_RNE_BITS) {
+        (void)hw->dr;
+    }
+    hw->icr = SPI_SSPICR_RORIC_BITS | SPI_SSPICR_RTIC_BITS;
+    hw->cr1 = cr1;
+}
+
+static void spi_dma_note_complete(spi_link_state_t *spi_link) {
+#if ENABLE_SPI_TX_DMA
+    if (spi_link->tx_dma_ready &&
+        spi_link->tx_dma_active &&
+        !dma_channel_is_busy((uint)spi_link->tx_dma_chan)) {
+        spi_link->tx_dma_active = false;
+        ++spi_link->tx_dma_done_count;
+        spi_get_hw(SNIFFER_SPI_PORT)->dmacr &= ~SPI_SSPDMACR_TXDMAE_BITS;
+    }
+#else
+    (void)spi_link;
+#endif
+}
+
+static void spi_dma_abort_response(spi_link_state_t *spi_link) {
+#if ENABLE_SPI_TX_DMA
+    if (!spi_link->tx_dma_ready || !spi_link->tx_dma_active) {
+        return;
+    }
+
+    spi_get_hw(SNIFFER_SPI_PORT)->dmacr &= ~SPI_SSPDMACR_TXDMAE_BITS;
+    if (dma_channel_is_busy((uint)spi_link->tx_dma_chan)) {
+        dma_channel_abort((uint)spi_link->tx_dma_chan);
+        ++spi_link->tx_dma_abort_count;
+    } else {
+        ++spi_link->tx_dma_done_count;
+    }
+    spi_link->tx_dma_active = false;
+#else
+    (void)spi_link;
+#endif
+}
+
+static void spi_dma_start_response(spi_link_state_t *spi_link) {
+#if ENABLE_SPI_TX_DMA
+    if (!spi_link->tx_dma_ready) {
+        return;
+    }
+
+    spi_dma_abort_response(spi_link);
+
+    dma_channel_config config = dma_channel_get_default_config((uint)spi_link->tx_dma_chan);
+    channel_config_set_transfer_data_size(&config, DMA_SIZE_8);
+    channel_config_set_read_increment(&config, true);
+    channel_config_set_write_increment(&config, false);
+    channel_config_set_dreq(&config, spi_get_dreq(SNIFFER_SPI_PORT, true));
+
+    spi_get_hw(SNIFFER_SPI_PORT)->dmacr |= SPI_SSPDMACR_TXDMAE_BITS;
+    spi_link->tx_dma_active = true;
+    ++spi_link->tx_dma_start_count;
+
+    dma_channel_configure((uint)spi_link->tx_dma_chan,
+                          &config,
+                          &spi_get_hw(SNIFFER_SPI_PORT)->dr,
+                          (const uint8_t *)&spi_link->tx_packet,
+                          SNIFFER_SPI_PACKET_SIZE,
+                          true);
+#else
+    (void)spi_link;
+#endif
+}
+
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
+static uint8_t spi_pio_reverse8(uint8_t value) {
+    value = (uint8_t)(((value & 0xF0u) >> 4) | ((value & 0x0Fu) << 4));
+    value = (uint8_t)(((value & 0xCCu) >> 2) | ((value & 0x33u) << 2));
+    value = (uint8_t)(((value & 0xAAu) >> 1) | ((value & 0x55u) << 1));
+    return value;
+}
+
+static uint32_t spi_pio_pack_tx_word_msb_first(const uint8_t *bytes) {
+    return ((uint32_t)spi_pio_reverse8(bytes[0]) << 0) |
+           ((uint32_t)spi_pio_reverse8(bytes[1]) << 8) |
+           ((uint32_t)spi_pio_reverse8(bytes[2]) << 16) |
+           ((uint32_t)spi_pio_reverse8(bytes[3]) << 24);
+}
+
+static void spi_pio_unpack_rx_word_msb_first(uint32_t word, uint8_t *bytes) {
+    bytes[0] = spi_pio_reverse8((uint8_t)((word >> 0) & 0xFFu));
+    bytes[1] = spi_pio_reverse8((uint8_t)((word >> 8) & 0xFFu));
+    bytes[2] = spi_pio_reverse8((uint8_t)((word >> 16) & 0xFFu));
+    bytes[3] = spi_pio_reverse8((uint8_t)((word >> 24) & 0xFFu));
+}
+
+static void spi_pio_preload_frame(spi_link_state_t *spi_link,
+                                  const uint8_t *frame) {
+    PIO pio = spi_link->pio_spi;
+    const uint sm_tx = spi_link->pio_sm_tx;
+
+    pio_sm_clear_fifos(pio, sm_tx);
+    for (uint8_t i = 0u; i < (SNIFFER_SPI_PACKET_SIZE / 4u); ++i) {
+        const uint32_t word = spi_pio_pack_tx_word_msb_first(&frame[i * 4u]);
+        pio_sm_put_blocking(pio, sm_tx, word);
+    }
+}
+
+static void spi_pio_preload_idle_frame(spi_link_state_t *spi_link) {
+    sniffer_spi_packet_t idle_packet;
+
+    build_spi_packet(&idle_packet,
+                     SNIFFER_SPI_RESPONSE_NONE,
+                     SNIFFER_SPI_STATUS_EMPTY,
+                     0u,
+                     0u,
+                     NULL,
+                     0u);
+    spi_pio_preload_frame(spi_link, (const uint8_t *)&idle_packet);
+}
+
+static bool spi_pio_read_frame(spi_link_state_t *spi_link,
+                               uint8_t *frame) {
+    PIO pio = spi_link->pio_spi;
+    const uint sm_rx = spi_link->pio_sm_rx;
+
+    if (pio_sm_get_rx_fifo_level(pio, sm_rx) < (SNIFFER_SPI_PACKET_SIZE / 4u)) {
+        return false;
+    }
+
+    for (uint8_t i = 0u; i < (SNIFFER_SPI_PACKET_SIZE / 4u); ++i) {
+        const uint32_t word = pio_sm_get(pio, sm_rx);
+        spi_pio_unpack_rx_word_msb_first(word, &frame[i * 4u]);
+    }
+
+    return true;
+}
+
+static void spi_pio_init_link(spi_link_state_t *spi_link) {
+    PIO pio = SNIFFER_SPI_PIO;
+    const uint sm_rx = SNIFFER_SPI_PIO_SM_RX;
+    const uint sm_tx = SNIFFER_SPI_PIO_SM_TX;
+    const uint rx_offset = pio_add_program(pio, &spi_frame_rx32_program);
+    const uint tx_offset = pio_add_program(pio, &spi_frame_tx32_program);
+
+    spi_link->pio_spi = pio;
+    spi_link->pio_sm_rx = sm_rx;
+    spi_link->pio_sm_tx = sm_tx;
+    spi_link->pio_rx_offset = rx_offset;
+    spi_link->pio_tx_offset = tx_offset;
+
+    pio_gpio_init(pio, SNIFFER_SPI_RX_PIN);
+    pio_gpio_init(pio, SNIFFER_SPI_CSN_PIN);
+    pio_gpio_init(pio, SNIFFER_SPI_SCK_PIN);
+    pio_gpio_init(pio, SNIFFER_SPI_TX_PIN);
+    gpio_pull_up(SNIFFER_SPI_CSN_PIN);
+    gpio_pull_down(SNIFFER_SPI_SCK_PIN);
+
+    pio_sm_config rx_config = spi_frame_rx32_program_get_default_config(rx_offset);
+    sm_config_set_in_pins(&rx_config, SNIFFER_SPI_RX_PIN);
+    sm_config_set_in_shift(&rx_config, true, false, 32);
+    sm_config_set_fifo_join(&rx_config, PIO_FIFO_JOIN_RX);
+    sm_config_set_clkdiv(&rx_config, 1.0f);
+
+    pio_sm_config tx_config = spi_frame_tx32_program_get_default_config(tx_offset);
+    sm_config_set_out_pins(&tx_config, SNIFFER_SPI_TX_PIN, 1);
+    sm_config_set_set_pins(&tx_config, SNIFFER_SPI_TX_PIN, 1);
+    sm_config_set_out_shift(&tx_config, true, false, 32);
+    sm_config_set_fifo_join(&tx_config, PIO_FIFO_JOIN_TX);
+    sm_config_set_clkdiv(&tx_config, 1.0f);
+
+    pio_sm_init(pio, sm_rx, rx_offset, &rx_config);
+    pio_sm_init(pio, sm_tx, tx_offset, &tx_config);
+    pio_sm_set_consecutive_pindirs(pio, sm_rx, SNIFFER_SPI_RX_PIN, 1, false);
+    pio_sm_set_consecutive_pindirs(pio, sm_rx, SNIFFER_SPI_CSN_PIN, 1, false);
+    pio_sm_set_consecutive_pindirs(pio, sm_rx, SNIFFER_SPI_SCK_PIN, 1, false);
+    pio_sm_set_consecutive_pindirs(pio, sm_tx, SNIFFER_SPI_TX_PIN, 1, true);
+    pio_sm_set_pins_with_mask(pio, sm_tx, 0u, 1u << SNIFFER_SPI_TX_PIN);
+    pio_sm_clear_fifos(pio, sm_rx);
+    pio_sm_clear_fifos(pio, sm_tx);
+    spi_pio_preload_idle_frame(spi_link);
+    pio_enable_sm_mask_in_sync(pio, (1u << sm_rx) | (1u << sm_tx));
+}
+#endif
+
+static void __not_in_flash_func(spi_transport_to_idle)(spi_link_state_t *spi_link) {
+#if !SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    spi_dma_note_complete(spi_link);
+#endif
     spi_link->phase = SPI_LINK_PHASE_IDLE;
     spi_link->rx_count = 0u;
     spi_link->tx_index = 0u;
+    spi_link->response_rx_count = 0u;
     spi_link->next_tx = SNIFFER_SPI_TRANSPORT_IDLE;
+#if !SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    spi_irq_tx_disable();
+#endif
 }
 
-static void spi_transport_begin_request(spi_link_state_t *spi_link) {
+static void __not_in_flash_func(spi_transport_begin_request)(spi_link_state_t *spi_link) {
+#if !SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    spi_dma_abort_response(spi_link);
+#endif
     spi_link->phase = SPI_LINK_PHASE_COLLECT_REQUEST;
     spi_link->rx_count = 0u;
     spi_link->tx_index = 0u;
+    spi_link->response_rx_count = 0u;
     spi_link->next_tx = SNIFFER_SPI_TRANSPORT_IDLE;
+    spi_link->request_ready = false;
+#if !SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    spi_irq_tx_disable();
+#endif
 }
 
 static void spi_prepare_response(spi_link_state_t *spi_link,
                                  const sniffer_spi_packet_t *response) {
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
     memcpy(&spi_link->tx_packet, response, sizeof(*response));
     spi_link->phase = SPI_LINK_PHASE_STREAM_RESPONSE;
-    spi_link->tx_index = 1u;
+    spi_link->tx_index = SNIFFER_SPI_PACKET_SIZE;
+    spi_link->response_rx_count = 0u;
     spi_link->next_tx = ((const uint8_t *)&spi_link->tx_packet)[0];
+    spi_pio_preload_frame(spi_link, (const uint8_t *)&spi_link->tx_packet);
+#else
+    const uint32_t irq_state = save_and_disable_interrupts();
+
+    memcpy(&spi_link->tx_packet, response, sizeof(*response));
+    spi_link->phase = SPI_LINK_PHASE_STREAM_RESPONSE;
+    spi_link->tx_index = 0u;
+    spi_link->response_rx_count = 0u;
+    spi_link->next_tx = ((const uint8_t *)&spi_link->tx_packet)[0];
+    spi_irq_tx_disable();
+    if (spi_link->tx_dma_ready) {
+        spi_clear_fifos_between_transfers();
+        spi_irq_flush_rx_fifo();
+        spi_link->tx_index = SNIFFER_SPI_PACKET_SIZE;
+        spi_dma_start_response(spi_link);
+    } else {
+        spi_irq_flush_rx_fifo();
+        spi_irq_prefill_response(spi_link);
+        spi_irq_tx_enable();
+    }
+
+    restore_interrupts(irq_state);
+#endif
 }
 
 static void spi_init_link(spi_link_state_t *spi_link) {
     memset(spi_link, 0, sizeof(*spi_link));
 
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    gpio_init(SNIFFER_SPI_DRDY_PIN);
+    gpio_set_dir(SNIFFER_SPI_DRDY_PIN, GPIO_OUT);
+    spi_diag_gpio_init();
+    update_spi_drdy(0u);
+
+    spi_link->next_sequence = 1u;
+    spi_transport_to_idle(spi_link);
+    spi_pio_init_link(spi_link);
+#else
     spi_init(SNIFFER_SPI_PORT, 1000u * 1000u);
     spi_set_slave(SNIFFER_SPI_PORT, true);
     spi_set_format(SNIFFER_SPI_PORT, 8u, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -1015,10 +1355,30 @@ static void spi_init_link(spi_link_state_t *spi_link) {
 
     spi_get_hw(SNIFFER_SPI_PORT)->dmacr = 0u;
     spi_get_hw(SNIFFER_SPI_PORT)->icr = SPI_SSPICR_RORIC_BITS | SPI_SSPICR_RTIC_BITS;
+    spi_get_hw(SNIFFER_SPI_PORT)->imsc = 0u;
+#if ENABLE_SPI_TX_DMA
+    spi_link->tx_dma_chan = dma_claim_unused_channel(true);
+    spi_link->tx_dma_ready = spi_link->tx_dma_chan >= 0;
+#else
+    spi_link->tx_dma_chan = -1;
+    spi_link->tx_dma_ready = false;
+#endif
     spi_link->next_sequence = 1u;
     spi_transport_to_idle(spi_link);
     spi_flush_rx_fifo();
+#if ENABLE_SPI_IRQ_TRANSPORT
+    g_spi_irq_link = spi_link;
+    irq_set_exclusive_handler(SNIFFER_SPI_IRQ, spi_irq_handler);
+    irq_set_priority(SNIFFER_SPI_IRQ, 0x00u);
+    irq_set_enabled(SNIFFER_SPI_IRQ, true);
+    spi_get_hw(SNIFFER_SPI_PORT)->imsc =
+        SPI_SSPIMSC_RXIM_BITS |
+        SPI_SSPIMSC_RTIM_BITS |
+        SPI_SSPIMSC_RORIM_BITS;
+#else
     spi_prefill_tx_byte(spi_link->next_tx);
+#endif
+#endif
 }
 
 static void process_spi_request(spi_link_state_t *spi_link,
@@ -1097,6 +1457,7 @@ static void process_spi_request(spi_link_state_t *spi_link,
             build_spi_latest_meta_packet(&response,
                                          latest_snapshot,
                                          filter,
+                                         stats,
                                          response_sequence,
                                          event_queue->queued);
             break;
@@ -1193,6 +1554,9 @@ static void spi_consume_transport_byte(spi_link_state_t *spi_link,
             }
             break;
 
+        case SPI_LINK_PHASE_REQUEST_READY:
+            break;
+
         case SPI_LINK_PHASE_STREAM_RESPONSE:
             if (spi_link->tx_index < SNIFFER_SPI_PACKET_SIZE) {
                 spi_link->next_tx = response_bytes[spi_link->tx_index++];
@@ -1203,17 +1567,152 @@ static void spi_consume_transport_byte(spi_link_state_t *spi_link,
     }
 }
 
+static void __not_in_flash_func(spi_irq_consume_transport_byte)(spi_link_state_t *spi_link,
+                                                                uint8_t rx_byte,
+                                                                uint64_t now_us) {
+    const bool stale_gap = spi_link->last_byte_us != 0u &&
+                           (now_us - spi_link->last_byte_us) >= SPI_TRANSPORT_STALE_GAP_US;
+
+    spi_link->last_byte_us = now_us;
+
+    if (stale_gap && spi_link->phase == SPI_LINK_PHASE_COLLECT_REQUEST && spi_link->rx_count > 0u) {
+        spi_transport_to_idle(spi_link);
+    }
+
+    if (rx_byte == SNIFFER_SPI_TRANSPORT_RESET &&
+        (spi_link->phase != SPI_LINK_PHASE_COLLECT_REQUEST || spi_link->rx_count == 0u || stale_gap)) {
+        ++spi_link->reset_counter;
+        spi_transport_begin_request(spi_link);
+        return;
+    }
+
+    switch (spi_link->phase) {
+        case SPI_LINK_PHASE_IDLE:
+            break;
+
+        case SPI_LINK_PHASE_COLLECT_REQUEST:
+            if (spi_link->rx_count < SNIFFER_SPI_PACKET_SIZE) {
+                spi_link->rx_bytes[spi_link->rx_count++] = rx_byte;
+            }
+
+            if (spi_link->rx_count == SNIFFER_SPI_PACKET_SIZE) {
+                ++spi_link->transaction_counter;
+                if (spi_link->request_ready) {
+                    spi_link->request_overrun = true;
+                } else {
+                    spi_link->request_ready = true;
+                    spi_link->phase = SPI_LINK_PHASE_REQUEST_READY;
+                }
+            }
+            break;
+
+        case SPI_LINK_PHASE_REQUEST_READY:
+            break;
+
+        case SPI_LINK_PHASE_STREAM_RESPONSE:
+            if (++spi_link->response_rx_count >= SNIFFER_SPI_PACKET_SIZE) {
+                spi_transport_to_idle(spi_link);
+            }
+            break;
+    }
+}
+
+static void __not_in_flash_func(spi_irq_handler)(void) {
+    spi_hw_t *hw = spi_get_hw(SNIFFER_SPI_PORT);
+    spi_link_state_t *spi_link = g_spi_irq_link;
+    const uint32_t mis = hw->mis;
+
+    if (spi_link == NULL) {
+        hw->icr = SPI_SSPICR_RORIC_BITS | SPI_SSPICR_RTIC_BITS;
+        return;
+    }
+
+    ++spi_link->irq_count;
+
+    if (spi_link->phase == SPI_LINK_PHASE_STREAM_RESPONSE && !spi_link->tx_dma_ready) {
+        spi_irq_prefill_response(spi_link);
+    }
+
+    if (mis & SPI_SSPMIS_RORMIS_BITS) {
+        ++spi_link->ror_irq_count;
+        hw->icr = SPI_SSPICR_RORIC_BITS;
+    }
+    if (mis & SPI_SSPMIS_RTMIS_BITS) {
+        ++spi_link->rt_irq_count;
+        hw->icr = SPI_SSPICR_RTIC_BITS;
+    }
+
+    if (mis & (SPI_SSPMIS_RXMIS_BITS | SPI_SSPMIS_RTMIS_BITS | SPI_SSPMIS_RORMIS_BITS)) {
+        const uint64_t now_us = time_us_64();
+
+        ++spi_link->rx_irq_count;
+        while (hw->sr & SPI_SSPSR_RNE_BITS) {
+            const uint8_t rx_byte = (uint8_t)hw->dr;
+            spi_irq_consume_transport_byte(spi_link, rx_byte, now_us);
+        }
+    }
+
+    if (mis & SPI_SSPMIS_TXMIS_BITS) {
+        ++spi_link->tx_irq_count;
+        if (spi_link->phase == SPI_LINK_PHASE_STREAM_RESPONSE && !spi_link->tx_dma_ready) {
+            spi_irq_prefill_response(spi_link);
+        } else {
+            spi_irq_tx_disable();
+        }
+    }
+}
+
 static void service_spi_link(spi_link_state_t *spi_link,
                              rx_stats_t *stats,
                              event_queue_t *event_queue,
                              filter_state_t *filter,
                              latest_snapshot_state_t *latest_snapshot) {
+#if SNIFFER_SPI_PIO_FRAME_TRANSPORT
+    uint8_t frame[SNIFFER_SPI_PACKET_SIZE];
+
+    while (spi_pio_read_frame(spi_link, frame)) {
+        ++spi_link->pio_frame_count;
+        spi_link->last_byte_us = time_us_64();
+        spi_diag_gpio_note_spi_activity();
+
+        if (spi_link->phase == SPI_LINK_PHASE_STREAM_RESPONSE) {
+            ++spi_link->pio_response_frame_count;
+            spi_link->response_rx_count = SNIFFER_SPI_PACKET_SIZE;
+            spi_transport_to_idle(spi_link);
+            spi_pio_preload_idle_frame(spi_link);
+            continue;
+        }
+
+        ++spi_link->transaction_counter;
+        ++spi_link->pio_request_frame_count;
+        memcpy(spi_link->rx_bytes, frame, sizeof(frame));
+        spi_link->rx_count = SNIFFER_SPI_PACKET_SIZE;
+        process_spi_request(spi_link, stats, event_queue, filter, latest_snapshot);
+    }
+#elif ENABLE_SPI_IRQ_TRANSPORT
+    bool request_ready = false;
+    uint8_t request_bytes[SNIFFER_SPI_PACKET_SIZE];
+
+    const uint32_t irq_state = save_and_disable_interrupts();
+    if (spi_link->request_ready) {
+        memcpy(request_bytes, spi_link->rx_bytes, sizeof(request_bytes));
+        spi_link->request_ready = false;
+        request_ready = true;
+    }
+    restore_interrupts(irq_state);
+
+    if (request_ready) {
+        memcpy(spi_link->rx_bytes, request_bytes, sizeof(request_bytes));
+        process_spi_request(spi_link, stats, event_queue, filter, latest_snapshot);
+    }
+#else
     while (spi_is_readable(SNIFFER_SPI_PORT)) {
         const uint8_t rx_byte = (uint8_t)spi_get_hw(SNIFFER_SPI_PORT)->dr;
         spi_consume_transport_byte(spi_link, stats, event_queue, filter, latest_snapshot, rx_byte);
         spi_get_hw(SNIFFER_SPI_PORT)->icr = SPI_SSPICR_RORIC_BITS | SPI_SSPICR_RTIC_BITS;
         spi_prefill_tx_byte(spi_link->next_tx);
     }
+#endif
 }
 
 static void print_decoded_record(uint32_t word,
@@ -1244,10 +1743,13 @@ static void print_decoded_record(uint32_t word,
     }
 
     if (!parity_ok) {
-        ++stats->parity_errors;
+        return;
     }
 
     ++stats->accepted_words;
+    if (channel == CHANNEL_FWD) {
+        stats->fwd_link_armed = true;
+    }
     latest_snapshot_update(latest_snapshot,
                            channel,
                            label,
@@ -1315,10 +1817,13 @@ int main(void) {
     printf("FWD RX: GP2=FWD_A, GP3=FWD_B\r\n");
     printf("REV RX: GP4=REV_A, GP5=REV_B\r\n");
     printf("SPI host: GP16=MOSI | GP17=CSn | GP18=SCK | GP19=MISO | GP20=DRDY\r\n");
-    printf("SPI transport: RESET=0x%02X + request[%u] + response[%u] byte-a-byte\r\n",
+    printf("SPI transport: RESET=0x%02X + request[%u] + response[%u] | IRQ=%s | TXDMA=%s | PIOFRAME=%s\r\n",
            SNIFFER_SPI_TRANSPORT_RESET,
            SNIFFER_SPI_PACKET_SIZE,
-           SNIFFER_SPI_PACKET_SIZE);
+           SNIFFER_SPI_PACKET_SIZE,
+           ENABLE_SPI_IRQ_TRANSPORT ? "ON" : "OFF",
+           ENABLE_SPI_TX_DMA ? "ON" : "OFF",
+           SNIFFER_SPI_PIO_FRAME_TRANSPORT ? "ON" : "OFF");
     printf("Diag GP20: heartbeat 1 Hz + pulso ante actividad SPI\r\n");
     printf("Bit rate objetivo: %u bps\r\n", BIT_RATE_HZ);
     printf("ACK observado: LABEL=0x%02X SDI=%u\r\n", ACK_LABEL, ACK_SDI);
@@ -1402,7 +1907,6 @@ int main(void) {
                 break;
             }
 
-            ++stats.received_words;
             print_decoded_record(entry.word,
                                  entry.channel,
                                  &stats,

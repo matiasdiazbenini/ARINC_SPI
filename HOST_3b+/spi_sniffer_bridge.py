@@ -22,9 +22,12 @@ from sniffer_spi_protocol import (
     RESP_LATEST_META,
     RESP_LATEST_SLOT,
     RESP_STATS,
+    RESP_ACK,
     SNIFFER_SPI_PACKET_SIZE,
     SNIFFER_SPI_TRANSPORT_IDLE,
     SNIFFER_SPI_TRANSPORT_RESET,
+    STATUS_BAD_CRC,
+    STATUS_BAD_MAGIC,
     STATUS_EMPTY,
     STATUS_OK,
     ProtocolError,
@@ -82,6 +85,11 @@ SPI_CS_GPIO = int(os.getenv("ARINC_SPI_CS_GPIO", "8"))
 SPI_CS_SETUP_US = int(os.getenv("ARINC_SPI_CS_SETUP_US", "150"))
 SPI_CS_HOLD_US = int(os.getenv("ARINC_SPI_CS_HOLD_US", "150"))
 SPI_BYTE_DELAY_US = int(os.getenv("ARINC_SPI_BYTE_DELAY_US", "25"))
+SPI_TRANSFER_MODE = os.getenv("ARINC_SPI_TRANSFER_MODE", "byte").strip().lower()
+if SPI_TRANSFER_MODE not in ("byte", "frame", "pio-frame", "auto"):
+    SPI_TRANSFER_MODE = "byte"
+SPI_RECOVERY_GAP_SEC = float(os.getenv("ARINC_SPI_RECOVERY_GAP_SEC", "0.012"))
+BRIDGE_HOST = os.getenv("ARINC_BRIDGE_HOST", "127.0.0.1").strip() or "127.0.0.1"
 BRIDGE_PORT = int(os.getenv("ARINC_BRIDGE_PORT", "5100"))
 POLL_INTERVAL_SEC = float(os.getenv("ARINC_SPI_POLL_SEC", "0.006"))
 STATS_REFRESH_SEC = float(os.getenv("ARINC_SPI_STATS_SEC", "0.06"))
@@ -89,6 +97,7 @@ FILTER_REFRESH_SEC = float(os.getenv("ARINC_SPI_FILTER_SEC", "2.00"))
 MAX_EVENTS_PER_CYCLE = int(os.getenv("ARINC_SPI_DRAIN_PER_LOOP", "32"))
 MAX_RECORDS = int(os.getenv("ARINC_SPI_MAX_RECORDS", "500"))
 SPI_RESPONSE_DELAY_SEC = float(os.getenv("ARINC_SPI_RESPONSE_DELAY_SEC", "0.00005"))
+SPI_FRAME_RESPONSE_DELAY_SEC = float(os.getenv("ARINC_SPI_FRAME_RESPONSE_DELAY_SEC", "0.002"))
 SPI_RESPONSE_RETRIES = int(os.getenv("ARINC_SPI_RESPONSE_RETRIES", "4"))
 SPI_RESET_BURST = int(os.getenv("ARINC_SPI_RESET_BURST", "3"))
 SPI_RESPONSE_WINDOW_BYTES = int(os.getenv("ARINC_SPI_RESPONSE_WINDOW_BYTES", "48"))
@@ -108,16 +117,27 @@ bridge_state = {
     "connected": False,
     "source_mode": "spi_bridge",
     "port": f"spi{SPI_BUS}.{SPI_DEVICE}" + (f"+gpio{SPI_CS_GPIO}" if SPI_MANUAL_CS else ""),
+    "spi_requested_hz": SPI_MAX_SPEED_HZ,
+    "spi_manual_cs": SPI_MANUAL_CS,
+    "spi_cs_gpio": SPI_CS_GPIO if SPI_MANUAL_CS else None,
+    "spi_cs_setup_us": SPI_CS_SETUP_US if SPI_MANUAL_CS else 0,
+    "spi_cs_hold_us": SPI_CS_HOLD_US if SPI_MANUAL_CS else 0,
+    "spi_transfer_mode": "frame" if SPI_TRANSFER_MODE == "auto" else SPI_TRANSFER_MODE,
+    "spi_requested_transfer_mode": SPI_TRANSFER_MODE,
     "last_rx_time": None,
     "total_events": 0,
     "ack_events": 0,
     "spi_errors": 0,
+    "spi_startup_errors": 0,
+    "spi_error_armed": False,
     "last_error": "",
     "spi_drop_events": 0,
     "slot_evictions": 0,
     "snapshot_revision": 0,
     "last_update_counter": 0,
     "slot_count": 0,
+    "fwd_startup_resync_events": 0,
+    "fwd_operational_resync_events": 0,
     "latest_slots": [],
     "sniffer_stats": {
         "received_words": 0,
@@ -191,6 +211,7 @@ class SpiSnifferClient:
         self.spi = None
         self.sequence = 1
         self.cs = None
+        self.active_transfer_mode = "frame" if SPI_TRANSFER_MODE == "auto" else SPI_TRANSFER_MODE
 
     def open(self):
         if spidev is None:
@@ -238,8 +259,31 @@ class SpiSnifferClient:
             time.sleep(SPI_BYTE_DELAY_US / 1_000_000.0)
         return response
 
+    def _xfer_frame(self, frame) -> bytes:
+        values = [byte & 0xFF for byte in frame]
+        if self.cs is None:
+            response = bytes(self.spi.xfer2(values))
+        else:
+            self.cs.low()
+            if SPI_CS_SETUP_US > 0:
+                time.sleep(SPI_CS_SETUP_US / 1_000_000.0)
+            try:
+                response = bytes(self.spi.xfer2(values))
+            finally:
+                if SPI_CS_HOLD_US > 0:
+                    time.sleep(SPI_CS_HOLD_US / 1_000_000.0)
+                self.cs.high()
+
+        if SPI_BYTE_DELAY_US > 0:
+            time.sleep(SPI_BYTE_DELAY_US / 1_000_000.0)
+        return response
+
     def _transport_reset(self) -> int:
         return self._xfer_byte(SNIFFER_SPI_TRANSPORT_RESET)
+
+    def _recovery_pause(self) -> None:
+        if SPI_RECOVERY_GAP_SEC > 0.0:
+            time.sleep(SPI_RECOVERY_GAP_SEC)
 
     def _transport_send_request(self, packet: bytes) -> None:
         for byte in packet:
@@ -251,6 +295,62 @@ class SpiSnifferClient:
             for _ in range(max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE))
         )
 
+    def _transport_exchange_frame(self, request_packet: bytes) -> bytes:
+        for _reset_index in range(max(SPI_RESET_BURST, 1)):
+            self._transport_reset()
+        self._xfer_frame(request_packet)
+
+        response_delay = max(SPI_RESPONSE_DELAY_SEC, SPI_FRAME_RESPONSE_DELAY_SEC)
+        if response_delay > 0.0:
+            time.sleep(response_delay)
+
+        return self._xfer_frame(
+            bytes([SNIFFER_SPI_TRANSPORT_IDLE] * max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE))
+        )
+
+    def _transport_exchange_pio_frame(self, request_packet: bytes) -> bytes:
+        self._xfer_frame(request_packet)
+
+        response_delay = max(SPI_RESPONSE_DELAY_SEC, SPI_FRAME_RESPONSE_DELAY_SEC)
+        if response_delay > 0.0:
+            time.sleep(response_delay)
+
+        return self._xfer_frame(
+            bytes([SNIFFER_SPI_TRANSPORT_IDLE] * SNIFFER_SPI_PACKET_SIZE)
+        )
+
+    def _transport_exchange_bytewise(self, request_packet: bytes) -> bytes:
+        for _reset_index in range(max(SPI_RESET_BURST, 1)):
+            self._transport_reset()
+        self._transport_send_request(request_packet)
+
+        if SPI_RESPONSE_DELAY_SEC > 0.0:
+            time.sleep(SPI_RESPONSE_DELAY_SEC)
+
+        return self._transport_read_response()
+
+    def _exchange_once(self, request_packet: bytes, transfer_mode: str) -> dict:
+        if transfer_mode == "frame":
+            response_raw = self._transport_exchange_frame(request_packet)
+        elif transfer_mode == "pio-frame":
+            response_raw = self._transport_exchange_pio_frame(request_packet)
+        else:
+            response_raw = self._transport_exchange_bytewise(request_packet)
+
+        response = parse_packet_with_resync(response_raw)
+        if response["command"] == RESP_ACK and response["status"] in (STATUS_BAD_MAGIC, STATUS_BAD_CRC):
+            raise ProtocolError(
+                f"sniffer rechazo request SPI: status=0x{response['status']:02X}"
+            )
+        return response
+
+    def _candidate_modes(self) -> list[str]:
+        if SPI_TRANSFER_MODE == "auto":
+            if self.active_transfer_mode == "byte":
+                return ["byte"]
+            return ["frame", "byte"]
+        return [SPI_TRANSFER_MODE]
+
     def exchange(self, command: int, payload: bytes = b"") -> dict:
         if self.spi is None:
             self.open()
@@ -259,18 +359,17 @@ class SpiSnifferClient:
         last_exc = None
 
         for _ in range(max(SPI_RESPONSE_RETRIES, 1)):
-            for _reset_index in range(max(SPI_RESET_BURST, 1)):
-                self._transport_reset()
-            self._transport_send_request(request_packet)
-
-            if SPI_RESPONSE_DELAY_SEC > 0.0:
-                time.sleep(SPI_RESPONSE_DELAY_SEC)
-
-            response_raw = self._transport_read_response()
-            try:
-                return parse_packet_with_resync(response_raw)
-            except ProtocolError as exc:
-                last_exc = exc
+            for transfer_mode in self._candidate_modes():
+                if last_exc is not None:
+                    self._recovery_pause()
+                try:
+                    response = self._exchange_once(request_packet, transfer_mode)
+                    self.active_transfer_mode = transfer_mode
+                    with data_lock:
+                        bridge_state["spi_transfer_mode"] = transfer_mode
+                    return response
+                except ProtocolError as exc:
+                    last_exc = exc
 
         raise last_exc or ProtocolError("no se pudo sincronizar la respuesta SPI del sniffer")
 
@@ -402,6 +501,8 @@ def update_snapshot_state(meta_payload: dict, slots_payload: list[dict]):
         bridge_state["slot_evictions"] = meta_payload["slot_evictions"]
         bridge_state["last_update_counter"] = meta_payload["last_update_counter"]
         bridge_state["slot_count"] = meta_payload["slot_count"]
+        bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
+        bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
         bridge_state["latest_slots"] = slots_payload
         bridge_state["connected"] = True
         bridge_state["last_error"] = ""
@@ -433,18 +534,48 @@ def update_sniffer_stats(stats_payload: dict):
         bridge_state["sniffer_stats"] = stats_payload
 
 
+def reset_bridge_session_state(stats_payload: dict):
+    with data_lock:
+        records.clear()
+        bridge_state["sniffer_stats"] = stats_payload
+        bridge_state["total_events"] = 0
+        bridge_state["ack_events"] = 0
+        bridge_state["spi_errors"] = 0
+        bridge_state["spi_startup_errors"] = 0
+        bridge_state["spi_error_armed"] = True
+        bridge_state["last_error"] = ""
+        bridge_state["spi_drop_events"] = 0
+        bridge_state["last_rx_time"] = None
+        bridge_state["latest_slots"] = []
+        bridge_state["snapshot_revision"] = 0
+        bridge_state["last_update_counter"] = 0
+        bridge_state["slot_count"] = 0
+        bridge_state["slot_evictions"] = 0
+        bridge_state["fwd_startup_resync_events"] = 0
+        bridge_state["fwd_operational_resync_events"] = 0
+
+
 def mark_bridge_ok():
     with data_lock:
         bridge_state["running"] = True
         bridge_state["connected"] = True
+        bridge_state["spi_error_armed"] = True
         bridge_state["last_error"] = ""
+
+
+def mark_bridge_running():
+    with data_lock:
+        bridge_state["running"] = True
 
 
 def mark_bridge_error(exc: Exception):
     with data_lock:
         bridge_state["connected"] = False
         bridge_state["running"] = True
-        bridge_state["spi_errors"] += 1
+        if bridge_state["spi_error_armed"]:
+            bridge_state["spi_errors"] += 1
+        else:
+            bridge_state["spi_startup_errors"] += 1
         bridge_state["last_error"] = str(exc)
 
 
@@ -454,13 +585,11 @@ def bridge_worker():
     last_meta_refresh = 0.0
     known_revision = -1
 
-    with data_lock:
-        bridge_state["running"] = True
+    mark_bridge_running()
     while not bridge_stop.is_set():
         try:
             with bridge_lock:
                 client.open()
-            mark_bridge_ok()
 
             now = time.time()
             if now - last_stats_refresh >= STATS_REFRESH_SEC:
@@ -488,6 +617,8 @@ def bridge_worker():
                         bridge_state["slot_evictions"] = meta_payload["slot_evictions"]
                         bridge_state["last_update_counter"] = meta_payload["last_update_counter"]
                         bridge_state["slot_count"] = meta_payload["slot_count"]
+                        bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
+                        bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
                         bridge_state["connected"] = True
                 last_meta_refresh = now
 
@@ -526,19 +657,28 @@ def compute_dashboard_stats() -> dict:
         latest_slots = list(bridge_state["latest_slots"])
         running = bridge_state["running"]
         port = bridge_state["port"]
+        spi_requested_hz = bridge_state["spi_requested_hz"]
+        spi_transfer_mode = bridge_state["spi_transfer_mode"]
+        spi_manual_cs = bridge_state["spi_manual_cs"]
+        spi_cs_setup_us = bridge_state["spi_cs_setup_us"]
+        spi_cs_hold_us = bridge_state["spi_cs_hold_us"]
         last_rx_time = bridge_state["last_rx_time"]
         ack_events = bridge_state["ack_events"]
         spi_errors = bridge_state["spi_errors"]
+        spi_startup_errors = bridge_state["spi_startup_errors"]
+        spi_error_armed = bridge_state["spi_error_armed"]
         last_error = bridge_state["last_error"]
         spi_drop_events = bridge_state["spi_drop_events"]
         slot_evictions = bridge_state["slot_evictions"]
         snapshot_revision = bridge_state["snapshot_revision"]
         last_update_counter = bridge_state["last_update_counter"]
         slot_count = bridge_state["slot_count"]
+        fwd_startup_resync_events = bridge_state["fwd_startup_resync_events"]
+        fwd_operational_resync_events = bridge_state["fwd_operational_resync_events"]
 
     by_label = Counter()
     by_ssm = Counter()
-    parity_ok = max(sniffer_stats.get("accepted_words", 0) - sniffer_stats.get("parity_errors", 0), 0)
+    parity_ok = sniffer_stats.get("accepted_words", 0)
     parity_error = sniffer_stats.get("parity_errors", 0)
     latest_by_name = {}
 
@@ -574,9 +714,16 @@ def compute_dashboard_stats() -> dict:
         "running": running,
         "connected": connected,
         "port": port,
+        "spi_requested_hz": spi_requested_hz,
+        "spi_transfer_mode": spi_transfer_mode,
+        "spi_manual_cs": spi_manual_cs,
+        "spi_cs_setup_us": spi_cs_setup_us,
+        "spi_cs_hold_us": spi_cs_hold_us,
         "source_mode": "spi_bridge",
         "ack_events": ack_events,
         "spi_errors": spi_errors,
+        "spi_startup_errors": spi_startup_errors,
+        "spi_error_armed": spi_error_armed,
         "last_error": last_error,
         "spi_drop_events": spi_drop_events,
         "slot_evictions": slot_evictions,
@@ -589,6 +736,8 @@ def compute_dashboard_stats() -> dict:
         "parity_errors_sniffer": sniffer_stats.get("parity_errors", 0),
         "overflow_events": sniffer_stats.get("overflow_events", 0),
         "fwd_resync_events": sniffer_stats.get("fwd_resync_events", 0),
+        "fwd_startup_resync_events": fwd_startup_resync_events,
+        "fwd_operational_resync_events": fwd_operational_resync_events,
         "rev_resync_events": sniffer_stats.get("rev_resync_events", 0),
         "filter_mode": filter_config.get("mode", FILTER_MODE_WHITELIST),
         "filter_entries": format_filter_entries(filter_config.get("entries", [])),
@@ -677,18 +826,7 @@ def reset_endpoint():
     try:
         with bridge_lock:
             stats_payload = client.reset_stats()
-        update_sniffer_stats(stats_payload)
-        with data_lock:
-            records.clear()
-            bridge_state["total_events"] = 0
-            bridge_state["ack_events"] = 0
-            bridge_state["spi_drop_events"] = 0
-            bridge_state["last_rx_time"] = None
-            bridge_state["latest_slots"] = []
-            bridge_state["snapshot_revision"] = 0
-            bridge_state["last_update_counter"] = 0
-            bridge_state["slot_count"] = 0
-            bridge_state["slot_evictions"] = 0
+        reset_bridge_session_state(stats_payload)
         return jsonify({"ok": True, "stats": stats_payload})
     except Exception as exc:  # pragma: no cover - depende del estado del hardware SPI
         mark_bridge_error(exc)
@@ -717,9 +855,24 @@ def metrics():
         "# TYPE arinc_resync_events_total gauge",
         f'arinc_resync_events_total{{channel="FWD"}} {snapshot["fwd_resync_events"]}',
         f'arinc_resync_events_total{{channel="REV"}} {snapshot["rev_resync_events"]}',
+        "# HELP arinc_fwd_resync_startup_events_total Resincronizaciones FWD anteriores a la primera palabra valida.",
+        "# TYPE arinc_fwd_resync_startup_events_total gauge",
+        f"arinc_fwd_resync_startup_events_total {snapshot['fwd_startup_resync_events']}",
+        "# HELP arinc_fwd_resync_operational_events_total Resincronizaciones FWD posteriores a la primera palabra valida.",
+        "# TYPE arinc_fwd_resync_operational_events_total gauge",
+        f"arinc_fwd_resync_operational_events_total {snapshot['fwd_operational_resync_events']}",
         "# HELP arinc_spi_drop_events_total Eventos SPI descartados por cola llena en el sniffer.",
         "# TYPE arinc_spi_drop_events_total gauge",
         f"arinc_spi_drop_events_total {snapshot['spi_drop_events']}",
+        "# HELP arinc_spi_errors_total Errores SPI operativos despues de la primera comunicacion valida.",
+        "# TYPE arinc_spi_errors_total gauge",
+        f"arinc_spi_errors_total {snapshot['spi_errors']}",
+        "# HELP arinc_spi_startup_errors_total Errores SPI de arranque antes de la primera comunicacion valida.",
+        "# TYPE arinc_spi_startup_errors_total gauge",
+        f"arinc_spi_startup_errors_total {snapshot['spi_startup_errors']}",
+        "# HELP arinc_spi_error_armed Estado del contador operativo de errores SPI.",
+        "# TYPE arinc_spi_error_armed gauge",
+        f"arinc_spi_error_armed {1 if snapshot['spi_error_armed'] else 0}",
         "# HELP arinc_slot_evictions_total Reemplazos de slots del snapshot del sniffer.",
         "# TYPE arinc_slot_evictions_total gauge",
         f"arinc_slot_evictions_total {snapshot['slot_evictions']}",
@@ -764,4 +917,4 @@ def metrics():
 
 if __name__ == "__main__":
     start_bridge_thread()
-    app.run(debug=False, host="0.0.0.0", port=BRIDGE_PORT, threaded=True, use_reloader=False)
+    app.run(debug=False, host=BRIDGE_HOST, port=BRIDGE_PORT, threaded=True, use_reloader=False)

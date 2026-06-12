@@ -60,9 +60,9 @@ En la practica, el sistema se organiza en tres grandes tramos:
 \midrule
 5 & Sesion & Continuidad logica de las interacciones entre procesos y clientes. & Polling del bridge hacia la sniffer, polling del dashboard hacia Flask/bridge, scrape periodico de Prometheus, sesiones del navegador con Grafana y Flask. \\
 \midrule
-4 & Transporte & Transporte extremo a extremo entre procesos de alto nivel. & TCP sobre puertos \texttt{5000}, \texttt{5100}, \texttt{9090} y \texttt{3000}. \\
+4 & Transporte & Transporte extremo a extremo entre procesos de alto nivel. & TCP sobre puertos \texttt{5000}, \texttt{5100} local, \texttt{9090} y \texttt{3000}. \\
 \midrule
-3 & Red & Direccionamiento IP y alcance entre nodos de la red local. & Raspberry Pi 3B+ en \texttt{192.168.0.200}, loopback \texttt{127.0.0.1} para Prometheus/Grafana locales, acceso HTTP desde la PC a la 3B+. \\
+3 & Red & Direccionamiento IP y alcance entre nodos de la red local. & Raspberry Pi 3B+ en \texttt{192.168.50.2}, bridge en loopback \texttt{127.0.0.1}, acceso HTTP desde la PC solo al dashboard Flask. \\
 \midrule
 2 & Enlace de datos & Protocolos locales sobre medios fisicos especificos. & Palabra ARINC recreada en \texttt{arinc429\_logic}; batches y ACK entre Pico master y slave; protocolo SPI custom de 32 bytes entre sniffer y 3B+. \\
 \midrule
@@ -85,7 +85,7 @@ A: Pico maestra $\leftrightarrow$ Pico esclava & 1 y 2 & Comunicacion embebida d
 \midrule
 B: Pico sniffer $\leftrightarrow$ Raspberry Pi 3B+ & 1 y 2 & Exportacion del estado observado por la sniffer hacia la 3B+ mediante SPI y protocolo propietario robustecido. & \texttt{GP16=MOSI}, \texttt{GP17=CSn}, \texttt{GP18=SCK}, \texttt{GP19=MISO}, \texttt{GP20=DRDY} opcional, transporte \texttt{RESET + request[32] + response[32]}. \\
 \midrule
-C: Raspberry Pi 3B+ $\leftrightarrow$ PC / navegador / monitoreo & 3 a 7 & Exposicion de estado del sistema a traves de software de aplicacion sobre red IP local. & Bridge en \texttt{:5100}, Flask en \texttt{:5000}, Prometheus en \texttt{:9090}, Grafana en \texttt{:3000}, IP \texttt{192.168.0.200}. \\
+C: Raspberry Pi 3B+ $\leftrightarrow$ PC / navegador / monitoreo & 3 a 7 & Exposicion de estado del sistema a traves de software de aplicacion sobre red IP local. & Bridge local en \texttt{127.0.0.1:5100}, Flask en \texttt{192.168.50.2:5000}, Prometheus en \texttt{:9090}, Grafana en \texttt{:3000}. \\
 \bottomrule
 \end{longtable}
 
@@ -121,7 +121,7 @@ Grafana & 7 & Consume series temporales desde Prometheus y construye paneles gra
     \node[nodebox] (master) at (0,0) {Pico maestra\\TX FWD\\RX ACK};
     \node[nodebox] (slave) at (10,0) {Pico esclava\\RX FWD\\TX ACK};
     \node[nodebox] (sniffer) at (5,-3) {Pico sniffer\\escucha FWD/REV\\snapshot SPI};
-    \node[softbox] (bridge) at (5,-6) {Raspberry Pi 3B+\\Bridge HTTP\\\texttt{:5100}};
+    \node[softbox] (bridge) at (5,-6) {Raspberry Pi 3B+\\Bridge HTTP local\\\texttt{127.0.0.1:5100}};
     \node[softbox] (flask) at (0,-9) {Flask dashboard\\\texttt{:5000}};
     \node[softbox] (prom) at (5,-9) {Prometheus\\PC\\\texttt{:9090}};
     \node[softbox] (graf) at (10,-9) {Grafana\\PC\\\texttt{:3000}};
@@ -135,8 +135,8 @@ Grafana & 7 & Consume series temporales desde Prometheus y construye paneles gra
 
     \draw[thick] (sniffer) -- node[right]{SPI\\GP16..GP20} (bridge);
 
-    \draw[thick] (bridge) -- node[above left]{HTTP\\\texttt{192.168.0.200:5000}} (flask);
-    \draw[thick] (bridge) -- node[right]{\texttt{/metrics}\\\texttt{192.168.0.200:5100}} (prom);
+    \draw[thick] (bridge) -- node[above left]{HTTP loopback\\\texttt{127.0.0.1:5100}} (flask);
+    \draw[thick] (flask) -- node[right]{\texttt{/metrics}\\\texttt{192.168.50.2:5000}} (prom);
     \draw[thick] (prom) -- node[above]{fuente de datos} (graf);
 
     \draw[thick] (pc) -- node[left]{navegador} (flask);
@@ -156,7 +156,7 @@ Grafana & 7 & Consume series temporales desde Prometheus y construye paneles gra
     \node[layer,fill=orange!12] (l6) at (0,5.9) {\textbf{Capa 6 - Presentacion:} JSON, \texttt{/metrics}, nombres, unidades, textos SSM};
     \node[layer,fill=yellow!12] (l5) at (0,4.8) {\textbf{Capa 5 - Sesion:} polling, scrape periodico, sesiones de navegador};
     \node[layer,fill=green!10]  (l4) at (0,3.7) {\textbf{Capa 4 - Transporte:} TCP sobre puertos 5000, 5100, 9090, 3000};
-    \node[layer,fill=cyan!10]   (l3) at (0,2.6) {\textbf{Capa 3 - Red:} IP local, Raspberry Pi 3B+ en 192.168.0.200, loopback 127.0.0.1};
+    \node[layer,fill=cyan!10]   (l3) at (0,2.6) {\textbf{Capa 3 - Red:} IP local, Raspberry Pi 3B+ en 192.168.50.2, bridge en loopback 127.0.0.1};
     \node[layer,fill=blue!10]   (l2) at (0,1.5) {\textbf{Capa 2 - Enlace:} palabra \texttt{arinc429\_logic}, ACK, protocolo SPI propietario};
     \node[layer,fill=purple!10] (l1) at (0,0.4) {\textbf{Capa 1 - Fisica:} GPIO GP2/GP3, GP4/GP5, SPI GP16..GP20, Ethernet/Wi-Fi};
 \end{tikzpicture}

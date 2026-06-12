@@ -15,11 +15,14 @@ except ImportError as exc:  # pragma: no cover - depende de Raspberry Pi OS
 from sniffer_spi_protocol import (
     CMD_GET_STATS,
     CMD_PING,
+    RESP_ACK,
     RESP_PONG,
     RESP_STATS,
     SNIFFER_SPI_PACKET_SIZE,
     SNIFFER_SPI_TRANSPORT_IDLE,
     SNIFFER_SPI_TRANSPORT_RESET,
+    STATUS_BAD_CRC,
+    STATUS_BAD_MAGIC,
     STATUS_OK,
     ProtocolError,
     build_packet,
@@ -106,6 +109,9 @@ def classify_raw_response(raw: bytes) -> str:
     if all(byte == 0xFF for byte in window):
         return "todo_ff"
 
+    if all(byte == SNIFFER_SPI_TRANSPORT_IDLE for byte in window):
+        return "todo_idle_ee"
+
     magic = bytes((0xA4, 0x29))
     pos = window.find(magic)
     if pos == 0:
@@ -140,6 +146,31 @@ def xfer_byte(spi,
     return response
 
 
+def xfer_frame(spi,
+               frame: bytes,
+               cs: ManualCsController | None,
+               cs_setup_us: int,
+               cs_hold_us: int,
+               byte_delay_us: int) -> bytes:
+    values = [byte & 0xFF for byte in frame]
+    if cs is None:
+        response = bytes(spi.xfer2(values))
+    else:
+        cs.low()
+        if cs_setup_us > 0:
+            time.sleep(cs_setup_us / 1_000_000.0)
+        try:
+            response = bytes(spi.xfer2(values))
+        finally:
+            if cs_hold_us > 0:
+                time.sleep(cs_hold_us / 1_000_000.0)
+            cs.high()
+
+    if byte_delay_us > 0:
+        time.sleep(byte_delay_us / 1_000_000.0)
+    return response
+
+
 def transfer_request(spi,
                      command: int,
                      payload: bytes,
@@ -149,34 +180,69 @@ def transfer_request(spi,
                      cs: ManualCsController | None,
                      cs_setup_us: int,
                      cs_hold_us: int,
-                     byte_delay_us: int):
+                     byte_delay_us: int,
+                     transfer_mode: str,
+                     recovery_gap_ms: int):
     request_packet = build_packet(command, payload, sequence=sequence_seed & 0xFFFF)
 
     last_error = None
     raw_history = []
     for _ in range(max(retries, 1)):
-        for _reset_index in range(max(SPI_RESET_BURST, 1)):
-            xfer_byte(spi, SNIFFER_SPI_TRANSPORT_RESET, cs, cs_setup_us, cs_hold_us, byte_delay_us)
-        for byte in request_packet:
-            xfer_byte(spi, byte, cs, cs_setup_us, cs_hold_us, byte_delay_us)
+        if last_error is not None and recovery_gap_ms > 0:
+            time.sleep(recovery_gap_ms / 1000.0)
+
+        pio_frame_mode = transfer_mode == "pio-frame"
+        request_as_frame = transfer_mode in ("frame", "frame-request", "pio-frame")
+        response_as_frame = transfer_mode in ("frame", "frame-response", "pio-frame")
+        response_window_bytes = (
+            SNIFFER_SPI_PACKET_SIZE
+            if pio_frame_mode
+            else max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE)
+        )
+
+        if not request_as_frame:
+            for _reset_index in range(max(SPI_RESET_BURST, 1)):
+                xfer_byte(spi, SNIFFER_SPI_TRANSPORT_RESET, cs, cs_setup_us, cs_hold_us, byte_delay_us)
+            for byte in request_packet:
+                xfer_byte(spi, byte, cs, cs_setup_us, cs_hold_us, byte_delay_us)
+        else:
+            if not pio_frame_mode:
+                for _reset_index in range(max(SPI_RESET_BURST, 1)):
+                    xfer_byte(spi, SNIFFER_SPI_TRANSPORT_RESET, cs, cs_setup_us, cs_hold_us, byte_delay_us)
+            xfer_frame(spi, request_packet, cs, cs_setup_us, cs_hold_us, byte_delay_us)
 
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
 
-        raw = bytes(
-            xfer_byte(
+        if not response_as_frame:
+            raw = bytes(
+                xfer_byte(
+                    spi,
+                    SNIFFER_SPI_TRANSPORT_IDLE,
+                    cs,
+                    cs_setup_us,
+                    cs_hold_us,
+                    byte_delay_us,
+                )
+                for _ in range(response_window_bytes)
+            )
+        else:
+            raw = xfer_frame(
                 spi,
-                SNIFFER_SPI_TRANSPORT_IDLE,
+                bytes([SNIFFER_SPI_TRANSPORT_IDLE] * response_window_bytes),
                 cs,
                 cs_setup_us,
                 cs_hold_us,
                 byte_delay_us,
             )
-            for _ in range(max(SPI_RESPONSE_WINDOW_BYTES, SNIFFER_SPI_PACKET_SIZE))
-        )
         raw_history.append(raw)
         try:
-            return parse_packet_with_resync(raw), raw_history
+            packet = parse_packet_with_resync(raw)
+            if packet["command"] == RESP_ACK and packet["status"] in (STATUS_BAD_MAGIC, STATUS_BAD_CRC):
+                raise ProtocolError(
+                    f"sniffer rechazo request SPI: status=0x{packet['status']:02X}"
+                )
+            return packet, raw_history
         except ProtocolError as exc:
             last_error = exc
 
@@ -195,7 +261,9 @@ def run_ping_series(bus: int,
                     manual_cs_gpio: int | None,
                     cs_setup_us: int,
                     cs_hold_us: int,
-                    byte_delay_us: int):
+                    byte_delay_us: int,
+                    transfer_mode: str,
+                    recovery_gap_ms: int):
     spi = spidev.SpiDev()
     spi.open(bus, device)
     spi.max_speed_hz = hz
@@ -226,6 +294,8 @@ def run_ping_series(bus: int,
                     cs_setup_us=cs_setup_us,
                     cs_hold_us=cs_hold_us,
                     byte_delay_us=byte_delay_us,
+                    transfer_mode=transfer_mode,
+                    recovery_gap_ms=recovery_gap_ms,
                 )
                 sequence_seed += 2
 
@@ -265,7 +335,9 @@ def fetch_stats_once(bus: int,
                      manual_cs_gpio: int | None,
                      cs_setup_us: int,
                      cs_hold_us: int,
-                     byte_delay_us: int):
+                     byte_delay_us: int,
+                     transfer_mode: str,
+                     recovery_gap_ms: int):
     spi = spidev.SpiDev()
     spi.open(bus, device)
     spi.max_speed_hz = hz
@@ -288,6 +360,8 @@ def fetch_stats_once(bus: int,
             cs_setup_us=cs_setup_us,
             cs_hold_us=cs_hold_us,
             byte_delay_us=byte_delay_us,
+            transfer_mode=transfer_mode,
+            recovery_gap_ms=recovery_gap_ms,
         )
         if packet["command"] != RESP_STATS or packet["status"] != STATUS_OK:
             raise ProtocolError(
@@ -300,6 +374,10 @@ def fetch_stats_once(bus: int,
 
 def main():
     manual_cs_default = env_flag("ARINC_SPI_MANUAL_CS", False)
+    default_transfer_mode = os.getenv("ARINC_SPI_TRANSFER_MODE", "byte").strip().lower()
+    if default_transfer_mode not in ("frame", "byte", "pio-frame"):
+        default_transfer_mode = "byte"
+
     parser = argparse.ArgumentParser(
         description="Diagnostico de conectividad SPI entre Raspberry Pi 3B+ y Pico ARINC-SNIFFER."
     )
@@ -308,10 +386,17 @@ def main():
                         type=int,
                         default=int(os.getenv("ARINC_SPI_DEVICE", "0")),
                         help="SPI device de Linux, por defecto 0")
-    parser.add_argument("--hz-list", default="200000,100000,50000", help="Lista CSV de velocidades SPI")
+    parser.add_argument("--hz-list", default="800000,400000,200000", help="Lista CSV de velocidades SPI")
     parser.add_argument("--delay-ms-list", default="0,2,5", help="Lista CSV de esperas entre request y respuesta")
     parser.add_argument("--attempts", type=int, default=12, help="Cantidad de PING por combinacion")
     parser.add_argument("--retries", type=int, default=4, help="Cantidad de NOP de reintento por intento")
+    parser.add_argument("--transfer-mode",
+                        choices=("frame", "byte", "frame-request", "frame-response", "pio-frame"),
+                        default=default_transfer_mode,
+                        help="Modo SPI: byte, frame, frame-request, frame-response o pio-frame.")
+    parser.add_argument("--recovery-gap-ms", type=int,
+                        default=int(float(os.getenv("ARINC_SPI_RECOVERY_GAP_SEC", "0.012")) * 1000),
+                        help="Pausa entre reintentos para que el sniffer descarte una transaccion parcial.")
     parser.add_argument("--manual-cs", action="store_true", default=manual_cs_default,
                         help="Usa CS manual por GPIO en vez de CE hardware.")
     parser.add_argument("--cs-gpio", type=int,
@@ -324,8 +409,8 @@ def main():
                         default=int(os.getenv("ARINC_SPI_CS_HOLD_US", "150")),
                         help="Espera en us entre terminar SPI y subir CS.")
     parser.add_argument("--byte-delay-us", type=int,
-                        default=int(os.getenv("ARINC_SPI_BYTE_DELAY_US", "1000")),
-                        help="Espera en us entre transacciones byte-a-byte.")
+                        default=int(os.getenv("ARINC_SPI_BYTE_DELAY_US", "25")),
+                        help="Espera en us entre transferencias SPI.")
     args = parser.parse_args()
 
     hz_values = parse_csv_ints(args.hz_list)
@@ -341,7 +426,9 @@ def main():
         print(f"CS manual  : GPIO{args.cs_gpio} | setup={args.cs_setup_us}us hold={args.cs_hold_us}us")
     else:
         print("CS manual  : desactivado (CE hardware)")
-    print(f"Pacing byte: {args.byte_delay_us}us")
+    print(f"Modo xfer   : {args.transfer_mode}")
+    print(f"Pacing xfer : {args.byte_delay_us}us")
+    print(f"Gap retry   : {args.recovery_gap_ms}ms")
     print(f"Transporte : RESET=0x{SNIFFER_SPI_TRANSPORT_RESET:02X} + request[{SNIFFER_SPI_PACKET_SIZE}] + response[{SNIFFER_SPI_PACKET_SIZE}]")
     print()
 
@@ -360,6 +447,8 @@ def main():
                 cs_setup_us=args.cs_setup_us,
                 cs_hold_us=args.cs_hold_us,
                 byte_delay_us=args.byte_delay_us,
+                transfer_mode=args.transfer_mode,
+                recovery_gap_ms=args.recovery_gap_ms,
             )
             ratio = f"{result['success']}/{result['attempts']}"
             print(f"[PING] hz={hz:>7} delay={delay_ms:>2}ms -> validos={ratio}")
@@ -397,6 +486,8 @@ def main():
                 cs_setup_us=args.cs_setup_us,
                 cs_hold_us=args.cs_hold_us,
                 byte_delay_us=args.byte_delay_us,
+                transfer_mode=args.transfer_mode,
+                recovery_gap_ms=args.recovery_gap_ms,
             )
             print("GET_STATS OK con la mejor combinacion:")
             print(f"  raw frame : {last_raw.hex()}")

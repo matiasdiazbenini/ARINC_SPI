@@ -25,6 +25,16 @@ Quedo validado:
 - bridge HTTP
 - dashboard Flask
 - Prometheus + Grafana
+- corrida post tutor con `spi_errors = 0` en regimen estable
+- separacion de errores SPI de arranque (`spi_startup_errors`) y operativos (`spi_errors`)
+- transporte SPI por tramas completas validado con `sniffer_arinc429_logic_pio_frame`
+- corrida PIO-frame de 6-7 horas con `spi_errors = 0`
+- paridad estricta implementada en RX y SNIFFER
+- resync FWD separados entre arranque y regimen
+- exportacion de pruebas a CSV, JSON y PDF desde la 3B+
+- prueba de paridad estricta validada con balance exacto de contadores
+- corrida final de `8 horas` con `58,273,540` palabras recibidas y cero
+  errores operativos
 - validacion con osciloscopio de:
   - retorno a cero
   - pulsos de `5 us`
@@ -68,14 +78,16 @@ Quedo validado:
   - responde `ACK` por `GP4/GP5`
 - Pico sniffer:
   - escucha `FWD` y `REV`
+  - no transmite sobre lineas ARINC
   - filtra por `label + SDI`
   - exporta snapshot/eventos por SPI
 - Raspberry Pi 3B+:
   - consume SPI del sniffer
-  - publica bridge HTTP en `:5100`
-  - corre Flask en `:5000`
+  - publica bridge HTTP local en `127.0.0.1:5100`
+  - corre Flask hacia la red en `:5000`
 - Notebook:
   - accede al dashboard
+  - scrapea metricas desde Flask
   - corre Prometheus en `:9090`
   - corre Grafana en `:3000`
 
@@ -91,6 +103,50 @@ La configuracion que mejor resultado dio para estabilidad larga fue:
   - `192.168.50.2/24`
 
 Se observo que esta configuracion es mas robusta que dejar la 3B+ colgada por Wi-Fi para el trafico operativo del sistema.
+
+Acceso recomendado desde la notebook:
+
+- dashboard Flask:
+  - `http://192.168.50.2:5000`
+- metricas para Prometheus:
+  - `http://192.168.50.2:5000/metrics`
+
+El bridge SPI/HTTP queda local dentro de la 3B+ en `http://127.0.0.1:5100`; Flask lo consulta por loopback.
+
+## Modo stream post tutor
+
+Ademas del modo laboratorio batch/ACK, quedo validada la transmision sin depender de bloques fijos de `1000` palabras:
+
+- TX:
+  - `arinc_tx_arinc429_logic_stream`
+- RX:
+  - `arinc_rx_arinc429_logic_stream`
+- Sniffer:
+  - `sniffer_arinc429_logic_pio_frame`
+
+En este ensayo, `ARINC-TX` transmite rafagas de longitud variable y no espera ACK. `ARINC-RX` procesa palabras a medida que llegan y no emite ACK por `REV`. Por eso, en el dashboard, `TEMPERATURA`, `VELOCIDAD` y `ALTITUD` deben crecer; `ACK_BATCH` puede quedar ausente o congelado.
+
+Criterios de prueba:
+
+- `spi_errors = 0`
+- `spi_drop_events = 0`
+- `overflow_events = 0`
+- `parity_errors_sniffer = 0`
+
+Resultado de aproximadamente `10 horas`:
+
+- `accepted_words = 22,756,775`
+- `ack_events = 0`
+- `spi_errors = 0`
+- `spi_startup_errors = 6`
+- `spi_drop_events = 0`
+- `overflow_events = 0`
+- `parity_errors_sniffer = 0`
+- `fwd_resync_events = 3`
+
+Evidencia:
+
+- [evidencia_stream_aleatorio_post_tutor.md](docs/evidencia_stream_aleatorio_post_tutor.md)
 
 ## Forma recomendada de trabajo
 
@@ -113,7 +169,25 @@ Tambien se pueden abrir varias ventanas de VS Code en paralelo, una por componen
 
 Para el bridge/dashboard, el perfil que mejor balance dio entre fluidez y estabilidad fue:
 
+- modo PIO-frame validado post tutor:
+  - `ARINC_SPI_TRANSFER_MODE = pio-frame`
+  - `ARINC_SPI_MANUAL_CS = 1`
+  - `ARINC_SPI_CS_SETUP_US = 100`
+  - `ARINC_SPI_CS_HOLD_US = 100`
+  - `ARINC_SPI_HZ = 8000000`
+  - `ARINC_SPI_BYTE_DELAY_US = 0`
+  - corrida de aproximadamente `9 horas` con `spi_errors = 0`
+- fallback PIO-frame conservador:
+  - `ARINC_SPI_HZ = 400000`
+- modo byte validado como fallback estable:
+  - `ARINC_SPI_TRANSFER_MODE = byte`
+  - `ARINC_SPI_HZ = 800000`
+  - `ARINC_SPI_BYTE_DELAY_US = 25`
+
+Perfil historico estable previo al PIO-frame:
+
 - `ARINC_SPI_HZ = 800000`
+- `ARINC_SPI_TRANSFER_MODE = byte`
 - `ARINC_SPI_BYTE_DELAY_US = 25`
 - `ARINC_SPI_POLL_SEC = 0.006`
 - `ARINC_SPI_STATS_SEC = 0.06`
@@ -125,10 +199,16 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 
 ## Documentos clave
 
+- [Entrega consolidada para el tutor](docs/entrega_tutor/README.md)
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
 - [FASE2_ARINC429_LOGIC.md](FASE2_ARINC429_LOGIC.md)
 - [resumen_proyecto_arinc429.md](docs/resumen_proyecto_arinc429.md)
 - [instructivo_osciloscopio_arinc429_logic.md](docs/instructivo_osciloscopio_arinc429_logic.md)
+- [evidencia_spi_errors_cero_post_tutor.md](docs/evidencia_spi_errors_cero_post_tutor.md)
+- [evidencia_spi_pio_frame_post_tutor.md](docs/evidencia_spi_pio_frame_post_tutor.md)
+- [procedimiento_prueba_paridad_estricta.md](docs/procedimiento_prueba_paridad_estricta.md)
+- [procedimiento_registro_estadistico.md](docs/procedimiento_registro_estadistico.md)
+- [evidencia_corrida_final_stream_8mhz_8h.md](docs/evidencia_corrida_final_stream_8mhz_8h.md)
 - [tesis_fuente_overleaf_arinc429.tex](docs/tex/tesis_fuente_overleaf_arinc429.tex)
 - [modelo_osi_arquitectura_arinc429.tex](docs/tex/modelo_osi_arquitectura_arinc429.tex)
 - [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)

@@ -1,6 +1,6 @@
 # Prometheus
 
-Configuracion de Prometheus utilizada desde la notebook para scrapear el bridge de la Raspberry Pi 3B+.
+Configuracion de Prometheus utilizada desde la notebook para scrapear las metricas ARINC expuestas por Flask en la Raspberry Pi 3B+.
 
 ## Objetivo
 
@@ -14,12 +14,14 @@ Archivo:
 
 Target recomendado:
 
-- `192.168.50.2:5100`
+- `192.168.50.2:5000`
 
 con:
 
 - `scrape_interval: 1s`
 - `evaluation_interval: 1s`
+
+El bridge SPI/HTTP queda local en la Raspberry Pi 3B+ (`127.0.0.1:5100`). Flask consulta ese bridge por loopback y expone `/metrics` hacia la notebook.
 
 ## Comando en Windows
 
@@ -34,4 +36,4 @@ Abrir:
 
 - `http://127.0.0.1:9090/targets`
 
-y comprobar que el job `arinc_bridge` este en `UP`.
+y comprobar que el job `arinc_dashboard` este en `UP`.

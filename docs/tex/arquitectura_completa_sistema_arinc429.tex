@@ -220,13 +220,13 @@ En el lado de la 3B+, este enlace se usa como \texttt{spi0.0}.
 
 \section{Conexion de red}
 
-La Raspberry Pi 3B+ se encuentra accesible en la red local con IP:
+La Raspberry Pi 3B+ se encuentra accesible en la red Ethernet directa con IP:
 
 \begin{itemize}
-    \item \texttt{192.168.0.200}
+    \item \texttt{192.168.50.2}
 \end{itemize}
 
-Esa IP es la usada actualmente por Prometheus en la PC para consultar el bridge ARINC.
+Esa IP es la usada actualmente por la PC para acceder a Flask. El bridge ARINC queda local dentro de la Raspberry Pi 3B+ y Flask lo consulta por loopback.
 
 \chapter{Puertos y servicios}
 
@@ -241,8 +241,8 @@ Servicio & Puerto & Funcion \\
 Servicio & Puerto & Funcion \\
 \midrule
 \endhead
-Bridge SPI ARINC & 5100 & Consulta a la Pico sniffer por SPI y expone endpoints HTTP con estado, snapshot y metricas. \\
-Flask dashboard & 5000 & Interfaz web principal de visualizacion operativa del sistema. \\
+Bridge SPI ARINC & 5100 & Consulta a la Pico sniffer por SPI y expone endpoints HTTP locales con estado, snapshot y metricas. \\
+Flask dashboard & 5000 & Interfaz web principal de visualizacion operativa del sistema, expuesta hacia la notebook. \\
 \bottomrule
 \end{longtable}
 
@@ -257,7 +257,7 @@ Servicio & Puerto & Funcion \\
 Servicio & Puerto & Funcion \\
 \midrule
 \endhead
-Prometheus & 9090 & Recolecta metricas del bridge ARINC remoto y permite consultas temporales. \\
+Prometheus & 9090 & Recolecta metricas expuestas por Flask y permite consultas temporales. \\
 Grafana & 3000 & Visualizacion historica y paneles graficos basados en Prometheus. \\
 \bottomrule
 \end{longtable}
@@ -265,11 +265,11 @@ Grafana & 3000 & Visualizacion historica y paneles graficos basados en Prometheu
 \section{Origen y destino de los datos}
 
 \begin{itemize}
-    \item La 3B+ expone el bridge en \texttt{http://192.168.0.200:5100}.
-    \item La 3B+ expone el dashboard Flask en \texttt{http://192.168.0.200:5000}.
+    \item La 3B+ mantiene el bridge local en \texttt{http://127.0.0.1:5100}.
+    \item La 3B+ expone el dashboard Flask en \texttt{http://192.168.50.2:5000}.
     \item La PC ejecuta Prometheus en \texttt{http://127.0.0.1:9090}.
     \item La PC ejecuta Grafana en \texttt{http://127.0.0.1:3000}.
-    \item Prometheus scrapea al bridge en \texttt{192.168.0.200:5100/metrics}.
+    \item Prometheus scrapea Flask en \texttt{192.168.50.2:5000/metrics}.
 \end{itemize}
 
 \chapter{Arquitectura por capas, estilo OSI}
@@ -342,9 +342,9 @@ Esta capa resuelve como se interpretan las unidades de informacion inmediatas so
 Esta capa aparece principalmente entre la Raspberry Pi 3B+ y la PC.
 
 \begin{itemize}
-    \item La 3B+ se identifica en la LAN como \texttt{192.168.0.200}.
-    \item El bridge HTTP escucha en \texttt{5100}.
-    \item Flask escucha en \texttt{5000}.
+    \item La 3B+ se identifica en la red Ethernet directa como \texttt{192.168.50.2}.
+    \item El bridge HTTP escucha localmente en \texttt{127.0.0.1:5100}.
+    \item Flask escucha hacia la red en \texttt{192.168.50.2:5000}.
     \item Prometheus y Grafana corren localmente en la PC.
 \end{itemize}
 
@@ -544,7 +544,7 @@ En las corridas estables realizadas hasta el momento:
     \draw[dashed,thick] (sniffer) -- node[left]{escucha FWD} (master);
     \draw[dashed,thick] (sniffer) -- node[right]{escucha REV} (slave);
     \draw[thick] (sniffer) -- node[right]{SPI\\GP16..GP20} (pi);
-    \draw[thick] (prom) -- node[above]{scrape /metrics\\192.168.0.200:5100} (pi);
+    \draw[thick] (prom) -- node[above]{scrape /metrics\\192.168.50.2:5000} (pi);
     \draw[thick] (graf) -- node[above]{queries a Prometheus} (prom);
 \end{tikzpicture}
 \caption{Topologia simplificada del sistema completo}
@@ -555,9 +555,9 @@ En las corridas estables realizadas hasta el momento:
 \section{Direccionamiento practico}
 
 \begin{itemize}
-    \item Raspberry Pi 3B+: \texttt{192.168.0.200}
-    \item Bridge SPI HTTP: \texttt{192.168.0.200:5100}
-    \item Dashboard Flask: \texttt{192.168.0.200:5000}
+    \item Raspberry Pi 3B+: \texttt{192.168.50.2}
+    \item Bridge SPI HTTP: \texttt{127.0.0.1:5100}
+    \item Dashboard Flask: \texttt{192.168.50.2:5000}
     \item Prometheus en PC: \texttt{127.0.0.1:9090}
     \item Grafana en PC: \texttt{127.0.0.1:3000}
 \end{itemize}
@@ -625,7 +625,7 @@ No siempre la cantidad de slots activos coincide exactamente con ``cantidad de v
 
 \section{IP y contexto}
 
-La direccion \texttt{192.168.0.200} debe entenderse como configuracion actual de la 3B+ en la red del laboratorio o entorno de pruebas. Si la IP cambia, deben ajustarse:
+La direccion \texttt{192.168.50.2} debe entenderse como configuracion recomendada de la 3B+ en la red Ethernet directa de laboratorio. Si la IP cambia, deben ajustarse:
 
 \begin{itemize}
     \item Prometheus en la PC,

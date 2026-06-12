@@ -1,0 +1,102 @@
+{
+  "started_at": "2026-06-01 02:35:30",
+  "bus": 0,
+  "device": 0,
+  "transfer_mode": "pio-frame",
+  "requested_hz": [
+    8000000,
+    9000000,
+    10000000,
+    12000000,
+    14000000,
+    16000000
+  ],
+  "attempts": 24,
+  "warmup_attempts": 3,
+  "retries": 1,
+  "delay_ms": 2,
+  "recovery_gap_ms": 12,
+  "manual_cs": true,
+  "cs_gpio": 8,
+  "cs_setup_us": 100,
+  "cs_hold_us": 100,
+  "continue_after_fail": false,
+  "results": [
+    {
+      "requested_hz": 8000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 0,
+        "accepted_words": 0,
+        "filtered_words": 0,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 2,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 9000000,
+      "verdict": "PASS",
+      "warmup_success": 3,
+      "warmup_attempts": 3,
+      "success": 24,
+      "attempts": 24,
+      "failures": {},
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 0,
+        "accepted_words": 0,
+        "filtered_words": 0,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 3,
+        "rev_resync_events": 0
+      }
+    },
+    {
+      "requested_hz": 10000000,
+      "verdict": "PARTIAL",
+      "warmup_success": 0,
+      "warmup_attempts": 3,
+      "success": 13,
+      "attempts": 24,
+      "failures": {
+        "magic SPI invalido | sin_magic cabecera=f43c000000003c00": 1,
+        "magic SPI invalido | sin_magic cabecera=d21c000800003f00": 1,
+        "magic SPI invalido | sin_magic cabecera=d214000800002000": 1,
+        "magic SPI invalido | sin_magic cabecera=d214000800002100": 1,
+        "magic SPI invalido | sin_magic cabecera=d21c000000002200": 1,
+        "magic SPI invalido | sin_magic cabecera=d214000800002300": 1,
+        "magic SPI invalido | sin_magic cabecera=b439011000004900": 1,
+        "magic SPI invalido | sin_magic cabecera=d214000800002500": 1,
+        "magic SPI invalido | sin_magic cabecera=d21c000000002e00": 2,
+        "magic SPI invalido | sin_magic cabecera=d214000800002700": 1
+      },
+      "stats_ok": true,
+      "stats_error": "",
+      "stats": {
+        "received_words": 0,
+        "accepted_words": 0,
+        "filtered_words": 0,
+        "parity_errors": 0,
+        "overflow_events": 0,
+        "fwd_resync_events": 5,
+        "rev_resync_events": 0
+      }
+    }
+  ],
+  "note": "Las frecuencias son valores solicitados a spidev. Para medir el clock fisico efectivo se necesita osciloscopio o analizador logico.",
+  "stopped_after_hz": 10000000,
+  "finished_at": "2026-06-01 02:35:31",
+  "highest_pass_hz": 9000000,
+  "contiguous_pass_ceiling_hz": 9000000
+}

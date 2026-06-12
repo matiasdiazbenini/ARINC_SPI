@@ -3,7 +3,8 @@
 ## Estado
 - Fase 1 cerrada como `emulacion funcional`.
 - Fase 2 validada como `recreacion logica/temporal` a `100 kbps`.
-- La `3B+` se mantiene sin cambios funcionales.
+- La `3B+` conserva el bridge/dashboard y suma exportacion estadistica de
+  pruebas mediante `stats_recorder.py`.
 
 ## Firmware de esta fase
 - `arinc_tx_arinc429_logic`
@@ -41,6 +42,7 @@
 ## Perfil recomendado de bridge/dashboard
 - Bridge SPI:
   - `ARINC_SPI_HZ = 800000`
+  - `ARINC_SPI_TRANSFER_MODE = byte`
   - `ARINC_SPI_BYTE_DELAY_US = 25`
   - `ARINC_SPI_POLL_SEC = 0.006`
   - `ARINC_SPI_STATS_SEC = 0.06`
@@ -80,7 +82,25 @@
   - estabilidad larga
 - Lo pendiente a futuro ya no es esta capa logica, sino la futura interfaz electrica ARINC 429 real.
 
+## Validacion adicional completada
+- Aceptacion estricta por paridad validada en hardware.
+- Prueba controlada:
+  - `received_words = 610905`
+  - `accepted_words = 177163`
+  - `filtered_words = 427633`
+  - `parity_errors_sniffer = 6109`
+  - balance de clasificacion: `0`
+  - `spi_errors = 0`
+  - resultado: `PASS`
+- Exportacion CSV, JSON y PDF validada con `stats_recorder.py`.
+
 ## Proximo paso futuro
+- La evidencia larga final sin inyeccion quedo completada:
+  - ocho horas
+  - `58273540` palabras recibidas
+  - balance de clasificacion igual a cero
+  - sin errores SPI, paridad, overflow, drops ni resync FWD operativos
+  - resultado `PASS`
 - Mantener esta fase como baseline logica estable.
 - En una fase posterior:
   - agregar transceptores/receptores ARINC 429 reales

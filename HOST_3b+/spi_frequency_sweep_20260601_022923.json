@@ -1,0 +1,40 @@
+{
+  "started_at": "2026-06-01 02:29:23",
+  "bus": 0,
+  "device": 0,
+  "transfer_mode": "pio-frame",
+  "requested_hz": [
+    50000000
+  ],
+  "attempts": 24,
+  "warmup_attempts": 3,
+  "retries": 1,
+  "delay_ms": 2,
+  "recovery_gap_ms": 12,
+  "manual_cs": true,
+  "cs_gpio": 8,
+  "cs_setup_us": 100,
+  "cs_hold_us": 100,
+  "continue_after_fail": false,
+  "results": [
+    {
+      "requested_hz": 50000000,
+      "verdict": "FAIL",
+      "warmup_success": 0,
+      "warmup_attempts": 3,
+      "success": 0,
+      "attempts": 24,
+      "failures": {
+        "magic SPI invalido | sin_magic cabecera=0000000000000000": 24
+      },
+      "stats_ok": false,
+      "stats_error": "",
+      "stats": null
+    }
+  ],
+  "note": "Las frecuencias son valores solicitados a spidev. Para medir el clock fisico efectivo se necesita osciloscopio o analizador logico.",
+  "stopped_after_hz": 50000000,
+  "finished_at": "2026-06-01 02:29:23",
+  "highest_pass_hz": null,
+  "contiguous_pass_ceiling_hz": null
+}

@@ -28,10 +28,25 @@
 #define BIT_RATE_HZ             100000u
 #define HALF_CYCLES             5u
 #define WORD_GAP_BITS           4u
-#define EXPECTED_BATCH_WORDS    1000u
+#ifndef RX_STREAM_MODE
+#define RX_STREAM_MODE          0u
+#endif
+#ifndef RX_STREAM_SEND_ACK
+#define RX_STREAM_SEND_ACK      0u
+#endif
+#ifndef RX_STREAM_STATS_EVERY
+#define RX_STREAM_STATS_EVERY   10000u
+#endif
+#ifndef RX_EXPECTED_BATCH_WORDS
+#define RX_EXPECTED_BATCH_WORDS 1000u
+#endif
+#define EXPECTED_BATCH_WORDS    ((uint32_t)RX_EXPECTED_BATCH_WORDS)
 #define STARTUP_DELAY_MS        1200u
 #define ENABLE_MATCH_LOG        0u
-#define ENABLE_BATCH_LOG        1u
+#ifndef RX_ENABLE_BATCH_LOG
+#define RX_ENABLE_BATCH_LOG     1u
+#endif
+#define ENABLE_BATCH_LOG        RX_ENABLE_BATCH_LOG
 #define ENABLE_WARN_LOG         1u
 #define ENABLE_FRAME_FILTER     1u
 #define CAPTURE_BUFFER_WORDS    1200u
@@ -105,6 +120,13 @@ static uint32_t build_arinc_word(uint8_t label, uint8_t sdi, uint32_t data, uint
 
 static const char *link_mode_text(void) {
     return ARINC429_LOGIC_MODE ? "arinc429_logic" : "legacy";
+}
+
+static const char *rx_run_mode_text(void) {
+    if (RX_STREAM_MODE) {
+        return RX_STREAM_SEND_ACK ? "stream_with_optional_ack" : "stream_no_ack";
+    }
+    return "lab_batch_ack";
 }
 
 static const char *label_to_name(uint8_t label) {
@@ -262,13 +284,6 @@ static void print_decoded_record(uint32_t word, rx_stats_t *stats) {
     const uint8_t parity_rx = (word >> 31) & 0x01u;
 #endif
 
-    if (!frame_passes_filter(label, sdi)) {
-        ++stats->filtered_words;
-        return;
-    }
-
-    ++stats->accepted_words;
-
 #if ARINC429_LOGIC_MODE
     const bool parity_ok = arinc429_parity_check(word);
 #else
@@ -280,11 +295,19 @@ static void print_decoded_record(uint32_t word, rx_stats_t *stats) {
     if (!parity_ok) {
         ++stats->parity_errors;
         ++stats->invalid_symbol_events;
+        return;
     }
+
+    if (!frame_passes_filter(label, sdi)) {
+        ++stats->filtered_words;
+        return;
+    }
+
+    ++stats->accepted_words;
 
     const char *name = label_to_name(label);
     const char *unit = label_to_unit(label);
-    const char *parity_text = parity_ok ? "OK" : "ERROR";
+    const char *parity_text = "OK";
     const float value = decode_value(label, raw);
 
 #if ENABLE_MATCH_LOG
@@ -312,6 +335,15 @@ static void print_decoded_record(uint32_t word, rx_stats_t *stats) {
            parity_text);
 #endif
 #endif
+}
+
+static void process_received_word(uint32_t word, rx_stats_t *stats) {
+    if (word == 0u) {
+        return;
+    }
+
+    ++stats->received_words;
+    print_decoded_record(word, stats);
 }
 
 static void send_ack(PIO pio,
@@ -346,6 +378,7 @@ static void dump_buffer(const uint32_t *buffer,
 
     ++stats->dumped_batches;
     uint32_t effective_word_count = 0u;
+    const uint32_t parity_errors_before = stats->parity_errors;
 
 #if ENABLE_BATCH_LOG
     printf("[INFO] Volcando lote %lu con %lu palabras capturadas\r\n",
@@ -358,8 +391,7 @@ static void dump_buffer(const uint32_t *buffer,
             continue;
         }
         ++effective_word_count;
-        ++stats->received_words;
-        print_decoded_record(buffer[i], stats);
+        process_received_word(buffer[i], stats);
     }
 
 #if ENABLE_BATCH_LOG
@@ -373,15 +405,19 @@ static void dump_buffer(const uint32_t *buffer,
            (unsigned long)stats->ack_sent);
 #endif
 
-    if (effective_word_count >= EXPECTED_BATCH_WORDS) {
+    const uint32_t batch_parity_errors = stats->parity_errors - parity_errors_before;
+    if (effective_word_count >= EXPECTED_BATCH_WORDS && batch_parity_errors == 0u) {
         send_ack(pio, sm_ack_tx, stats->dumped_batches, effective_word_count, stats);
     } else {
         ++stats->incomplete_batch_count;
-        ++stats->missing_null_events;
+        if (effective_word_count < EXPECTED_BATCH_WORDS) {
+            ++stats->missing_null_events;
+        }
 #if ENABLE_WARN_LOG
-        printf("[WARN] SLAVE -> lote incompleto, no se envia ACK | words=%lu/%u\r\n",
+        printf("[WARN] SLAVE -> lote no integro, no se envia ACK | words=%lu/%u | parity_errors=%lu\r\n",
                (unsigned long)effective_word_count,
-               EXPECTED_BATCH_WORDS);
+               EXPECTED_BATCH_WORDS,
+               (unsigned long)batch_parity_errors);
 #endif
     }
 }
@@ -392,12 +428,23 @@ int main(void) {
 
     printf("SLAVE - ARINC-like con dos canales simplex\r\n");
     printf("RX directo: GP2=FWD_A, GP3=FWD_B\r\n");
+    printf("Modo RX: %s\r\n", rx_run_mode_text());
+#if RX_STREAM_MODE && !RX_STREAM_SEND_ACK
+    printf("TX reverso: inactivo en modo stream_no_ack | GP4/GP5 quedan sin emision ARINC\r\n");
+#else
     printf("TX reverso: GP4=REV_A, GP5=REV_B\r\n");
+#endif
     printf("Bit rate objetivo: %u bps\r\n", BIT_RATE_HZ);
     printf("Filtro por whitelist: %s\r\n", ENABLE_FRAME_FILTER ? "ACTIVO" : "INACTIVO");
-    printf("Batch esperado: %u palabras | ACK label: 0x%02X\r\n",
-           EXPECTED_BATCH_WORDS,
-           ACK_LABEL);
+    if (RX_STREAM_MODE) {
+        printf("Stream: procesa palabras sin esperar lote fijo | stats cada %u palabras | ACK=%s\r\n",
+               (uint32_t)RX_STREAM_STATS_EVERY,
+               RX_STREAM_SEND_ACK ? "ON" : "OFF");
+    } else {
+        printf("Batch esperado: %u palabras | ACK label: 0x%02X\r\n",
+               EXPECTED_BATCH_WORDS,
+               ACK_LABEL);
+    }
     printf("Modo de enlace: %s\r\n",
            link_mode_text());
     printf("Buffer de captura: %u palabras | flush por idle: %u us\r\n\r\n",
@@ -406,21 +453,68 @@ int main(void) {
 
     PIO pio = pio0;
     const uint sm_fwd_rx = 0;
+#if !RX_STREAM_MODE || RX_STREAM_SEND_ACK
     const uint sm_rev_tx = 1;
+#endif
 #if ARINC429_LOGIC_MODE
     const uint rx_offset = pio_add_program(pio, &arinc429_logic_rx_program);
+#if !RX_STREAM_MODE || RX_STREAM_SEND_ACK
     const uint tx_offset = pio_add_program(pio, &arinc429_logic_tx_program);
+#endif
 #else
     const uint rx_offset = pio_add_program(pio, &arinc_gpio_link_rx_program);
+#if !RX_STREAM_MODE || RX_STREAM_SEND_ACK
     const uint tx_offset = pio_add_program(pio, &arinc_gpio_link_tx_program);
+#endif
 #endif
 
     arinc_rx_program_init(pio, sm_fwd_rx, rx_offset, ARINC_FWD_PIN_BASE);
+#if RX_STREAM_MODE && !RX_STREAM_SEND_ACK
+    gpio_init(ARINC_REV_PIN_BASE + 0u);
+    gpio_init(ARINC_REV_PIN_BASE + 1u);
+    gpio_set_dir(ARINC_REV_PIN_BASE + 0u, GPIO_IN);
+    gpio_set_dir(ARINC_REV_PIN_BASE + 1u, GPIO_IN);
+    gpio_pull_down(ARINC_REV_PIN_BASE + 0u);
+    gpio_pull_down(ARINC_REV_PIN_BASE + 1u);
+#else
     arinc_tx_program_init(pio, sm_rev_tx, tx_offset, ARINC_REV_PIN_BASE, (float)BIT_RATE_HZ);
+#endif
     start_rx_channel(pio, sm_fwd_rx, ARINC_FWD_PIN_BASE);
+#if !RX_STREAM_MODE || RX_STREAM_SEND_ACK
     start_tx_channel(pio, sm_rev_tx, ARINC_REV_PIN_BASE);
+#endif
 
     rx_stats_t stats = {0};
+
+#if RX_STREAM_MODE
+    while (true) {
+        bool drained_any = false;
+
+        while (!pio_sm_is_rx_fifo_empty(pio, sm_fwd_rx)) {
+            drained_any = true;
+            const uint32_t word = pio_sm_get(pio, sm_fwd_rx);
+            const uint32_t received_before = stats.received_words;
+            process_received_word(word, &stats);
+
+            if (RX_STREAM_STATS_EVERY > 0u &&
+                stats.received_words != received_before &&
+                stats.received_words > 0u &&
+                ((stats.received_words % RX_STREAM_STATS_EVERY) == 0u)) {
+                printf("[STREAM] SLAVE | RX=%lu | OK/FILTRO=%lu | DESCARTADAS=%lu | PARITY_ERR=%lu | OVERFLOW=%lu | ACK=%lu\r\n",
+                       (unsigned long)stats.received_words,
+                       (unsigned long)stats.accepted_words,
+                       (unsigned long)stats.filtered_words,
+                       (unsigned long)stats.parity_errors,
+                       (unsigned long)stats.overflow_events,
+                       (unsigned long)stats.ack_sent);
+            }
+        }
+
+        if (!drained_any) {
+            tight_loop_contents();
+        }
+    }
+#else
     uint32_t buffered_words = 0;
     bool capture_active = false;
     absolute_time_t last_rx_time = get_absolute_time();
@@ -471,4 +565,5 @@ int main(void) {
             tight_loop_contents();
         }
     }
+#endif
 }

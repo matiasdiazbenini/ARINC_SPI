@@ -5,10 +5,10 @@ Esta integracion deja a Flask como tablero operativo rapido y a Prometheus/Grafa
 ## 1. Flujo recomendado
 
 - `ARINC-SNIFFER` entrega datos al bridge por SPI
-- `spi_sniffer_bridge.py` publica `/metrics`
+- `spi_sniffer_bridge.py` publica `/metrics` solo en loopback de la 3B+
 - Flask consume al bridge en `http://127.0.0.1:5100`
 - Prometheus, corriendo en la notebook, scrapea:
-  - `http://192.168.50.2:5100/metrics`
+  - `http://192.168.50.2:5000/metrics`
 - Grafana consulta a Prometheus en la notebook
 
 ## 2. Ejecutar la fuente de datos en la 3B+
@@ -39,8 +39,14 @@ Desde la notebook deberia responder:
 
 - dashboard:
   - `http://192.168.50.2:5000`
-- metricas del bridge:
-  - `http://192.168.50.2:5100/metrics`
+- metricas proxyeadas por Flask:
+  - `http://192.168.50.2:5000/metrics`
+
+El bridge queda local dentro de la Raspberry Pi 3B+:
+
+- `http://127.0.0.1:5100`
+
+No hace falta exponer `:5100` hacia la notebook para la operacion normal.
 
 ## 4. Ejecutar Prometheus en Windows
 

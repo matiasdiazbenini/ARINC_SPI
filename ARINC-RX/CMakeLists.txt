@@ -32,12 +32,20 @@ add_executable(arinc_rx_arinc429_logic
     arinc_rx.c
 )
 
+add_executable(arinc_rx_arinc429_logic_stream
+    arinc_rx.c
+)
+
 # Genera el header .pio.h para las state machines RX y TX.
 pico_generate_pio_header(arinc_rx
     ${CMAKE_CURRENT_LIST_DIR}/arinc_gpio_link.pio
 )
 
 pico_generate_pio_header(arinc_rx_arinc429_logic
+    ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic.pio
+)
+
+pico_generate_pio_header(arinc_rx_arinc429_logic_stream
     ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic.pio
 )
 
@@ -53,8 +61,22 @@ target_link_libraries(arinc_rx_arinc429_logic
     hardware_clocks
 )
 
+target_link_libraries(arinc_rx_arinc429_logic_stream
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
 target_compile_definitions(arinc_rx_arinc429_logic PRIVATE
     ARINC429_LOGIC_MODE=1
+)
+
+target_compile_definitions(arinc_rx_arinc429_logic_stream PRIVATE
+    ARINC429_LOGIC_MODE=1
+    RX_STREAM_MODE=1
+    RX_STREAM_SEND_ACK=0
+    RX_ENABLE_BATCH_LOG=0
+    RX_STREAM_STATS_EVERY=10000
 )
 
 # Log por USB para debug; UART tradicional desactivada.
@@ -62,6 +84,9 @@ pico_enable_stdio_usb(arinc_rx 1)
 pico_enable_stdio_uart(arinc_rx 0)
 pico_enable_stdio_usb(arinc_rx_arinc429_logic 1)
 pico_enable_stdio_uart(arinc_rx_arinc429_logic 0)
+pico_enable_stdio_usb(arinc_rx_arinc429_logic_stream 1)
+pico_enable_stdio_uart(arinc_rx_arinc429_logic_stream 0)
 
 pico_add_extra_outputs(arinc_rx)
 pico_add_extra_outputs(arinc_rx_arinc429_logic)
+pico_add_extra_outputs(arinc_rx_arinc429_logic_stream)

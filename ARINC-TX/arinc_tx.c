@@ -37,6 +37,30 @@
 #define MASTER_WORDS_PER_BATCH  1000u
 #endif
 #define WORDS_PER_BATCH         ((uint32_t)MASTER_WORDS_PER_BATCH)
+#ifndef MASTER_STREAM_MODE
+#define MASTER_STREAM_MODE      0u
+#endif
+#ifndef MASTER_STREAM_MIN_BURST_WORDS
+#define MASTER_STREAM_MIN_BURST_WORDS 1u
+#endif
+#ifndef MASTER_STREAM_MAX_BURST_WORDS
+#define MASTER_STREAM_MAX_BURST_WORDS 2000u
+#endif
+#ifndef MASTER_STREAM_GAP_MIN_US
+#define MASTER_STREAM_GAP_MIN_US 0u
+#endif
+#ifndef MASTER_STREAM_GAP_MAX_US
+#define MASTER_STREAM_GAP_MAX_US 25000u
+#endif
+#ifndef MASTER_STREAM_LOG_EVERY
+#define MASTER_STREAM_LOG_EVERY 16u
+#endif
+#ifndef MASTER_STREAM_MONITOR_REV
+#define MASTER_STREAM_MONITOR_REV 1u
+#endif
+#ifndef MASTER_PARITY_FAULT_EVERY
+#define MASTER_PARITY_FAULT_EVERY 0u
+#endif
 #define TX_PATTERN_WORDS        10u
 #define VALID_PATTERN_WORDS     3u
 #define NOISE_PATTERN_WORDS     (TX_PATTERN_WORDS - VALID_PATTERN_WORDS)
@@ -193,6 +217,10 @@ static const char *link_mode_text(void) {
     return ARINC429_LOGIC_MODE ? "arinc429_logic" : "legacy";
 }
 
+static const char *tx_run_mode_text(void) {
+    return MASTER_STREAM_MODE ? "stream_random_no_ack" : "lab_batch_ack";
+}
+
 static const char *ssm_to_text(uint8_t ssm) {
     switch (ssm) {
         case 3: return "NORMAL";
@@ -339,6 +367,25 @@ static bool is_valid_ack(uint32_t word, uint32_t *ack_batch, master_link_stats_t
     return false;
 }
 
+static uint32_t random_u32_range(uint32_t *state, uint32_t min_value, uint32_t max_value) {
+    if (max_value <= min_value) {
+        return min_value;
+    }
+
+    const uint32_t span = (max_value - min_value) + 1u;
+    return min_value + (prng_next(state) % span);
+}
+
+static bool parity_fault_due(uint32_t word_number) {
+#if MASTER_PARITY_FAULT_EVERY > 0u
+    return word_number > 0u &&
+           (((word_number - 1u) % (uint32_t)MASTER_PARITY_FAULT_EVERY) == 0u);
+#else
+    (void)word_number;
+    return false;
+#endif
+}
+
 static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number, master_link_stats_t *stats) {
     absolute_time_t last_log_time = get_absolute_time();
 
@@ -379,6 +426,36 @@ static uint32_t wait_for_ack(PIO pio, uint sm_ack_rx, uint32_t batch_number, mas
     }
 }
 
+static void monitor_rev_channel(PIO pio,
+                                uint sm_rev_rx,
+                                master_link_stats_t *stats,
+                                uint32_t stream_window) {
+#if MASTER_STREAM_MONITOR_REV
+    while (!pio_sm_is_rx_fifo_empty(pio, sm_rev_rx)) {
+        const uint32_t word = pio_sm_get(pio, sm_rev_rx);
+        uint32_t ack_batch = 0u;
+
+        if (word == 0u) {
+            continue;
+        }
+
+        if (is_valid_ack(word, &ack_batch, stats)) {
+            printf("[REV] MASTER <- ACK observado en stream | ack=%lu | ventana=%lu\r\n",
+                   (unsigned long)ack_batch,
+                   (unsigned long)stream_window);
+        } else {
+            printf("[REV] MASTER <- palabra REV no ACK observada en stream: 0x%08lX\r\n",
+                   (unsigned long)word);
+        }
+    }
+#else
+    (void)pio;
+    (void)sm_rev_rx;
+    (void)stats;
+    (void)stream_window;
+#endif
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(STARTUP_DELAY_MS);
@@ -387,10 +464,23 @@ int main(void) {
     printf("TX directo: GP2=FWD_A, GP3=FWD_B\r\n");
     printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
     printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
-    printf("Batch: %u palabras | ACK label: 0x%02X\r\n\r\n", WORDS_PER_BATCH, ACK_LABEL);
+    printf("Modo TX: %s\r\n", tx_run_mode_text());
+    printf("Batch laboratorio: %u palabras | ACK label: 0x%02X\r\n", WORDS_PER_BATCH, ACK_LABEL);
+    printf("Stream aleatorio: burst=%u..%u palabras | gap=%u..%u us | REV monitor=%s\r\n\r\n",
+           (uint32_t)MASTER_STREAM_MIN_BURST_WORDS,
+           (uint32_t)MASTER_STREAM_MAX_BURST_WORDS,
+           (uint32_t)MASTER_STREAM_GAP_MIN_US,
+           (uint32_t)MASTER_STREAM_GAP_MAX_US,
+           MASTER_STREAM_MONITOR_REV ? "ON" : "OFF");
     printf("Guardia post-ACK: %u us | perfil: %s\r\n",
            POST_ACK_GUARD_US,
            profile_variant_text());
+    printf("Inyeccion de paridad: %s",
+           MASTER_PARITY_FAULT_EVERY > 0u ? "ACTIVA" : "INACTIVA");
+    if (MASTER_PARITY_FAULT_EVERY > 0u) {
+        printf(" | una palabra cada %u", (uint32_t)MASTER_PARITY_FAULT_EVERY);
+    }
+    printf("\r\n");
     printf("Modo de enlace: %s\r\n",
            link_mode_text());
 
@@ -454,9 +544,91 @@ int main(void) {
         .rng_state = 0xC0FFEEu,
     };
 
-    uint32_t batch_number = 0;
     uint32_t global_word_index = 0;
+    uint32_t parity_faults_injected = 0u;
     master_link_stats_t link_stats = {0};
+
+#if MASTER_STREAM_MODE
+    uint32_t stream_window = 0u;
+    uint32_t total_valid_words = 0u;
+    uint32_t total_noise_words = 0u;
+
+    while (true) {
+        ++stream_window;
+        uint32_t valid_words_in_window = 0u;
+        uint32_t noise_words_in_window = 0u;
+        const uint32_t burst_words = random_u32_range(&signals.rng_state,
+                                                      (uint32_t)MASTER_STREAM_MIN_BURST_WORDS,
+                                                      (uint32_t)MASTER_STREAM_MAX_BURST_WORDS);
+
+        for (uint32_t i = 0; i < burst_words; ++i) {
+            const uint32_t idx = global_word_index % count_of(profiles);
+            const arinc_profile_t profile = profiles[idx];
+            const uint8_t ssm = random_ssm(&signals.rng_state);
+            uint32_t raw = 0u;
+
+            if (profile.is_signal) {
+                raw = encode_profile_value(&signals, idx);
+                ++valid_words_in_window;
+                ++total_valid_words;
+            } else {
+                raw = build_noise_payload(&signals.rng_state, idx);
+                ++noise_words_in_window;
+                ++total_noise_words;
+            }
+
+            uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
+            if (parity_fault_due(global_word_index + 1u)) {
+                word ^= 1u << 31;
+                ++parity_faults_injected;
+            }
+            pio_sm_put_blocking(pio, sm_fwd_tx, word);
+
+#if ENABLE_TX_WORD_LOG
+            printf("TX %08lu -> WORD: 0x%08lX | LABEL: 0x%02X (%s) | RAW: %lu | SDI: %u | SSM: %u (%s)\r\n",
+                   (unsigned long)(global_word_index + 1u),
+                   (unsigned long)word,
+                   profile.label,
+                   profile.name,
+                   (unsigned long)raw,
+                   profile.sdi,
+                   ssm,
+                   ssm_to_text(ssm));
+#endif
+
+            if (profile.is_signal) {
+                evolve_signal(&signals, idx);
+            }
+            ++global_word_index;
+        }
+
+        wait_tx_drain(pio, sm_fwd_tx);
+        monitor_rev_channel(pio, sm_rev_rx, &link_stats, stream_window);
+
+        if (MASTER_STREAM_LOG_EVERY > 0u && ((stream_window % MASTER_STREAM_LOG_EVERY) == 0u)) {
+            printf("[STREAM] MASTER -> ventana=%lu | burst=%lu | total_words=%lu | utiles_total=%lu | ruido_total=%lu | parity_faults=%lu | ack_obs=%lu | rev_bad=%lu\r\n",
+                   (unsigned long)stream_window,
+                   (unsigned long)burst_words,
+                   (unsigned long)global_word_index,
+                   (unsigned long)total_valid_words,
+                   (unsigned long)total_noise_words,
+                   (unsigned long)parity_faults_injected,
+                   (unsigned long)link_stats.ack_ok,
+                   (unsigned long)link_stats.ack_bad_label);
+        }
+
+        const uint32_t gap_us = random_u32_range(&signals.rng_state,
+                                                 (uint32_t)MASTER_STREAM_GAP_MIN_US,
+                                                 (uint32_t)MASTER_STREAM_GAP_MAX_US);
+        if (gap_us > 0u) {
+            sleep_us(gap_us);
+        }
+
+        (void)valid_words_in_window;
+        (void)noise_words_in_window;
+    }
+#else
+    uint32_t batch_number = 0;
 
     while (true) {
         ++batch_number;
@@ -487,7 +659,11 @@ int main(void) {
                 ++noise_words_in_batch;
             }
 
-            const uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
+            uint32_t word = build_arinc_word(profile.label, profile.sdi, raw, ssm);
+            if (parity_fault_due(global_word_index + 1u)) {
+                word ^= 1u << 31;
+                ++parity_faults_injected;
+            }
 
             pio_sm_put_blocking(pio, sm_fwd_tx, word);
 
@@ -530,4 +706,5 @@ int main(void) {
                    (unsigned long)link_stats.rx_invalid_symbol);
         }
     }
+#endif
 }

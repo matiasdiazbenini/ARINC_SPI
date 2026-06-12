@@ -103,8 +103,9 @@ typedef struct {
     uint32_t snapshot_revision;
     uint32_t slot_evictions;
     uint32_t last_update_counter;
-    uint32_t reserved1;
-    uint16_t reserved2;
+    uint16_t fwd_startup_resync_events;
+    uint16_t fwd_operational_resync_events;
+    uint16_t reserved1;
 } sniffer_spi_latest_meta_payload_t;
 
 typedef struct {
