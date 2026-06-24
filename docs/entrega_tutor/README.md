@@ -48,6 +48,8 @@ verdict                       = PASS
 
 ## Informes incluidos
 
+- [Guia didactica para explicar el sistema al tutor](../pdf/guia_didactica_tutor_arinc429.pdf)
+- [Informe descriptivo integral del sistema](../pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [Notas de version arinc-logic-v1.0.0](notas_version_arinc_logic_v1.0.0.md)
 - [Informe estadistico de la corrida final de 8 horas](reportes/reporte_corrida_final_stream_8mhz_8h.pdf)
 - [Resumen JSON de la corrida final](datos/summary_corrida_final_stream_8mhz_8h.json)
@@ -56,6 +58,7 @@ verdict                       = PASS
 - [Preguntas y respuestas para el tutor](../pdf/preguntas_respuestas_tutor_arinc429.pdf)
 - [Resumen general del proyecto](../pdf/resumen_proyecto_arinc429.pdf)
 - [Instructivo y evidencia de osciloscopio](../pdf/instructivo_osciloscopio_arinc429_logic.pdf)
+- [Evidencia de osciloscopio ARINC logico 2026-06-19](../pdf/evidencia_osciloscopio_arinc429_20260619.pdf)
 
 Los CSV completos permanecen en `ARINC_RESULTS` fuera del repositorio. Se
 conservan fuera de Git para evitar versionar cientos de miles de muestras. Los
@@ -69,6 +72,7 @@ JSON y PDF incluidos permiten auditar configuracion, contadores y veredicto.
 - [SPI PIO-frame post tutor](../evidencia_spi_pio_frame_post_tutor.md)
 - [Stream aleatorio sin lote fijo](../evidencia_stream_aleatorio_post_tutor.md)
 - [Errores SPI operativos en cero](../evidencia_spi_errors_cero_post_tutor.md)
+- [Osciloscopio ARINC logico 2026-06-19](../evidencia_osciloscopio_arinc429_20260619.md)
 
 ## Diagramas internos
 

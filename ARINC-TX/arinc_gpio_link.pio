@@ -9,6 +9,8 @@
 ; Cada bit ocupa dos mitades:
 ; - bit 0: pin_base activo, luego idle 00
 ; - bit 1: pin_base + 1 activo, luego idle 00
+; La mitad idle incluye las instrucciones de control del bucle para que el
+; periodo completo del bit no quede estirado por out/jmp.
 ;
 ; El programa hace "pull" palabra por palabra. Eso permite que el gap
 ; entre palabras quede dentro de la state machine y no dependa de sleeps
@@ -25,12 +27,13 @@ bitloop:
 
 send_one:
     set pins, 2        [HALF_CYCLES - 1]
-    set pins, 0        [HALF_CYCLES - 1]
+    set pins, 0
     jmp bit_done
 
 send_zero:
     set pins, 1        [HALF_CYCLES - 1]
-    set pins, 0        [HALF_CYCLES - 1]
+    set pins, 0
+    nop
 
 bit_done:
     jmp y-- bitloop
@@ -39,7 +42,7 @@ gap_setup:
     set x, 7
 
 gap_loop:
-    set pins, 0        [HALF_CYCLES - 1]
+    nop               [HALF_CYCLES - 2]
     jmp x-- gap_loop
 .wrap
 

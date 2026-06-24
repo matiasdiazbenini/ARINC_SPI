@@ -14,6 +14,8 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 ## Resumenes tecnicos
 
+- [Informe descriptivo integral del sistema](pdf/informe_descriptivo_sistema_arinc429.pdf)
+- [Guia didactica para explicar al tutor](pdf/guia_didactica_tutor_arinc429.pdf)
 - [resumen_proyecto_arinc429.md](resumen_proyecto_arinc429.md)
 - [resumen_spi_sniffer_pi3.md](resumen_spi_sniffer_pi3.md)
 - [preguntas_respuestas_tutor_arinc429.md](preguntas_respuestas_tutor_arinc429.md)
@@ -21,6 +23,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 ## Osciloscopio
 
 - [instructivo_osciloscopio_arinc429_logic.md](instructivo_osciloscopio_arinc429_logic.md)
+- [evidencia_osciloscopio_arinc429_20260619.md](evidencia_osciloscopio_arinc429_20260619.md)
 - [osciloscopio_descripcion_imagenes.tex](tex/osciloscopio_descripcion_imagenes.tex)
 
 ## Arquitectura / OSI / tesis
@@ -39,13 +42,20 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 ## PDF ya generados
 
+- [guia_didactica_tutor_arinc429.pdf](pdf/guia_didactica_tutor_arinc429.pdf)
+- [informe_descriptivo_sistema_arinc429.pdf](pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [resumen_proyecto_arinc429.pdf](pdf/resumen_proyecto_arinc429.pdf)
 - [instructivo_osciloscopio_arinc429_logic.pdf](pdf/instructivo_osciloscopio_arinc429_logic.pdf)
+- [evidencia_osciloscopio_arinc429_20260619.pdf](pdf/evidencia_osciloscopio_arinc429_20260619.pdf)
 - [resumen_spi_sniffer_pi3.pdf](pdf/resumen_spi_sniffer_pi3.pdf)
 - [preguntas_respuestas_tutor_arinc429.pdf](pdf/preguntas_respuestas_tutor_arinc429.pdf)
 
 ## Scripts generadores
 
+- [generar_informe_descriptivo_sistema.py](scripts/generar_informe_descriptivo_sistema.py)
+- [generar_informe_descriptivo_pdf.py](scripts/generar_informe_descriptivo_pdf.py)
+- [generar_guia_didactica_tutor_pdf.py](scripts/generar_guia_didactica_tutor_pdf.py)
+- [generar_evidencia_osciloscopio_20260619_pdf.py](scripts/generar_evidencia_osciloscopio_20260619_pdf.py)
 - [generar_documentacion_arinc429_pdfs.py](scripts/generar_documentacion_arinc429_pdfs.py)
 - [generar_resumen_spi_pdf.py](scripts/generar_resumen_spi_pdf.py)
 - [generar_preguntas_tutor_pdf.py](scripts/generar_preguntas_tutor_pdf.py)
@@ -57,6 +67,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [evidencia_spi_pio_frame_post_tutor.md](evidencia_spi_pio_frame_post_tutor.md)
 - [evidencia_stream_aleatorio_post_tutor.md](evidencia_stream_aleatorio_post_tutor.md)
 - [evidencia_barrido_frecuencia_spi.md](evidencia_barrido_frecuencia_spi.md)
+- [evidencia_osciloscopio_arinc429_20260619.md](evidencia_osciloscopio_arinc429_20260619.md)
 - [procedimiento_barrido_frecuencia_spi.md](procedimiento_barrido_frecuencia_spi.md)
 - [procedimiento_prueba_paridad_estricta.md](procedimiento_prueba_paridad_estricta.md)
 - [procedimiento_registro_estadistico.md](procedimiento_registro_estadistico.md)

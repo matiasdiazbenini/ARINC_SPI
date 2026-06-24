@@ -105,12 +105,48 @@ Para operacion estable se recomienda:
 - IP de la notebook:
   - `192.168.50.1/24`
 
+Para dejar la IP fija versionada en la 3B+:
+
+```bash
+sudo bash ~/PAMPA/HOST_3b+/configurar_eth0_ip_fija.sh
+```
+
+El script configura `eth0` como `192.168.50.2/24`. Si la Raspberry Pi usa
+NetworkManager, crea/actualiza una conexion `arinc-eth0-static`. Si usa
+`dhcpcd`, actualiza `/etc/dhcpcd.conf` dejando backup.
+
 Con esa topologia, desde la notebook:
 
 - Flask:
   - `http://192.168.50.2:5000`
 
 El bridge queda en `127.0.0.1:5100` dentro de la 3B+. Si se necesita exponerlo solo para diagnostico puntual, se puede lanzar con `ARINC_BRIDGE_HOST=0.0.0.0`, pero no es el modo recomendado.
+
+## Autoarranque con systemd
+
+Los unit files versionados son:
+
+- `systemd/arinc-sniffer-bridge.service`
+- `systemd/arinc-dashboard-flask.service`
+
+Instalacion:
+
+```bash
+cd ~/PAMPA/HOST_3b+
+sudo cp systemd/arinc-sniffer-bridge.service /etc/systemd/system/
+sudo cp systemd/arinc-dashboard-flask.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask
+```
+
+Verificacion:
+
+```bash
+systemctl status arinc-sniffer-bridge arinc-dashboard-flask --no-pager
+curl http://127.0.0.1:5100/stats
+curl http://127.0.0.1:5000/stats
+```
 
 ## Transporte SPI recomendado
 

@@ -6,6 +6,11 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import FancyArrowPatch, Rectangle
 import numpy as np
 
+from generar_evidencia_osciloscopio_20260619_pdf import (
+    PDF_PATH as SCOPE_EVIDENCE_PDF,
+    build_pdf as build_scope_evidence_pdf,
+)
+
 
 DOCS_DIR = Path(__file__).resolve().parents[1]
 PDF_DIR = DOCS_DIR / "pdf"
@@ -370,6 +375,9 @@ def main():
 
     print(f"PDF generado: {SUMMARY_PDF}")
     print(f"PDF generado: {SCOPE_PDF}")
+
+    build_scope_evidence_pdf()
+    print(f"PDF generado: {SCOPE_EVIDENCE_PDF}")
 
 
 if __name__ == "__main__":
