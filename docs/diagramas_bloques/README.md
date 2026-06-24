@@ -38,7 +38,7 @@ en la rama `ARINC`, no una arquitectura generica.
 
 ```mermaid
 flowchart LR
-    TX["ARINC-TX<br/>GP2/GP3<br/>100 kbps"] -->|FWD bipolar RZ logico| RX["ARINC-RX<br/>escucha y decodifica"]
+    TX["ARINC-TX<br/>GP2/GP3<br/>100 kbps / 12.5 kbps"] -->|FWD bipolar RZ logico| RX["ARINC-RX<br/>escucha y decodifica"]
     TX -->|derivacion pasiva FWD| SN["ARINC-SNIFFER<br/>captura y filtra"]
     RX -.->|REV reservado / no usado en stream| SN
     SN -->|SPI PIO-frame<br/>8 MHz| PI["Raspberry Pi 3B+<br/>bridge HTTP + Flask"]

@@ -69,7 +69,26 @@ Se comprobo:
 - corrida post tutor con `spi_errors = 0` en regimen estable
 - separacion entre `spi_startup_errors` y `spi_errors`
 - transporte SPI por tramas completas validado con PIO-frame
+- mecanismo `DRDY` usado como disparador principal de snapshot, con polling solo
+  como respaldo por timeout
 - aceptacion estricta por paridad implementada en RX y SNIFFER
+- soporte implementado para prueba autorate `100 kbps` / `12.5 kbps`:
+  - TX puede elegir velocidad al arrancar con `arinc_tx_arinc429_logic_stream_autorate`
+  - TX puede forzar `12.5 kbps` con `arinc_tx_arinc429_logic_stream_12k5`
+  - RX stream recibe por flancos/nivel activo y no requiere conocer la velocidad
+  - SNIFFER detecta autonomamente la velocidad FWD y la exporta a bridge/metricas
+  - validacion de `30 min` a `12.5 kbps`:
+    - `detected_bit_rate_bps = 12500`
+    - `received_words = 618,842`
+    - `accepted_words = 185,652`
+    - `spi_errors = 0`
+    - `parity_errors_sniffer = 0`
+  - validacion de `30 min` a `100 kbps`:
+    - `detected_bit_rate_bps = 100000`
+    - `received_words = 4,807,727`
+    - `accepted_words = 1,442,318`
+    - `spi_errors = 0`
+    - `parity_errors_sniffer = 0`
 - resync FWD separados entre arranque y regimen operativo
 - registrador CSV/JSON/PDF agregado para pruebas en la 3B+
 - target recomendado del sniffer logico: `sniffer_arinc429_logic_pio_frame`
@@ -90,12 +109,22 @@ Se comprobo:
 ### Enlace master/slave
 
 - `BIT_RATE_HZ = 100000`
+- prueba autorate disponible:
+  - `100000 bps`
+  - `12500 bps`
+  - target TX: `arinc_tx_arinc429_logic_stream_autorate`
+  - target TX forzado a 12.5 kbps: `arinc_tx_arinc429_logic_stream_12k5`
 - bit time:
   - `10 us`
 - media celda activa:
   - `5 us`
 - segunda media celda:
   - retorno a cero
+- para `12.5 kbps`:
+  - bit time esperado:
+    - `80 us`
+  - media celda activa:
+    - `40 us`
 
 ### Bridge / dashboard recomendado
 
@@ -107,6 +136,9 @@ Se comprobo:
   - `ARINC_SPI_HZ = 8000000`
   - `ARINC_SPI_BYTE_DELAY_US = 0`
   - validado durante aproximadamente `9 horas` con `spi_errors = 0`
+  - mecanismo recomendado de peticion:
+    - `ARINC_SPI_REQUEST_MODE = drdy`
+    - `ARINC_SPI_DRDY_GPIO = 25`
 - fallback PIO-frame conservador:
   - `ARINC_SPI_HZ = 400000`
 - perfil byte validado como fallback:
@@ -253,7 +285,7 @@ Si en el futuro se quiere trabajar con mas variables simultaneas:
 `DRDY` queda implementado como mejora post-validacion:
 
 - Pico sniffer `GP20` -> Raspberry Pi `GPIO25`
-- build esperada: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3`
+- build esperada: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4`
 - bridge: `ARINC_SPI_REQUEST_MODE=drdy`
 - fallback: timeout periodico si no se detecta DRDY
 

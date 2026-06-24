@@ -30,6 +30,8 @@ CSV_FIELDS = [
     "parity_errors",
     "accepted_rate_wps",
     "received_rate_wps",
+    "detected_bit_rate_bps",
+    "detected_bit_rate_txt",
     "spi_errors",
     "spi_startup_errors",
     "overflow_events",
@@ -166,6 +168,20 @@ def latest_value(stats, name):
     return numeric, record.get("ssm_txt", "")
 
 
+def format_bit_rate(bit_rate_bps):
+    try:
+        bit_rate_bps = int(bit_rate_bps or 0)
+    except (TypeError, ValueError):
+        bit_rate_bps = 0
+    if bit_rate_bps == 100000:
+        return "100 kbps"
+    if bit_rate_bps == 12500:
+        return "12.5 kbps"
+    if bit_rate_bps:
+        return f"{bit_rate_bps} bps"
+    return "unknown"
+
+
 def session_counters(stats, baseline):
     keys = [
         "received_words",
@@ -242,6 +258,8 @@ def build_sample(stats, baseline, elapsed, previous_sample):
         "parity_errors": counters["parity_errors_sniffer"],
         "accepted_rate_wps": round(max(accepted_rate, 0.0), 3),
         "received_rate_wps": round(max(received_rate, 0.0), 3),
+        "detected_bit_rate_bps": int(stats.get("detected_bit_rate_bps", 0) or 0),
+        "detected_bit_rate_txt": stats.get("detected_bit_rate_txt") or format_bit_rate(stats.get("detected_bit_rate_bps")),
         "spi_errors": counters["spi_errors"],
         "spi_startup_errors": counters["spi_startup_errors"],
         "overflow_events": counters["overflow_events"],
@@ -432,6 +450,7 @@ def generate_report_pdf(path, summary, samples):
         ("Balance recibidas-clasificadas", summary["quality"]["counter_balance_words"]),
         ("Tasa media aceptada", f"{summary['rates']['accepted_average_wps']:.2f} words/s"),
         ("Tasa maxima aceptada", f"{summary['rates']['accepted_max_wps']:.2f} words/s"),
+        ("Velocidad detectada final", format_bit_rate((summary.get("final_stats") or {}).get("detected_bit_rate_bps"))),
         ("Errores de paridad", summary["counters"]["parity_errors_sniffer"]),
         ("Errores SPI operativos", summary["counters"]["spi_errors"]),
         ("Errores SPI de arranque", summary["counters"]["spi_startup_errors"]),
@@ -453,6 +472,7 @@ def generate_report_pdf(path, summary, samples):
     config_lines = [
         f"Bridge: {config.get('bridge_url', '-')}",
         f"SPI: {config.get('spi_transfer_mode', '-')} a {config.get('spi_requested_hz', '-')} Hz",
+        f"ARINC detectado al inicio: {config.get('detected_bit_rate_txt') or format_bit_rate(config.get('detected_bit_rate_bps'))}",
         f"Puerto: {config.get('port', '-')}",
         f"Objetivo: duracion={config.get('duration_sec')} s, palabras={config.get('word_target')}",
         f"Firmware TX: {config.get('tx_firmware', '-')}",
@@ -678,6 +698,8 @@ class Recorder:
                 "spi_manual_cs": stats.get("spi_manual_cs"),
                 "spi_cs_setup_us": stats.get("spi_cs_setup_us"),
                 "spi_cs_hold_us": stats.get("spi_cs_hold_us"),
+                "detected_bit_rate_bps": stats.get("detected_bit_rate_bps"),
+                "detected_bit_rate_txt": stats.get("detected_bit_rate_txt"),
             }
         )
         self.update_metadata(

@@ -306,8 +306,8 @@ TX antes de que el maestro genere los clocks de respuesta.
 
 ## 11. DRDY
 
-En la build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3`, `GP20` se usa como
-`DRDY` puro:
+En la build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4`, `GP20` se
+usa como `DRDY` puro:
 
 - sube cuando el snapshot recibe una palabra aceptada nueva;
 - baja cuando la 3B+ atiende `GET_LATEST_META`;
@@ -321,7 +321,7 @@ nuevo, o cuando vence el timeout de respaldo.
 
 | Etapa | Capacidad / ritmo |
 |---|---|
-| ARINC FWD | 100 kbps |
+| ARINC FWD | 100 kbps o 12.5 kbps, detectado por la sniffer |
 | RX FIFO PIO por canal | 4 palabras completas, absorcion corta |
 | Cola de captura | 8192 palabras |
 | Procesamiento CPU | Hasta 8 entradas por vuelta |

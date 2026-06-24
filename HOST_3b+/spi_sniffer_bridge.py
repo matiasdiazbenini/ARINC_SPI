@@ -154,6 +154,8 @@ bridge_state = {
     "slot_count": 0,
     "fwd_startup_resync_events": 0,
     "fwd_operational_resync_events": 0,
+    "detected_bit_rate_bps": 0,
+    "detected_bit_rate_txt": "unknown",
     "latest_slots": [],
     "sniffer_stats": {
         "received_words": 0,
@@ -524,6 +526,16 @@ def current_timestamp():
     return time.strftime("%H:%M:%S")
 
 
+def bit_rate_text(bit_rate_bps: int) -> str:
+    if bit_rate_bps == 100000:
+        return "100 kbps"
+    if bit_rate_bps == 12500:
+        return "12.5 kbps"
+    if bit_rate_bps:
+        return f"{bit_rate_bps} bps"
+    return "unknown"
+
+
 def record_from_slot(slot: dict) -> dict:
     label = slot["label"]
     sdi = slot["sdi"]
@@ -558,6 +570,9 @@ def update_snapshot_state(meta_payload: dict, slots_payload: list[dict]):
         bridge_state["slot_count"] = meta_payload["slot_count"]
         bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
         bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
+        detected_bit_rate_bps = int(meta_payload.get("detected_bit_rate_bps", 0) or 0)
+        bridge_state["detected_bit_rate_bps"] = detected_bit_rate_bps
+        bridge_state["detected_bit_rate_txt"] = bit_rate_text(detected_bit_rate_bps)
         bridge_state["latest_slots"] = slots_payload
         bridge_state["connected"] = True
         bridge_state["last_error"] = ""
@@ -624,6 +639,8 @@ def reset_bridge_session_state(stats_payload: dict):
         bridge_state["slot_evictions"] = 0
         bridge_state["fwd_startup_resync_events"] = 0
         bridge_state["fwd_operational_resync_events"] = 0
+        bridge_state["detected_bit_rate_bps"] = 0
+        bridge_state["detected_bit_rate_txt"] = "unknown"
         bridge_state["spi_drdy_events"] = 0
         bridge_state["spi_drdy_requests"] = 0
         bridge_state["spi_timeout_requests"] = 0
@@ -677,6 +694,9 @@ def refresh_snapshot_from_sniffer(known_revision: int) -> int:
         bridge_state["slot_count"] = meta_payload["slot_count"]
         bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
         bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
+        detected_bit_rate_bps = int(meta_payload.get("detected_bit_rate_bps", 0) or 0)
+        bridge_state["detected_bit_rate_bps"] = detected_bit_rate_bps
+        bridge_state["detected_bit_rate_txt"] = bit_rate_text(detected_bit_rate_bps)
         bridge_state["connected"] = True
 
     return known_revision
@@ -813,6 +833,8 @@ def compute_dashboard_stats() -> dict:
         slot_count = bridge_state["slot_count"]
         fwd_startup_resync_events = bridge_state["fwd_startup_resync_events"]
         fwd_operational_resync_events = bridge_state["fwd_operational_resync_events"]
+        detected_bit_rate_bps = bridge_state["detected_bit_rate_bps"]
+        detected_bit_rate_txt = bridge_state["detected_bit_rate_txt"]
 
     by_label = Counter()
     by_ssm = Counter()
@@ -886,6 +908,8 @@ def compute_dashboard_stats() -> dict:
         "fwd_resync_events": sniffer_stats.get("fwd_resync_events", 0),
         "fwd_startup_resync_events": fwd_startup_resync_events,
         "fwd_operational_resync_events": fwd_operational_resync_events,
+        "detected_bit_rate_bps": detected_bit_rate_bps,
+        "detected_bit_rate_txt": detected_bit_rate_txt,
         "rev_resync_events": sniffer_stats.get("rev_resync_events", 0),
         "filter_mode": filter_config.get("mode", FILTER_MODE_WHITELIST),
         "filter_entries": format_filter_entries(filter_config.get("entries", [])),
@@ -1009,6 +1033,9 @@ def metrics():
         "# HELP arinc_fwd_resync_operational_events_total Resincronizaciones FWD posteriores a la primera palabra valida.",
         "# TYPE arinc_fwd_resync_operational_events_total gauge",
         f"arinc_fwd_resync_operational_events_total {snapshot['fwd_operational_resync_events']}",
+        "# HELP arinc_detected_bit_rate_bps Velocidad ARINC detectada por el sniffer en el canal FWD.",
+        "# TYPE arinc_detected_bit_rate_bps gauge",
+        f"arinc_detected_bit_rate_bps {snapshot['detected_bit_rate_bps']}",
         "# HELP arinc_spi_drop_events_total Eventos SPI descartados por cola llena en el sniffer.",
         "# TYPE arinc_spi_drop_events_total gauge",
         f"arinc_spi_drop_events_total {snapshot['spi_drop_events']}",

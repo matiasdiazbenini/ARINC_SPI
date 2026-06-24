@@ -177,8 +177,14 @@ sniffer_arinc429_logic_pio_frame
 Build tag esperado por USB:
 
 ```text
-SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3
+SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4
 ```
+
+En esta build, `GET_LATEST_META` tambien informa la velocidad detectada por la
+sniffer en `FWD`. El bridge la publica como:
+
+- `/stats`: `detected_bit_rate_bps` y `detected_bit_rate_txt`
+- `/metrics`: `arinc_detected_bit_rate_bps`
 
 La prueba de `frame` completo contra el SPI slave hardware mostro desincronizacion. El problema quedo aislado al uso del bloque SPI slave hardware de la Pico para este caso. La solucion validada fue implementar el slave SPI por PIO y usar `ARINC_SPI_TRANSFER_MODE=pio-frame`.
 

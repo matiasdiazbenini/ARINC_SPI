@@ -29,7 +29,9 @@ Quedo validado:
 - separacion de errores SPI de arranque (`spi_startup_errors`) y operativos (`spi_errors`)
 - transporte SPI por tramas completas validado con `sniffer_arinc429_logic_pio_frame`
 - corrida PIO-frame de 6-7 horas con `spi_errors = 0`
+- mecanismo DRDY implementado para consultar snapshot por demanda
 - paridad estricta implementada en RX y SNIFFER
+- deteccion autonoma en sniffer de velocidad `FWD` entre `100 kbps` y `12.5 kbps`
 - resync FWD separados entre arranque y regimen
 - exportacion de pruebas a CSV, JSON y PDF desde la 3B+
 - prueba de paridad estricta validada con balance exacto de contadores
@@ -147,6 +149,45 @@ Resultado de aproximadamente `10 horas`:
 Evidencia:
 
 - [evidencia_stream_aleatorio_post_tutor.md](docs/evidencia_stream_aleatorio_post_tutor.md)
+
+## Modo autorate 100 kbps / 12.5 kbps
+
+Para probar la capacidad de `ARINC-SNIFFER` de detectar la velocidad sin que TX
+ni RX se la informen por configuracion externa, se agrego el target:
+
+- TX:
+  - `arinc_tx_arinc429_logic_stream_autorate`
+  - `arinc_tx_arinc429_logic_stream_12k5` para forzar la velocidad baja en una
+    prueba controlada
+
+Este firmware elige al arrancar entre `100 kbps` y `12.5 kbps`. El RX stream
+no requiere cambio porque su PIO recibe por flancos/nivel activo. El sniffer
+publica la velocidad detectada como `detected_bit_rate_bps` y
+`detected_bit_rate_txt` en `/stats`, y como `arinc_detected_bit_rate_bps` en
+Prometheus.
+
+Validacion observada:
+
+- el TX arranco en distintas corridas tanto a `100 kbps` como a `12.5 kbps`
+- corrida de `30 min` a `12.5 kbps`:
+  - `detected_bit_rate_bps = 12500`
+  - `received_words = 618,842`
+  - `accepted_words = 185,652`
+  - `spi_errors = 0`
+- corrida de `30 min` a `100 kbps`:
+  - `detected_bit_rate_bps = 100000`
+  - `received_words = 4,807,727`
+  - `accepted_words = 1,442,318`
+  - `spi_errors = 0`
+- ambas corridas cerraron con:
+  - `parity_errors_sniffer = 0`
+  - `overflow_events = 0`
+  - `spi_drop_events = 0`
+  - balance de clasificacion igual a `0`
+
+Evidencia:
+
+- [evidencia_autorate_100k_12k5.md](docs/evidencia_autorate_100k_12k5.md)
 
 ## Forma recomendada de trabajo
 

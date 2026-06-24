@@ -105,7 +105,7 @@ typedef struct {
     uint32_t last_update_counter;
     uint16_t fwd_startup_resync_events;
     uint16_t fwd_operational_resync_events;
-    uint16_t reserved1;
+    uint16_t detected_bit_rate_hz_div100;
 } sniffer_spi_latest_meta_payload_t;
 
 typedef struct {

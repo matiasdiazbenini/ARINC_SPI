@@ -41,6 +41,14 @@ como referencia de esta etapa del proyecto.
   - transmite rafagas de longitud variable
   - no bloquea esperando ACK
   - mantiene la codificacion `arinc429_logic` a `100 kbps`
+- `arinc_tx_arinc429_logic_stream_12k5`
+  - mismo modo stream, forzado a `12.5 kbps`
+  - util para validar la velocidad baja sin depender del azar del autorate
+- `arinc_tx_arinc429_logic_stream_autorate`
+  - igual al modo stream validado, pero elige al arrancar entre `100 kbps`
+    y `12.5 kbps`
+  - sirve para probar que RX y SNIFFER sigan el canal sin recibir la velocidad
+    por configuracion externa
 - `arinc_tx_arinc429_logic_parity_test`
   - usa el mismo modo stream
   - invierte la paridad de una palabra cada `100`

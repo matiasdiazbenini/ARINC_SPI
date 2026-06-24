@@ -13,6 +13,8 @@ Firmware del tercer nodo Pico encargado de observar el enlace entre `ARINC-TX` y
 - exporta al host por SPI
 - descarta palabras con paridad incorrecta antes del filtro y snapshot
 - separa resync FWD de arranque y operativos
+- detecta de forma autonoma si el canal `FWD` trabaja a `100 kbps` o
+  `12.5 kbps` y lo exporta por SPI al bridge
 
 ## Enlace SPI hacia la Raspberry Pi 3B+
 
@@ -59,5 +61,5 @@ Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-V2
 La build con `DRDY` puro debe mostrar:
 
 ```text
-Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3
+Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4
 ```

@@ -13,6 +13,8 @@ Firmware del nodo receptor de la fase `arinc429_logic`.
   `accepted_words`
 - en modo batch no emite ACK si el lote contiene una palabra con paridad
   incorrecta
+- la recepcion `FWD` es guiada por flancos/nivel activo en PIO; en modo stream
+  sin ACK no necesita recompilarse para pasar de `100 kbps` a `12.5 kbps`
 
 ## Cableado logico
 
@@ -44,3 +46,5 @@ Esta carpeta fue incorporada a este repo para centralizar el proyecto completo, 
   - procesa palabras sin depender de bloques fijos
   - no transmite ACK por `REV`
   - mantiene `GP4/GP5` como entradas con pull-down
+  - puede recibir `100 kbps` o `12.5 kbps` porque la state machine espera
+    actividad y retorno a null en cada bit

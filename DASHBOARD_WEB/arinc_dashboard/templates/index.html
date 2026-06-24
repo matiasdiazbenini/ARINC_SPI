@@ -445,6 +445,7 @@
           `ACK observados: ${data.ack_events ?? 0}`,
           `Palabras aceptadas por sniffer: ${data.accepted_words ?? 0}`,
           `Palabras descartadas por filtro: ${data.filtered_words ?? 0}`,
+          `Velocidad ARINC detectada: ${data.detected_bit_rate_txt || "unknown"}`,
           `Overflow de captura: ${data.overflow_events ?? 0}`,
           `Resync FWD: ${data.fwd_resync_events ?? 0}`,
           `Resync REV: ${data.rev_resync_events ?? 0}`,

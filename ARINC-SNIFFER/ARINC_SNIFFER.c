@@ -55,6 +55,11 @@
 #define RESYNC_WORD_THRESHOLD     32u
 #define REV_RESYNC_LOG_EVERY      32u
 #define FWD_STALL_RESYNC_US       500000u
+#define BIT_RATE_DETECT_WINDOW_US 2000000u
+#define BIT_RATE_HIGH_HZ          100000u
+#define BIT_RATE_LOW_HZ           12500u
+#define BIT_RATE_HIGH_MIN_WPS     1000u
+#define BIT_RATE_LOW_MIN_WPS      80u
 #define CHANNEL_FWD               0u
 #define CHANNEL_REV               1u
 #define SPI_EVENT_QUEUE_DEPTH     512u
@@ -83,7 +88,7 @@
 #define ARINC429_LOGIC_MODE       0u
 #endif
 #if SNIFFER_SPI_PIO_FRAME_TRANSPORT && ARINC429_LOGIC_MODE
-#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3"
+#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4"
 #elif SNIFFER_SPI_PIO_FRAME_TRANSPORT
 #define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-RL1"
 #elif ARINC429_LOGIC_MODE
@@ -126,6 +131,17 @@ typedef struct {
     uint32_t rev_rejected_words;
     bool fwd_link_armed;
 } rx_stats_t;
+
+typedef struct {
+    bool initialized;
+    absolute_time_t window_started_at;
+    uint32_t window_start_fwd_raw_words;
+    uint32_t detected_bit_rate_bps;
+    uint32_t last_words_per_sec;
+    uint32_t stable_windows;
+} bit_rate_detector_t;
+
+static bit_rate_detector_t g_fwd_rate_detector;
 
 typedef struct {
     bool pass_all;
@@ -774,6 +790,71 @@ static uint16_t u16_saturated(uint32_t value) {
     return value > 0xFFFFu ? 0xFFFFu : (uint16_t)value;
 }
 
+static uint32_t u32_counter_delta(uint32_t current, uint32_t previous) {
+    return current >= previous ? current - previous : current;
+}
+
+static uint16_t bit_rate_payload_div100(const bit_rate_detector_t *detector) {
+    return u16_saturated(detector->detected_bit_rate_bps / 100u);
+}
+
+static const char *bit_rate_text(uint32_t bit_rate_bps) {
+    if (bit_rate_bps == BIT_RATE_HIGH_HZ) {
+        return "100 kbps";
+    }
+    if (bit_rate_bps == BIT_RATE_LOW_HZ) {
+        return "12.5 kbps";
+    }
+    return "unknown";
+}
+
+static void bit_rate_detector_reset(bit_rate_detector_t *detector, const rx_stats_t *stats) {
+    memset(detector, 0, sizeof(*detector));
+    detector->initialized = true;
+    detector->window_started_at = get_absolute_time();
+    detector->window_start_fwd_raw_words = stats->fwd_raw_words;
+}
+
+static void bit_rate_detector_service(bit_rate_detector_t *detector, const rx_stats_t *stats) {
+    const absolute_time_t now = get_absolute_time();
+
+    if (!detector->initialized) {
+        bit_rate_detector_reset(detector, stats);
+        return;
+    }
+
+    const int64_t elapsed_us = absolute_time_diff_us(detector->window_started_at, now);
+    if (elapsed_us < (int64_t)BIT_RATE_DETECT_WINDOW_US) {
+        return;
+    }
+
+    const uint32_t delta_words = u32_counter_delta(stats->fwd_raw_words, detector->window_start_fwd_raw_words);
+    const uint32_t words_per_sec = (uint32_t)(((uint64_t)delta_words * 1000000ull) / (uint64_t)elapsed_us);
+    uint32_t candidate_bps = 0u;
+
+    if (words_per_sec >= BIT_RATE_HIGH_MIN_WPS) {
+        candidate_bps = BIT_RATE_HIGH_HZ;
+    } else if (words_per_sec >= BIT_RATE_LOW_MIN_WPS) {
+        candidate_bps = BIT_RATE_LOW_HZ;
+    }
+
+    detector->last_words_per_sec = words_per_sec;
+    if (candidate_bps == detector->detected_bit_rate_bps) {
+        if (detector->stable_windows < UINT32_MAX) {
+            ++detector->stable_windows;
+        }
+    } else {
+        detector->detected_bit_rate_bps = candidate_bps;
+        detector->stable_windows = candidate_bps == 0u ? 0u : 1u;
+        printf("[RATE] SNIFFER -> FWD detectado: %s | raw_wps=%lu\r\n",
+               bit_rate_text(candidate_bps),
+               (unsigned long)words_per_sec);
+    }
+
+    detector->window_started_at = now;
+    detector->window_start_fwd_raw_words = stats->fwd_raw_words;
+}
+
 static uint16_t crc16_ccitt(const uint8_t *data, size_t length) {
     uint16_t crc = 0xFFFFu;
 
@@ -977,7 +1058,7 @@ static void build_spi_latest_meta_packet(sniffer_spi_packet_t *packet,
         .last_update_counter = snapshot->last_update_counter,
         .fwd_startup_resync_events = u16_saturated(stats->fwd_startup_resync_events),
         .fwd_operational_resync_events = u16_saturated(stats->fwd_operational_resync_events),
-        .reserved1 = 0u,
+        .detected_bit_rate_hz_div100 = bit_rate_payload_div100(&g_fwd_rate_detector),
     };
 
     build_spi_packet(packet,
@@ -1049,6 +1130,7 @@ static void reset_runtime_counters(rx_stats_t *stats,
     memset(stats, 0, sizeof(*stats));
     event_queue_clear(event_queue);
     latest_snapshot_clear(latest_snapshot);
+    bit_rate_detector_reset(&g_fwd_rate_detector, stats);
     update_spi_drdy(event_queue->queued);
 }
 
@@ -1845,7 +1927,7 @@ int main(void) {
            SNIFFER_SPI_DRDY_PURE ?
            "alto cuando hay snapshot nuevo; se limpia con GET_LATEST_META" :
            "heartbeat 1 Hz + pulso ante actividad SPI");
-    printf("Bit rate objetivo: %u bps\r\n", BIT_RATE_HZ);
+    printf("Bit rate objetivo historico: %u bps | autodeteccion FWD: 100 kbps / 12.5 kbps\r\n", BIT_RATE_HZ);
     printf("ACK observado: LABEL=0x%02X SDI=%u\r\n", ACK_LABEL, ACK_SDI);
     printf("Modo ARINC: %s\r\n", ARINC429_LOGIC_MODE ? "logic" : "legacy");
     printf("Filtro por whitelist: %s\r\n", ENABLE_FRAME_FILTER ? "ACTIVO" : "INACTIVO");
@@ -1878,6 +1960,7 @@ int main(void) {
     filter_reset_to_defaults(&filter);
     event_queue_clear(&event_queue);
     latest_snapshot_clear(&latest_snapshot);
+    bit_rate_detector_reset(&g_fwd_rate_detector, &stats);
     spi_init_link(&spi_link);
     arinc_rx_program_init(pio, sm_fwd, offset, ARINC_FWD_PIN_BASE);
     arinc_rx_program_init(pio, sm_rev, offset, ARINC_REV_PIN_BASE);
@@ -1913,6 +1996,7 @@ int main(void) {
                         &drained_any);
 
         now = get_absolute_time();
+        bit_rate_detector_service(&g_fwd_rate_detector, &stats);
 
         if (queued_words == 0u &&
             absolute_time_diff_us(last_valid_fwd_time, now) >= (int64_t)FWD_STALL_RESYNC_US) {

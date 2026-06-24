@@ -8,9 +8,12 @@ bipolar con retorno a cero y las transmite por:
 - `GP2`: FWD_A.
 - `GP3`: FWD_B.
 
-En el modo operativo actual, `arinc_tx_arinc429_logic_stream`, transmite
-rafagas aleatorias de 1 a 2000 palabras con pausas aleatorias de 0 a 25 ms. No
-espera ACK y no depende del canal REV.
+En el modo operativo validado, `arinc_tx_arinc429_logic_stream`, transmite
+rafagas aleatorias de 1 a 2000 palabras con pausas aleatorias de 0 a 25 ms a
+`100 kbps`. El target `arinc_tx_arinc429_logic_stream_12k5` fuerza `12.5 kbps`.
+El target `arinc_tx_arinc429_logic_stream_autorate` conserva el mismo flujo,
+pero elige al arrancar entre `100 kbps` y `12.5 kbps`. No espera ACK y no
+depende del canal REV.
 
 ## 2. Diagrama general
 
@@ -133,8 +136,9 @@ Detalles:
 - `OSR` conserva la palabra y la desplaza bit por bit.
 - `X` contiene solamente el bit que se esta transmitiendo.
 - `Y` comienza en 31 y controla las 32 iteraciones.
-- El divisor PIO se calcula para 100 kbps.
-- Cada bit ocupa 10 us: 5 us activo y 5 us en NULL.
+- El divisor PIO se calcula con la velocidad activa del target.
+- A `100 kbps`, cada bit ocupa 10 us: 5 us activo y 5 us en NULL.
+- A `12.5 kbps`, cada bit ocupa 80 us: 40 us activo y 40 us en NULL.
 - El PIO mantiene la temporizacion aunque la CPU este preparando la palabra
   siguiente.
 

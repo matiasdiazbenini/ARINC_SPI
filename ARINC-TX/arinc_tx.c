@@ -28,6 +28,11 @@
 #define MASTER_BIT_RATE_HZ      100000u
 #endif
 #define BIT_RATE_HZ             ((uint32_t)MASTER_BIT_RATE_HZ)
+#define ARINC_HIGH_SPEED_HZ     100000u
+#define ARINC_LOW_SPEED_HZ      12500u
+#ifndef MASTER_RANDOM_BIT_RATE
+#define MASTER_RANDOM_BIT_RATE  0u
+#endif
 #define HALF_CYCLES             5u
 #ifndef MASTER_WORD_GAP_BITS
 #define MASTER_WORD_GAP_BITS    4u
@@ -254,8 +259,26 @@ static uint32_t encode_profile_value(const signal_state_t *signals, uint32_t idx
     return encode_altitude(signals->altitude_ft);
 }
 
-static uint32_t word_time_us(void) {
-    return ((32u + WORD_GAP_BITS) * 1000000u) / BIT_RATE_HZ;
+static uint32_t choose_active_bit_rate_hz(void) {
+#if MASTER_RANDOM_BIT_RATE
+    uint32_t seed = time_us_32() ^ 0xA4291250u;
+
+    for (uint32_t i = 0; i < 64u; ++i) {
+        seed ^= time_us_32() + (seed << 6) + (seed >> 2);
+        sleep_us(1u + (seed & 0x03u));
+    }
+
+    return (seed & 0x01u) ? ARINC_HIGH_SPEED_HZ : ARINC_LOW_SPEED_HZ;
+#else
+    return BIT_RATE_HZ;
+#endif
+}
+
+static uint32_t word_time_us(uint32_t bit_rate_hz) {
+    if (bit_rate_hz == 0u) {
+        return 0u;
+    }
+    return ((32u + WORD_GAP_BITS) * 1000000u) / bit_rate_hz;
 }
 
 static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, float bit_rate_hz) {
@@ -326,12 +349,12 @@ static void reset_rx_channel(PIO pio, uint sm_rx) {
     pio_sm_set_enabled(pio, sm_rx, true);
 }
 
-static void wait_tx_drain(PIO pio, uint sm_tx) {
+static void wait_tx_drain(PIO pio, uint sm_tx, uint32_t bit_rate_hz) {
     while (!pio_sm_is_tx_fifo_empty(pio, sm_tx)) {
         tight_loop_contents();
     }
 
-    sleep_us(word_time_us() + 50u);
+    sleep_us(word_time_us(bit_rate_hz) + 50u);
 }
 
 static bool is_valid_ack(uint32_t word, uint32_t *ack_batch, master_link_stats_t *stats) {
@@ -463,7 +486,11 @@ int main(void) {
     printf("MASTER - ARINC-like con dos canales simplex\r\n");
     printf("TX directo: GP2=FWD_A, GP3=FWD_B\r\n");
     printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
-    printf("Bit rate: %u bps\r\n", BIT_RATE_HZ);
+    const uint32_t active_bit_rate_hz = choose_active_bit_rate_hz();
+    printf("Bit rate configurado: %u bps | autorate: %s | bit rate activo: %u bps\r\n",
+           BIT_RATE_HZ,
+           MASTER_RANDOM_BIT_RATE ? "ON" : "OFF",
+           active_bit_rate_hz);
     printf("Modo TX: %s\r\n", tx_run_mode_text());
     printf("Batch laboratorio: %u palabras | ACK label: 0x%02X\r\n", WORDS_PER_BATCH, ACK_LABEL);
     printf("Stream aleatorio: burst=%u..%u palabras | gap=%u..%u us | REV monitor=%s\r\n\r\n",
@@ -495,7 +522,7 @@ int main(void) {
     const uint rx_offset = pio_add_program(pio, &arinc_gpio_link_rx_program);
 #endif
 
-    arinc_tx_program_init(pio, sm_fwd_tx, tx_offset, ARINC_FWD_PIN_BASE, (float)BIT_RATE_HZ);
+    arinc_tx_program_init(pio, sm_fwd_tx, tx_offset, ARINC_FWD_PIN_BASE, (float)active_bit_rate_hz);
     arinc_rx_program_init(pio, sm_rev_rx, rx_offset, ARINC_REV_PIN_BASE);
     start_tx_channel(pio, sm_fwd_tx, ARINC_FWD_PIN_BASE);
     start_rx_channel(pio, sm_rev_rx, ARINC_REV_PIN_BASE);
@@ -602,7 +629,7 @@ int main(void) {
             ++global_word_index;
         }
 
-        wait_tx_drain(pio, sm_fwd_tx);
+        wait_tx_drain(pio, sm_fwd_tx, active_bit_rate_hz);
         monitor_rev_channel(pio, sm_rev_rx, &link_stats, stream_window);
 
         if (MASTER_STREAM_LOG_EVERY > 0u && ((stream_window % MASTER_STREAM_LOG_EVERY) == 0u)) {
@@ -685,7 +712,7 @@ int main(void) {
             ++global_word_index;
         }
 
-        wait_tx_drain(pio, sm_fwd_tx);
+        wait_tx_drain(pio, sm_fwd_tx, active_bit_rate_hz);
 
 #if ENABLE_TX_BATCH_LOG
         printf("[INFO] MASTER -> batch %lu enviado por GP2/GP3 | utiles=%lu | basura=%lu | esperando ACK en GP4/GP5\r\n",

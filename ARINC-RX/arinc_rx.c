@@ -434,7 +434,11 @@ int main(void) {
 #else
     printf("TX reverso: GP4=REV_A, GP5=REV_B\r\n");
 #endif
-    printf("Bit rate objetivo: %u bps\r\n", BIT_RATE_HZ);
+#if !RX_STREAM_MODE || RX_STREAM_SEND_ACK
+    printf("Bit rate REV/ACK: %u bps\r\n", BIT_RATE_HZ);
+#else
+    printf("RX FWD: autodeteccion por flancos/nivel activo | REV TX deshabilitado\r\n");
+#endif
     printf("Filtro por whitelist: %s\r\n", ENABLE_FRAME_FILTER ? "ACTIVO" : "INACTIVO");
     if (RX_STREAM_MODE) {
         printf("Stream: procesa palabras sin esperar lote fijo | stats cada %u palabras | ACK=%s\r\n",
