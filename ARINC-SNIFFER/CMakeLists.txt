@@ -106,6 +106,7 @@ target_compile_definitions(sniffer_arinc429_logic PRIVATE
 target_compile_definitions(sniffer_arinc429_logic_pio_frame PRIVATE
     ARINC429_LOGIC_MODE=1
     SNIFFER_SPI_PIO_FRAME_TRANSPORT=1
+    SNIFFER_SPI_DRDY_PURE=1
 )
 
 target_link_libraries(ARINC_SNIFFER_GPIO_TEST

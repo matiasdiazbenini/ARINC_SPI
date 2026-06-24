@@ -47,7 +47,7 @@ domain socket.
 | CE0 / GPIO8 | GP17 | Chip select manual |
 | SCLK | GP18 | Reloj generado por la Pi |
 | MISO | GP19 | Response hacia la Pi |
-| opcional | GP20 | DRDY diagnostico, no usado por polling |
+| GPIO25 | GP20 | DRDY, aviso de snapshot nuevo |
 | GND | GND | Referencia comun |
 
 Configuracion operativa validada:
@@ -56,6 +56,7 @@ Configuracion operativa validada:
 |---|---|
 | Transfer mode | `pio-frame` |
 | Frecuencia | 8 MHz |
+| Request mode | `drdy` con fallback por timeout |
 | CS | Manual por GPIO8 |
 | Setup / hold CS | 100 us / 100 us |
 | Delay entre request y response | 2 ms |

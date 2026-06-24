@@ -10,6 +10,10 @@ from generar_evidencia_osciloscopio_20260619_pdf import (
     PDF_PATH as SCOPE_EVIDENCE_PDF,
     build_pdf as build_scope_evidence_pdf,
 )
+from generar_comandos_servicios_3b_pdf import (
+    PDF_PATH as COMMANDS_PDF,
+    build_pdf as build_commands_pdf,
+)
 
 
 DOCS_DIR = Path(__file__).resolve().parents[1]
@@ -378,6 +382,9 @@ def main():
 
     build_scope_evidence_pdf()
     print(f"PDF generado: {SCOPE_EVIDENCE_PDF}")
+
+    build_commands_pdf()
+    print(f"PDF generado: {COMMANDS_PDF}")
 
 
 if __name__ == "__main__":

@@ -250,9 +250,16 @@ Si en el futuro se quiere trabajar con mas variables simultaneas:
 
 ## 9. DRDY
 
-`DRDY` no esta conectado en la arquitectura validada actual.
+`DRDY` queda implementado como mejora post-validacion:
 
-Esto no invalida resultados, porque el bridge actual funciona por polling. En una evolucion futura puede ser util para reducir polling inutil y hacer el host mas orientado a eventos.
+- Pico sniffer `GP20` -> Raspberry Pi `GPIO25`
+- build esperada: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3`
+- bridge: `ARINC_SPI_REQUEST_MODE=drdy`
+- fallback: timeout periodico si no se detecta DRDY
+
+La arquitectura validada anterior funcionaba por polling y sigue quedando como
+respaldo. El modo nuevo reduce consultas inutiles de snapshot: la sniffer avisa
+cuando hay datos nuevos y la 3B+ consulta por SPI a demanda.
 
 ## 10. Cierre de fase y proximo paso real
 

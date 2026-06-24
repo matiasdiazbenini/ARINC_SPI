@@ -50,6 +50,7 @@ verdict                       = PASS
 
 - [Guia didactica para explicar el sistema al tutor](../pdf/guia_didactica_tutor_arinc429.pdf)
 - [Informe descriptivo integral del sistema](../pdf/informe_descriptivo_sistema_arinc429.pdf)
+- [Comandos de arranque y rescate](../pdf/comandos_servicios_3b_autoarranque.pdf)
 - [Notas de version arinc-logic-v1.0.0](notas_version_arinc_logic_v1.0.0.md)
 - [Informe estadistico de la corrida final de 8 horas](reportes/reporte_corrida_final_stream_8mhz_8h.pdf)
 - [Resumen JSON de la corrida final](datos/summary_corrida_final_stream_8mhz_8h.json)

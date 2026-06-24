@@ -20,7 +20,16 @@ Firmware del tercer nodo Pico encargado de observar el enlace entre `ARINC-TX` y
 - `GP17` = CSn desde la Pi
 - `GP18` = SCK desde la Pi
 - `GP19` = MISO hacia la Pi
-- `GP20` = `DRDY` opcional
+- `GP20` = `DRDY` hacia Raspberry Pi GPIO25
+
+En la build PIO-frame actual, `GP20` queda en modo `DRDY` puro:
+
+- sube cuando el snapshot del sniffer recibe una palabra nueva aceptada
+- baja cuando la 3B+ consulta `GET_LATEST_META`
+- no mezcla heartbeat ni pulsos de diagnostico SPI
+
+Esto permite que el bridge consulte el snapshot por demanda en vez de hacerlo
+por polling continuo. El polling queda solo como respaldo por timeout.
 
 ## Limites conocidos
 
@@ -45,4 +54,10 @@ La build PIO-frame con rechazo estricto debe mostrar por USB:
 
 ```text
 Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-V2
+```
+
+La build con `DRDY` puro debe mostrar:
+
+```text
+Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3
 ```

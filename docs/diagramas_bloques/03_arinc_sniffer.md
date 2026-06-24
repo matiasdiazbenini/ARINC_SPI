@@ -306,13 +306,16 @@ TX antes de que el maestro genere los clocks de respuesta.
 
 ## 11. DRDY
 
-`GP20` se usa como diagnostico:
+En la build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3`, `GP20` se usa como
+`DRDY` puro:
 
-- heartbeat aproximado de 1 Hz;
-- pulso ante actividad SPI.
+- sube cuando el snapshot recibe una palabra aceptada nueva;
+- baja cuando la 3B+ atiende `GET_LATEST_META`;
+- se conecta a `GPIO25` en la Raspberry Pi.
 
-El host actual funciona por polling y no necesita DRDY. Por lo tanto, dejarlo
-desconectado no invalida ni limita las mediciones actuales.
+El host puede seguir usando polling como fallback. La mejora reduce consultas
+inutiles: la 3B+ solo pide snapshot cuando el sniffer avisa que hay estado
+nuevo, o cuando vence el timeout de respaldo.
 
 ## 12. Capacidades y cuellos de botella
 

@@ -16,6 +16,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 - [Informe descriptivo integral del sistema](pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [Guia didactica para explicar al tutor](pdf/guia_didactica_tutor_arinc429.pdf)
+- [Comandos de arranque y rescate](pdf/comandos_servicios_3b_autoarranque.pdf)
 - [resumen_proyecto_arinc429.md](resumen_proyecto_arinc429.md)
 - [resumen_spi_sniffer_pi3.md](resumen_spi_sniffer_pi3.md)
 - [preguntas_respuestas_tutor_arinc429.md](preguntas_respuestas_tutor_arinc429.md)
@@ -44,6 +45,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 - [guia_didactica_tutor_arinc429.pdf](pdf/guia_didactica_tutor_arinc429.pdf)
 - [informe_descriptivo_sistema_arinc429.pdf](pdf/informe_descriptivo_sistema_arinc429.pdf)
+- [comandos_servicios_3b_autoarranque.pdf](pdf/comandos_servicios_3b_autoarranque.pdf)
 - [resumen_proyecto_arinc429.pdf](pdf/resumen_proyecto_arinc429.pdf)
 - [instructivo_osciloscopio_arinc429_logic.pdf](pdf/instructivo_osciloscopio_arinc429_logic.pdf)
 - [evidencia_osciloscopio_arinc429_20260619.pdf](pdf/evidencia_osciloscopio_arinc429_20260619.pdf)

@@ -90,11 +90,16 @@ La Raspberry Pi 3B+ por Wi-Fi podia introducir jitter, carga variable o condicio
 
 La evidencia practica fue clara: con Ethernet directo, IP fija y perfil recomendado, el sistema se sostuvo durante corridas largas con conectividad estable, sin overflow y con muy pocos errores SPI.
 
-## 15. Que significa que DRDY no este conectado?
+## 15. Que significa DRDY en el enlace sniffer -> 3B+?
 
-DRDY seria una linea de data ready para avisar al host que hay informacion nueva disponible. En la arquitectura validada no se usa; el bridge trabaja por polling, consultando al sniffer de forma periodica.
+DRDY es una linea de data ready para avisar al host que hay informacion nueva
+disponible. En la mejora posterior a la validacion, la Pico sniffer usa `GP20`
+como DRDY y la Raspberry Pi lo lee en `GPIO25`.
 
-Esto no invalida la fase actual, porque los resultados demuestran que el polling elegido alcanza para sostener la operacion. DRDY queda como mejora futura para reducir polling inutil y hacer el sistema mas orientado a eventos.
+Cuando el snapshot del sniffer recibe una palabra nueva aceptada, `GP20` sube.
+La 3B+ detecta ese nivel, consulta `GET_LATEST_META` y luego los slots
+necesarios por SPI. Al atender `GET_LATEST_META`, la sniffer baja DRDY. El
+polling queda solo como fallback por timeout.
 
 ## 16. Como se interpreta la corrida larga con mas de 27 millones de palabras?
 

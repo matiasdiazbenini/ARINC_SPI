@@ -66,6 +66,9 @@
 #define ENABLE_SPI_IRQ_TRANSPORT 1u
 #endif
 #define ENABLE_SPI_TX_DMA 0u
+#ifndef SNIFFER_SPI_DRDY_PURE
+#define SNIFFER_SPI_DRDY_PURE SNIFFER_SPI_PIO_FRAME_TRANSPORT
+#endif
 #define SNIFFER_SPI_PORT          spi0
 #define SNIFFER_SPI_IRQ           SPI0_IRQ
 #define SNIFFER_SPI_PIO           pio1
@@ -80,7 +83,7 @@
 #define ARINC429_LOGIC_MODE       0u
 #endif
 #if SNIFFER_SPI_PIO_FRAME_TRANSPORT && ARINC429_LOGIC_MODE
-#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-V2"
+#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3"
 #elif SNIFFER_SPI_PIO_FRAME_TRANSPORT
 #define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-RL1"
 #elif ARINC429_LOGIC_MODE
@@ -568,11 +571,15 @@ static void event_queue_clear(event_queue_t *queue) {
 }
 
 static void spi_diag_gpio_apply(void) {
+#if SNIFFER_SPI_DRDY_PURE
+    const bool output_high = g_spi_diag_gpio.drdy_active;
+#else
     const uint64_t now_us = time_us_64();
     const bool pulse_active = now_us < g_spi_diag_gpio.spi_pulse_until_us;
     const bool output_high = g_spi_diag_gpio.drdy_active ||
                              g_spi_diag_gpio.heartbeat_level ||
                              pulse_active;
+#endif
 
     gpio_put(SNIFFER_SPI_DRDY_PIN, output_high);
 }
@@ -584,6 +591,9 @@ static void spi_diag_gpio_init(void) {
 }
 
 static void spi_diag_gpio_service(void) {
+#if SNIFFER_SPI_DRDY_PURE
+    spi_diag_gpio_apply();
+#else
     const uint64_t now_us = time_us_64();
 
     while (now_us >= g_spi_diag_gpio.next_heartbeat_toggle_us) {
@@ -592,6 +602,7 @@ static void spi_diag_gpio_service(void) {
     }
 
     spi_diag_gpio_apply();
+#endif
 }
 
 static void spi_diag_gpio_set_drdy(bool active) {
@@ -600,8 +611,12 @@ static void spi_diag_gpio_set_drdy(bool active) {
 }
 
 static void spi_diag_gpio_note_spi_activity(void) {
+#if SNIFFER_SPI_DRDY_PURE
+    spi_diag_gpio_apply();
+#else
     g_spi_diag_gpio.spi_pulse_until_us = time_us_64() + SPI_DIAG_PULSE_US;
     spi_diag_gpio_apply();
+#endif
 }
 
 static void update_spi_drdy(uint16_t queued_events) {
@@ -675,6 +690,7 @@ static void latest_snapshot_update(latest_snapshot_state_t *snapshot,
     slot->update_counter = ++snapshot->last_update_counter;
     ++slot->hit_count;
     ++snapshot->snapshot_revision;
+    spi_diag_gpio_set_drdy(true);
 }
 
 static bool event_queue_push(event_queue_t *queue, const spi_event_t *event, rx_stats_t *stats) {
@@ -1460,6 +1476,7 @@ static void process_spi_request(spi_link_state_t *spi_link,
                                          stats,
                                          response_sequence,
                                          event_queue->queued);
+            update_spi_drdy(event_queue->queued);
             break;
 
         case SNIFFER_SPI_CMD_GET_LATEST_SLOT: {
@@ -1824,7 +1841,10 @@ int main(void) {
            ENABLE_SPI_IRQ_TRANSPORT ? "ON" : "OFF",
            ENABLE_SPI_TX_DMA ? "ON" : "OFF",
            SNIFFER_SPI_PIO_FRAME_TRANSPORT ? "ON" : "OFF");
-    printf("Diag GP20: heartbeat 1 Hz + pulso ante actividad SPI\r\n");
+    printf("GP20/DRDY: %s\r\n",
+           SNIFFER_SPI_DRDY_PURE ?
+           "alto cuando hay snapshot nuevo; se limpia con GET_LATEST_META" :
+           "heartbeat 1 Hz + pulso ante actividad SPI");
     printf("Bit rate objetivo: %u bps\r\n", BIT_RATE_HZ);
     printf("ACK observado: LABEL=0x%02X SDI=%u\r\n", ACK_LABEL, ACK_SDI);
     printf("Modo ARINC: %s\r\n", ARINC429_LOGIC_MODE ? "logic" : "legacy");

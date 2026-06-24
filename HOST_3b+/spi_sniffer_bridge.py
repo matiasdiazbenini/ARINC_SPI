@@ -101,6 +101,12 @@ SPI_FRAME_RESPONSE_DELAY_SEC = float(os.getenv("ARINC_SPI_FRAME_RESPONSE_DELAY_S
 SPI_RESPONSE_RETRIES = int(os.getenv("ARINC_SPI_RESPONSE_RETRIES", "4"))
 SPI_RESET_BURST = int(os.getenv("ARINC_SPI_RESET_BURST", "3"))
 SPI_RESPONSE_WINDOW_BYTES = int(os.getenv("ARINC_SPI_RESPONSE_WINDOW_BYTES", "48"))
+SPI_REQUEST_MODE = os.getenv("ARINC_SPI_REQUEST_MODE", "poll").strip().lower()
+if SPI_REQUEST_MODE not in ("poll", "drdy"):
+    SPI_REQUEST_MODE = "poll"
+SPI_DRDY_GPIO = int(os.getenv("ARINC_SPI_DRDY_GPIO", "25"))
+SPI_DRDY_POLL_SEC = float(os.getenv("ARINC_SPI_DRDY_POLL_SEC", "0.010"))
+SPI_DRDY_TIMEOUT_SEC = float(os.getenv("ARINC_SPI_DRDY_TIMEOUT_SEC", "0.250"))
 
 ACK_LABEL = 0xAC
 ACK_SDI = 0x03
@@ -124,6 +130,13 @@ bridge_state = {
     "spi_cs_hold_us": SPI_CS_HOLD_US if SPI_MANUAL_CS else 0,
     "spi_transfer_mode": "frame" if SPI_TRANSFER_MODE == "auto" else SPI_TRANSFER_MODE,
     "spi_requested_transfer_mode": SPI_TRANSFER_MODE,
+    "spi_request_mode": SPI_REQUEST_MODE,
+    "spi_effective_request_mode": SPI_REQUEST_MODE,
+    "spi_drdy_gpio": SPI_DRDY_GPIO if SPI_REQUEST_MODE == "drdy" else None,
+    "spi_drdy_level": None,
+    "spi_drdy_events": 0,
+    "spi_drdy_timeouts": 0,
+    "spi_drdy_error": "",
     "last_rx_time": None,
     "total_events": 0,
     "ack_events": 0,
@@ -204,6 +217,44 @@ class ManualCsController:
 
     def high(self) -> None:
         self._run_set("op", "dh")
+
+
+class GpioInputController:
+    def __init__(self, gpio: int):
+        self.gpio = gpio
+        self.backend = self._detect_backend()
+        self._configure_input()
+
+    @staticmethod
+    def _detect_backend() -> str:
+        for candidate in ("pinctrl", "raspi-gpio"):
+            if shutil.which(candidate):
+                return candidate
+        raise RuntimeError("No se encontro pinctrl ni raspi-gpio para leer DRDY en la Raspberry Pi.")
+
+    def _configure_input(self) -> None:
+        subprocess.run([self.backend, "set", str(self.gpio), "ip", "pd"], check=True)
+
+    @staticmethod
+    def _parse_level(output: str) -> int:
+        text = output.lower()
+        padded = f" {text} "
+
+        if "level=1" in text or " hi " in padded or text.endswith(" hi"):
+            return 1
+        if "level=0" in text or " lo " in padded or text.endswith(" lo"):
+            return 0
+
+        raise RuntimeError(f"No pude interpretar el nivel GPIO desde: {output}")
+
+    def read_level(self) -> int:
+        completed = subprocess.run(
+            [self.backend, "get", str(self.gpio)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return self._parse_level(completed.stdout.strip())
 
 
 class SpiSnifferClient:
@@ -422,6 +473,7 @@ class SpiSnifferClient:
 
 
 client = SpiSnifferClient()
+drdy_controller = None
 
 
 def label_name(label: int) -> str:
@@ -534,6 +586,22 @@ def update_sniffer_stats(stats_payload: dict):
         bridge_state["sniffer_stats"] = stats_payload
 
 
+def get_drdy_controller():
+    global drdy_controller
+    if SPI_REQUEST_MODE != "drdy":
+        return None
+    if drdy_controller is None:
+        drdy_controller = GpioInputController(SPI_DRDY_GPIO)
+    return drdy_controller
+
+
+def read_drdy_level():
+    controller = get_drdy_controller()
+    if controller is None:
+        return None
+    return controller.read_level()
+
+
 def reset_bridge_session_state(stats_payload: dict):
     with data_lock:
         records.clear()
@@ -553,6 +621,9 @@ def reset_bridge_session_state(stats_payload: dict):
         bridge_state["slot_evictions"] = 0
         bridge_state["fwd_startup_resync_events"] = 0
         bridge_state["fwd_operational_resync_events"] = 0
+        bridge_state["spi_drdy_events"] = 0
+        bridge_state["spi_drdy_timeouts"] = 0
+        bridge_state["spi_drdy_error"] = ""
 
 
 def mark_bridge_ok():
@@ -579,11 +650,38 @@ def mark_bridge_error(exc: Exception):
         bridge_state["last_error"] = str(exc)
 
 
+def refresh_snapshot_from_sniffer(known_revision: int) -> int:
+    with bridge_lock:
+        meta_payload = client.get_latest_meta()
+    mark_bridge_ok()
+
+    if meta_payload["snapshot_revision"] != known_revision:
+        slots_payload = []
+        for slot_index in range(meta_payload["slot_count"]):
+            with bridge_lock:
+                slot_payload = client.get_latest_slot(slot_index)
+            slots_payload.append(slot_payload)
+        update_snapshot_state(meta_payload, slots_payload)
+        return meta_payload["snapshot_revision"]
+
+    with data_lock:
+        bridge_state["snapshot_revision"] = meta_payload["snapshot_revision"]
+        bridge_state["slot_evictions"] = meta_payload["slot_evictions"]
+        bridge_state["last_update_counter"] = meta_payload["last_update_counter"]
+        bridge_state["slot_count"] = meta_payload["slot_count"]
+        bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
+        bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
+        bridge_state["connected"] = True
+
+    return known_revision
+
+
 def bridge_worker():
     last_stats_refresh = 0.0
     last_filter_refresh = 0.0
     last_meta_refresh = 0.0
     known_revision = -1
+    last_drdy_level = 0
 
     mark_bridge_running()
     while not bridge_stop.is_set():
@@ -592,6 +690,8 @@ def bridge_worker():
                 client.open()
 
             now = time.time()
+            request_snapshot = False
+
             if now - last_stats_refresh >= STATS_REFRESH_SEC:
                 with bridge_lock:
                     stats_payload = client.get_stats()
@@ -599,27 +699,35 @@ def bridge_worker():
                 mark_bridge_ok()
                 last_stats_refresh = now
 
-            if now - last_meta_refresh >= POLL_INTERVAL_SEC:
-                with bridge_lock:
-                    meta_payload = client.get_latest_meta()
-                mark_bridge_ok()
-                if meta_payload["snapshot_revision"] != known_revision:
-                    slots_payload = []
-                    for slot_index in range(meta_payload["slot_count"]):
-                        with bridge_lock:
-                            slot_payload = client.get_latest_slot(slot_index)
-                        slots_payload.append(slot_payload)
-                    update_snapshot_state(meta_payload, slots_payload)
-                    known_revision = meta_payload["snapshot_revision"]
-                else:
+            if SPI_REQUEST_MODE == "drdy":
+                try:
+                    drdy_level = read_drdy_level()
                     with data_lock:
-                        bridge_state["snapshot_revision"] = meta_payload["snapshot_revision"]
-                        bridge_state["slot_evictions"] = meta_payload["slot_evictions"]
-                        bridge_state["last_update_counter"] = meta_payload["last_update_counter"]
-                        bridge_state["slot_count"] = meta_payload["slot_count"]
-                        bridge_state["fwd_startup_resync_events"] = meta_payload["fwd_startup_resync_events"]
-                        bridge_state["fwd_operational_resync_events"] = meta_payload["fwd_operational_resync_events"]
-                        bridge_state["connected"] = True
+                        bridge_state["spi_effective_request_mode"] = "drdy"
+                        bridge_state["spi_drdy_level"] = drdy_level
+                        bridge_state["spi_drdy_error"] = ""
+
+                    if drdy_level and not last_drdy_level:
+                        with data_lock:
+                            bridge_state["spi_drdy_events"] += 1
+                    if drdy_level:
+                        request_snapshot = True
+                    elif now - last_meta_refresh >= SPI_DRDY_TIMEOUT_SEC:
+                        request_snapshot = True
+                        with data_lock:
+                            bridge_state["spi_drdy_timeouts"] += 1
+                    last_drdy_level = int(bool(drdy_level))
+                except Exception as exc:
+                    request_snapshot = now - last_meta_refresh >= POLL_INTERVAL_SEC
+                    with data_lock:
+                        bridge_state["spi_effective_request_mode"] = "poll-fallback"
+                        bridge_state["spi_drdy_level"] = None
+                        bridge_state["spi_drdy_error"] = str(exc)
+            else:
+                request_snapshot = now - last_meta_refresh >= POLL_INTERVAL_SEC
+
+            if request_snapshot:
+                known_revision = refresh_snapshot_from_sniffer(known_revision)
                 last_meta_refresh = now
 
             if now - last_filter_refresh >= FILTER_REFRESH_SEC:
@@ -629,7 +737,10 @@ def bridge_worker():
                 mark_bridge_ok()
                 last_filter_refresh = now
 
-            time.sleep(POLL_INTERVAL_SEC)
+            if SPI_REQUEST_MODE == "drdy":
+                time.sleep(max(SPI_DRDY_POLL_SEC, 0.001))
+            else:
+                time.sleep(POLL_INTERVAL_SEC)
         except Exception as exc:  # pragma: no cover - depende del hardware SPI
             mark_bridge_error(exc)
             with bridge_lock:
@@ -662,6 +773,13 @@ def compute_dashboard_stats() -> dict:
         spi_manual_cs = bridge_state["spi_manual_cs"]
         spi_cs_setup_us = bridge_state["spi_cs_setup_us"]
         spi_cs_hold_us = bridge_state["spi_cs_hold_us"]
+        spi_request_mode = bridge_state["spi_request_mode"]
+        spi_effective_request_mode = bridge_state["spi_effective_request_mode"]
+        spi_drdy_gpio = bridge_state["spi_drdy_gpio"]
+        spi_drdy_level = bridge_state["spi_drdy_level"]
+        spi_drdy_events = bridge_state["spi_drdy_events"]
+        spi_drdy_timeouts = bridge_state["spi_drdy_timeouts"]
+        spi_drdy_error = bridge_state["spi_drdy_error"]
         last_rx_time = bridge_state["last_rx_time"]
         ack_events = bridge_state["ack_events"]
         spi_errors = bridge_state["spi_errors"]
@@ -719,6 +837,13 @@ def compute_dashboard_stats() -> dict:
         "spi_manual_cs": spi_manual_cs,
         "spi_cs_setup_us": spi_cs_setup_us,
         "spi_cs_hold_us": spi_cs_hold_us,
+        "spi_request_mode": spi_request_mode,
+        "spi_effective_request_mode": spi_effective_request_mode,
+        "spi_drdy_gpio": spi_drdy_gpio,
+        "spi_drdy_level": spi_drdy_level,
+        "spi_drdy_events": spi_drdy_events,
+        "spi_drdy_timeouts": spi_drdy_timeouts,
+        "spi_drdy_error": spi_drdy_error,
         "source_mode": "spi_bridge",
         "ack_events": ack_events,
         "spi_errors": spi_errors,
@@ -873,6 +998,15 @@ def metrics():
         "# HELP arinc_spi_error_armed Estado del contador operativo de errores SPI.",
         "# TYPE arinc_spi_error_armed gauge",
         f"arinc_spi_error_armed {1 if snapshot['spi_error_armed'] else 0}",
+        "# HELP arinc_spi_drdy_level Nivel actual observado en GPIO DRDY de la Raspberry Pi.",
+        "# TYPE arinc_spi_drdy_level gauge",
+        f"arinc_spi_drdy_level {-1 if snapshot['spi_drdy_level'] is None else int(snapshot['spi_drdy_level'])}",
+        "# HELP arinc_spi_drdy_events_total Flancos ascendentes DRDY observados por el bridge.",
+        "# TYPE arinc_spi_drdy_events_total gauge",
+        f"arinc_spi_drdy_events_total {snapshot['spi_drdy_events']}",
+        "# HELP arinc_spi_drdy_timeouts_total Consultas de snapshot realizadas por timeout de respaldo.",
+        "# TYPE arinc_spi_drdy_timeouts_total gauge",
+        f"arinc_spi_drdy_timeouts_total {snapshot['spi_drdy_timeouts']}",
         "# HELP arinc_slot_evictions_total Reemplazos de slots del snapshot del sniffer.",
         "# TYPE arinc_slot_evictions_total gauge",
         f"arinc_slot_evictions_total {snapshot['slot_evictions']}",

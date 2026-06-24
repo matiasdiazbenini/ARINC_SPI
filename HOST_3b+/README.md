@@ -160,6 +160,10 @@ export ARINC_SPI_CS_HOLD_US=100
 export ARINC_SPI_HZ=8000000
 export ARINC_SPI_BYTE_DELAY_US=0
 export ARINC_SPI_FRAME_RESPONSE_DELAY_SEC=0.002
+export ARINC_SPI_REQUEST_MODE=drdy
+export ARINC_SPI_DRDY_GPIO=25
+export ARINC_SPI_DRDY_POLL_SEC=0.010
+export ARINC_SPI_DRDY_TIMEOUT_SEC=0.250
 ```
 
 Este perfil fue validado durante aproximadamente `9 horas`, con mas de `18.29 M` palabras aceptadas y `spi_errors = 0`. Para una puesta en marcha especialmente conservadora puede usarse `ARINC_SPI_HZ=400000`.
@@ -173,7 +177,7 @@ sniffer_arinc429_logic_pio_frame
 Build tag esperado por USB:
 
 ```text
-SPI-PIOFRAME-ARINC429
+SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-V3
 ```
 
 La prueba de `frame` completo contra el SPI slave hardware mostro desincronizacion. El problema quedo aislado al uso del bloque SPI slave hardware de la Pico para este caso. La solucion validada fue implementar el slave SPI por PIO y usar `ARINC_SPI_TRANSFER_MODE=pio-frame`.
@@ -288,6 +292,17 @@ El bridge debe estar detenido durante esta prueba para evitar dos procesos acced
 
 El barrido se detiene en el primer punto no perfecto. Si ocurre antes de `50 MHz`, reiniciar la Pico sniffer y ejecutar `50 MHz` como punto aislado. Esto evita que una perdida de flancos deje el PIO desalineado y contamine las frecuencias siguientes.
 
-## Nota
+## DRDY como mecanismo de peticion
 
-El bridge actual trabaja por polling. `DRDY` existe como opcion fisica, pero no es requisito para la arquitectura validada hasta ahora.
+El bridge actual usa `DRDY` como mecanismo principal para consultar el snapshot:
+
+- Pico sniffer `GP20` -> Raspberry Pi `GPIO25`
+- `GP20` sube cuando hay snapshot nuevo
+- la 3B+ lee `GPIO25`
+- si esta alto, pide `GET_LATEST_META` y los slots necesarios por SPI
+- la sniffer baja `DRDY` cuando atiende `GET_LATEST_META`
+
+El polling no desaparece del todo: queda un timeout de respaldo
+(`ARINC_SPI_DRDY_TIMEOUT_SEC=0.250`) para recuperar estado si se pierde una
+transicion o si el cable `DRDY` no esta conectado. En ese caso `/stats` muestra
+`spi_effective_request_mode = poll-fallback`.
