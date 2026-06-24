@@ -135,6 +135,9 @@ bridge_state = {
     "spi_drdy_gpio": SPI_DRDY_GPIO if SPI_REQUEST_MODE == "drdy" else None,
     "spi_drdy_level": None,
     "spi_drdy_events": 0,
+    "spi_drdy_requests": 0,
+    "spi_timeout_requests": 0,
+    "spi_snapshot_requests": 0,
     "spi_drdy_timeouts": 0,
     "spi_drdy_error": "",
     "last_rx_time": None,
@@ -622,6 +625,9 @@ def reset_bridge_session_state(stats_payload: dict):
         bridge_state["fwd_startup_resync_events"] = 0
         bridge_state["fwd_operational_resync_events"] = 0
         bridge_state["spi_drdy_events"] = 0
+        bridge_state["spi_drdy_requests"] = 0
+        bridge_state["spi_timeout_requests"] = 0
+        bridge_state["spi_snapshot_requests"] = 0
         bridge_state["spi_drdy_timeouts"] = 0
         bridge_state["spi_drdy_error"] = ""
 
@@ -691,6 +697,7 @@ def bridge_worker():
 
             now = time.time()
             request_snapshot = False
+            request_reason = ""
 
             if now - last_stats_refresh >= STATS_REFRESH_SEC:
                 with bridge_lock:
@@ -712,21 +719,31 @@ def bridge_worker():
                             bridge_state["spi_drdy_events"] += 1
                     if drdy_level:
                         request_snapshot = True
+                        request_reason = "drdy"
                     elif now - last_meta_refresh >= SPI_DRDY_TIMEOUT_SEC:
                         request_snapshot = True
+                        request_reason = "timeout"
                         with data_lock:
                             bridge_state["spi_drdy_timeouts"] += 1
                     last_drdy_level = int(bool(drdy_level))
                 except Exception as exc:
                     request_snapshot = now - last_meta_refresh >= POLL_INTERVAL_SEC
+                    request_reason = "poll-fallback" if request_snapshot else ""
                     with data_lock:
                         bridge_state["spi_effective_request_mode"] = "poll-fallback"
                         bridge_state["spi_drdy_level"] = None
                         bridge_state["spi_drdy_error"] = str(exc)
             else:
                 request_snapshot = now - last_meta_refresh >= POLL_INTERVAL_SEC
+                request_reason = "poll" if request_snapshot else ""
 
             if request_snapshot:
+                with data_lock:
+                    bridge_state["spi_snapshot_requests"] += 1
+                    if request_reason == "drdy":
+                        bridge_state["spi_drdy_requests"] += 1
+                    elif request_reason == "timeout":
+                        bridge_state["spi_timeout_requests"] += 1
                 known_revision = refresh_snapshot_from_sniffer(known_revision)
                 last_meta_refresh = now
 
@@ -778,6 +795,9 @@ def compute_dashboard_stats() -> dict:
         spi_drdy_gpio = bridge_state["spi_drdy_gpio"]
         spi_drdy_level = bridge_state["spi_drdy_level"]
         spi_drdy_events = bridge_state["spi_drdy_events"]
+        spi_drdy_requests = bridge_state["spi_drdy_requests"]
+        spi_timeout_requests = bridge_state["spi_timeout_requests"]
+        spi_snapshot_requests = bridge_state["spi_snapshot_requests"]
         spi_drdy_timeouts = bridge_state["spi_drdy_timeouts"]
         spi_drdy_error = bridge_state["spi_drdy_error"]
         last_rx_time = bridge_state["last_rx_time"]
@@ -842,6 +862,9 @@ def compute_dashboard_stats() -> dict:
         "spi_drdy_gpio": spi_drdy_gpio,
         "spi_drdy_level": spi_drdy_level,
         "spi_drdy_events": spi_drdy_events,
+        "spi_drdy_requests": spi_drdy_requests,
+        "spi_timeout_requests": spi_timeout_requests,
+        "spi_snapshot_requests": spi_snapshot_requests,
         "spi_drdy_timeouts": spi_drdy_timeouts,
         "spi_drdy_error": spi_drdy_error,
         "source_mode": "spi_bridge",
@@ -1004,6 +1027,15 @@ def metrics():
         "# HELP arinc_spi_drdy_events_total Flancos ascendentes DRDY observados por el bridge.",
         "# TYPE arinc_spi_drdy_events_total gauge",
         f"arinc_spi_drdy_events_total {snapshot['spi_drdy_events']}",
+        "# HELP arinc_spi_snapshot_requests_total Consultas de snapshot realizadas por el bridge.",
+        "# TYPE arinc_spi_snapshot_requests_total gauge",
+        f"arinc_spi_snapshot_requests_total {snapshot['spi_snapshot_requests']}",
+        "# HELP arinc_spi_drdy_requests_total Consultas de snapshot disparadas por DRDY alto.",
+        "# TYPE arinc_spi_drdy_requests_total gauge",
+        f"arinc_spi_drdy_requests_total {snapshot['spi_drdy_requests']}",
+        "# HELP arinc_spi_timeout_requests_total Consultas de snapshot disparadas por timeout de respaldo.",
+        "# TYPE arinc_spi_timeout_requests_total gauge",
+        f"arinc_spi_timeout_requests_total {snapshot['spi_timeout_requests']}",
         "# HELP arinc_spi_drdy_timeouts_total Consultas de snapshot realizadas por timeout de respaldo.",
         "# TYPE arinc_spi_drdy_timeouts_total gauge",
         f"arinc_spi_drdy_timeouts_total {snapshot['spi_drdy_timeouts']}",

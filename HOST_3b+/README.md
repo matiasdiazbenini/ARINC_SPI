@@ -306,3 +306,15 @@ El polling no desaparece del todo: queda un timeout de respaldo
 (`ARINC_SPI_DRDY_TIMEOUT_SEC=0.250`) para recuperar estado si se pierde una
 transicion o si el cable `DRDY` no esta conectado. En ese caso `/stats` muestra
 `spi_effective_request_mode = poll-fallback`.
+
+Contadores utiles para validar este modo:
+
+- `spi_snapshot_requests`: consultas totales de snapshot realizadas por el bridge.
+- `spi_drdy_requests`: consultas disparadas porque `GPIO25/DRDY` estaba alto.
+- `spi_timeout_requests`: consultas disparadas por el timeout de respaldo.
+- `spi_drdy_events`: flancos ascendentes observados en `DRDY`.
+
+En stream continuo, `spi_drdy_events` puede ser bajo aunque el modo funcione
+bien: si el sniffer produce palabras continuamente, `DRDY` puede permanecer casi
+siempre alto. En ese caso el contador importante es `spi_drdy_requests`, no los
+flancos.
