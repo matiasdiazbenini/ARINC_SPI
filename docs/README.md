@@ -69,6 +69,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [evidencia_spi_pio_frame_post_tutor.md](evidencia_spi_pio_frame_post_tutor.md)
 - [evidencia_stream_aleatorio_post_tutor.md](evidencia_stream_aleatorio_post_tutor.md)
 - [evidencia_autorate_100k_12k5.md](evidencia_autorate_100k_12k5.md)
+- [evidencia_corridas_finales_autorate_8h.md](evidencia_corridas_finales_autorate_8h.md)
 - [evidencia_recuperacion_fallas_v5.md](evidencia_recuperacion_fallas_v5.md)
 - [evidencia_barrido_frecuencia_spi.md](evidencia_barrido_frecuencia_spi.md)
 - [evidencia_osciloscopio_arinc429_20260619.md](evidencia_osciloscopio_arinc429_20260619.md)

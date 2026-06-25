@@ -17,7 +17,7 @@ a `100 kbps` o `12.5 kbps`.
 - SNIFFER:
   - `sniffer_arinc429_logic_pio_frame`
   - build esperada:
-    - `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4`
+    - `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5`
 - Bridge 3B+:
   - `ARINC_SPI_TRANSFER_MODE=pio-frame`
   - `ARINC_SPI_REQUEST_MODE=drdy`
@@ -77,8 +77,6 @@ Resultado medido:
 ```text
 accepted_words / received_words = 68865 / 229544 = 30.0%
 ```
-
-## Estado
 
 ## Corridas de 30 minutos
 
@@ -190,3 +188,38 @@ La funcionalidad autorate queda validada:
 - el RX stream recibe sin configuracion especifica de velocidad;
 - el sniffer detecta `100 kbps` y `12.5 kbps` y lo exporta al bridge;
 - el bridge, dashboard, Prometheus y recorder ya tienen campos para reportarlo.
+
+## Corridas finales de 8 horas
+
+La validacion final se extendio con dos corridas largas independientes:
+
+| Metrica | 12.5 kbps | 100 kbps |
+|---|---:|---:|
+| Sesion | `20260619_212806_corrida8h_12k5` | `20260620_065154_corrida8h_100k` |
+| Resultado | PASS | PASS |
+| Motivo de cierre | duration_reached | duration_reached |
+| Duracion | 28801.451 s | 28801.407 s |
+| Muestras | 5760 | 5760 |
+| Velocidad detectada | 12500 bps | 100000 bps |
+| Palabras recibidas | 9876638 | 76707606 |
+| Palabras aceptadas | 2962992 | 23012283 |
+| Palabras filtradas | 6913646 | 53695323 |
+| Tasa media aceptada | 102.876 words/s | 798.999 words/s |
+| Tasa maxima aceptada | 108.233 words/s | 828.346 words/s |
+| Errores de paridad | 0 | 0 |
+| Errores SPI operativos | 0 | 0 |
+| Overflow | 0 | 0 |
+| Drops SPI | 0 | 0 |
+| Resync FWD operativos | 0 | 0 |
+| Muestras desconectadas | 0 | 0 |
+| Muestras con `last_error` | 0 | 0 |
+
+La relacion entre tasas medias aceptadas fue:
+
+```text
+798.999 / 102.876 = 7.77
+```
+
+Esto es consistente con la relacion ideal `8:1` entre `100 kbps` y `12.5 kbps`.
+La evidencia detallada queda en
+[evidencia_corridas_finales_autorate_8h.md](evidencia_corridas_finales_autorate_8h.md).

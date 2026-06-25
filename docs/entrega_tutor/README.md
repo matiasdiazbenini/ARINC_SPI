@@ -10,7 +10,7 @@ tramas completas y observabilidad en Raspberry Pi 3B+.
 Configuracion final:
 
 ```text
-ARINC-TX       arinc_tx_arinc429_logic_stream
+ARINC-TX       arinc_tx_arinc429_logic_stream_autorate
 ARINC-RX       arinc_rx_arinc429_logic_stream
 ARINC-SNIFFER  sniffer_arinc429_logic_pio_frame
 SPI            PIO-frame, 8 MHz, CS manual
@@ -22,28 +22,38 @@ Validaciones principales:
 
 | Prueba | Resultado |
 | --- | --- |
-| Enlace bipolar RZ logico | 100 kbps, 10 us/bit, 5 us activos |
+| Enlace bipolar RZ logico | 100 kbps y 12.5 kbps |
 | SPI por trama completa | PIO-frame estable a 8 MHz |
 | Barrido SPI | 8 y 9 MHz PASS; 10 MHz parcial; 16 y 50 MHz FAIL |
 | Paridad estricta | 1 error cada 100 palabras detectado y descartado |
-| Corrida final | 8 horas, 58.273.540 palabras, cero errores operativos |
+| Corridas finales autorate | 8 horas a 100 kbps y 8 horas a 12.5 kbps, cero errores operativos |
 | Stream aleatorio | Sin lotes fijos y sin ACK por REV |
 | SNIFFER | Pasivo sobre FWD/REV; solo transmite hacia la 3B+ por SPI |
 
-Corrida final de ocho horas:
+Corridas finales de ocho horas:
 
 ```text
-received_words                = 58273540
-accepted_words                = 17482062
-filtered_words                = 40791478
-parity_errors_sniffer         = 0
-spi_errors                    = 0
-spi_startup_errors            = 0
-overflow_events               = 0
-spi_drop_events               = 0
-fwd_operational_resync_events = 0
-counter_balance_words         = 0
-verdict                       = PASS
+12.5 kbps:
+  received_words                = 9876638
+  accepted_words                = 2962992
+  filtered_words                = 6913646
+  spi_errors                    = 0
+  parity_errors_sniffer         = 0
+  overflow_events               = 0
+  spi_drop_events               = 0
+  fwd_operational_resync_events = 0
+  verdict                       = PASS
+
+100 kbps:
+  received_words                = 76707606
+  accepted_words                = 23012283
+  filtered_words                = 53695323
+  spi_errors                    = 0
+  parity_errors_sniffer         = 0
+  overflow_events               = 0
+  spi_drop_events               = 0
+  fwd_operational_resync_events = 0
+  verdict                       = PASS
 ```
 
 ## Informes incluidos
@@ -51,7 +61,12 @@ verdict                       = PASS
 - [Guia didactica para explicar el sistema al tutor](../pdf/guia_didactica_tutor_arinc429.pdf)
 - [Informe descriptivo integral del sistema](../pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [Comandos de arranque y rescate](../pdf/comandos_servicios_3b_autoarranque.pdf)
+- [Notas de version arinc-logic-v1.1.0](notas_version_arinc_logic_v1.1.0.md)
 - [Notas de version arinc-logic-v1.0.0](notas_version_arinc_logic_v1.0.0.md)
+- [Informe estadistico de corrida 8 h a 12.5 kbps](reportes/reporte_corrida8h_12k5.pdf)
+- [Informe estadistico de corrida 8 h a 100 kbps](reportes/reporte_corrida8h_100k.pdf)
+- [Resumen JSON de corrida 8 h a 12.5 kbps](datos/summary_corrida8h_12k5.json)
+- [Resumen JSON de corrida 8 h a 100 kbps](datos/summary_corrida8h_100k.json)
 - [Informe estadistico de la corrida final de 8 horas](reportes/reporte_corrida_final_stream_8mhz_8h.pdf)
 - [Resumen JSON de la corrida final](datos/summary_corrida_final_stream_8mhz_8h.json)
 - [Informe de la prueba de paridad estricta](reportes/reporte_prueba_paridad_estricta_5m.pdf)
@@ -68,6 +83,8 @@ JSON y PDF incluidos permiten auditar configuracion, contadores y veredicto.
 ## Evidencias tecnicas
 
 - [Corrida final stream a 8 MHz](../evidencia_corrida_final_stream_8mhz_8h.md)
+- [Corridas finales autorate de 8 h](../evidencia_corridas_finales_autorate_8h.md)
+- [Autorate 100 kbps / 12.5 kbps](../evidencia_autorate_100k_12k5.md)
 - [Prueba de paridad estricta](../evidencia_prueba_paridad_estricta_20260605.md)
 - [Barrido SPI hasta 50 MHz](../evidencia_barrido_frecuencia_spi.md)
 - [SPI PIO-frame post tutor](../evidencia_spi_pio_frame_post_tutor.md)

@@ -100,6 +100,30 @@ Se comprobo:
     - `accepted_words = 1,442,318`
     - `spi_errors = 0`
     - `parity_errors_sniffer = 0`
+  - validacion final de `8 h` a `12.5 kbps`:
+    - sesion: `20260619_212806_corrida8h_12k5`
+    - `detected_bit_rate_bps = 12500`
+    - `received_words = 9,876,638`
+    - `accepted_words = 2,962,992`
+    - `spi_errors = 0`
+    - `parity_errors_sniffer = 0`
+    - `overflow_events = 0`
+    - `spi_drop_events = 0`
+    - `fwd_operational_resync_events = 0`
+    - `supervisor_health = ok`
+    - resultado: `PASS`
+  - validacion final de `8 h` a `100 kbps`:
+    - sesion: `20260620_065154_corrida8h_100k`
+    - `detected_bit_rate_bps = 100000`
+    - `received_words = 76,707,606`
+    - `accepted_words = 23,012,283`
+    - `spi_errors = 0`
+    - `parity_errors_sniffer = 0`
+    - `overflow_events = 0`
+    - `spi_drop_events = 0`
+    - `fwd_operational_resync_events = 0`
+    - `supervisor_health = ok`
+    - resultado: `PASS`
 - resync FWD separados entre arranque y regimen operativo
 - registrador CSV/JSON/PDF agregado para pruebas en la 3B+
 - target recomendado del sniffer logico: `sniffer_arinc429_logic_pio_frame`
@@ -309,7 +333,34 @@ cuando hay datos nuevos y la 3B+ consulta por SPI a demanda.
 
 Baseline final:
 
-1. corrida final sin inyeccion:
+1. corridas finales autorate:
+   - evidencia:
+     [evidencia_corridas_finales_autorate_8h.md](docs/evidencia_corridas_finales_autorate_8h.md)
+   - `12.5 kbps`:
+     - sesion: `20260619_212806_corrida8h_12k5`
+     - duracion: `28801.451 s`
+     - `received_words = 9,876,638`
+     - `accepted_words = 2,962,992`
+     - `filtered_words = 6,913,646`
+     - `parity_errors_sniffer = 0`
+     - `spi_errors = 0`
+     - `overflow_events = 0`
+     - `spi_drop_events = 0`
+     - `fwd_operational_resync_events = 0`
+     - resultado: `PASS`
+   - `100 kbps`:
+     - sesion: `20260620_065154_corrida8h_100k`
+     - duracion: `28801.407 s`
+     - `received_words = 76,707,606`
+     - `accepted_words = 23,012,283`
+     - `filtered_words = 53,695,323`
+     - `parity_errors_sniffer = 0`
+     - `spi_errors = 0`
+     - `overflow_events = 0`
+     - `spi_drop_events = 0`
+     - `fwd_operational_resync_events = 0`
+     - resultado: `PASS`
+2. corrida final sin inyeccion previa:
    - sesion: `20260606_022347_corrida_final_stream_8mhz_8h`
    - duracion: `8.0004 h`
    - `received_words = 58273540`
@@ -324,16 +375,16 @@ Baseline final:
    - resultado: `PASS`
    - evidencia:
      [evidencia_corrida_final_stream_8mhz_8h.md](docs/evidencia_corrida_final_stream_8mhz_8h.md)
-2. `HOST_3b+/stats_recorder.py` queda disponible para futuras evidencias:
+3. `HOST_3b+/stats_recorder.py` queda disponible para futuras evidencias:
    - `samples.csv`
    - `events.csv`
    - `summary.json`
    - `report.pdf`
-3. modo PIO-frame validado:
+4. modo PIO-frame validado:
    - mantener `sniffer_arinc429_logic_pio_frame` como candidato recomendado
    - conservar `byte` como fallback estable
    - analizar los `fwd_resync_events` para distinguir timeout normal de posible ajuste fino
-4. modo laboratorio batch/ACK separado del modo stream aleatorio:
+5. modo laboratorio batch/ACK separado del modo stream aleatorio:
    - estado: validado en corrida de aproximadamente `10 horas`
    - targets:
      - TX: `arinc_tx_arinc429_logic_stream`
@@ -352,7 +403,7 @@ Baseline final:
      - `parity_errors_sniffer = 0`
      - `fwd_resync_events = 3`
    - evidencia: [evidencia_stream_aleatorio_post_tutor.md](docs/evidencia_stream_aleatorio_post_tutor.md)
-5. frecuencia SPI caracterizada:
+6. frecuencia SPI caracterizada:
    - barrido desde frecuencias conservadoras hasta la prueba solicitada de `50 MHz`
    - seleccionar la frecuencia recomendada por estabilidad real, no por maximo teorico
    - runner listo: `HOST_3b+/spi_frequency_sweep.py`

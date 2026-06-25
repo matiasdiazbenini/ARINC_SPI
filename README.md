@@ -18,7 +18,7 @@ La fase validada hasta el momento es:
 
 Quedo validado:
 
-- enlace `master -> slave` en `100 kbps`
+- enlace `master -> slave` en `100 kbps` y `12.5 kbps`
 - ACK reverso `slave -> master`
 - captura pasiva con `ARINC-SNIFFER`
 - exportacion por SPI hacia la Raspberry Pi 3B+
@@ -40,8 +40,8 @@ Quedo validado:
 - resync FWD separados entre arranque y regimen
 - exportacion de pruebas a CSV, JSON y PDF desde la 3B+
 - prueba de paridad estricta validada con balance exacto de contadores
-- corrida final de `8 horas` con `58,273,540` palabras recibidas y cero
-  errores operativos
+- corridas finales de `8 horas` a `100 kbps` y `12.5 kbps`, ambas con cero
+  errores operativos, cero errores de paridad, cero overflow y cero drops SPI
 - validacion con osciloscopio de:
   - retorno a cero
   - pulsos de `5 us`
@@ -189,10 +189,19 @@ Validacion observada:
   - `overflow_events = 0`
   - `spi_drop_events = 0`
   - balance de clasificacion igual a `0`
+- corridas finales de `8 horas`:
+  - `12.5 kbps`: `received_words = 9,876,638`,
+    `accepted_words = 2,962,992`, `spi_errors = 0`
+  - `100 kbps`: `received_words = 76,707,606`,
+    `accepted_words = 23,012,283`, `spi_errors = 0`
+  - ambas con `parity_errors_sniffer = 0`, `overflow_events = 0`,
+    `spi_drop_events = 0`, `fwd_operational_resync_events = 0` y
+    `supervisor_health = ok`
 
 Evidencia:
 
 - [evidencia_autorate_100k_12k5.md](docs/evidencia_autorate_100k_12k5.md)
+- [evidencia_corridas_finales_autorate_8h.md](docs/evidencia_corridas_finales_autorate_8h.md)
 
 ## Forma recomendada de trabajo
 
@@ -255,6 +264,7 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 - [procedimiento_prueba_paridad_estricta.md](docs/procedimiento_prueba_paridad_estricta.md)
 - [procedimiento_registro_estadistico.md](docs/procedimiento_registro_estadistico.md)
 - [evidencia_corrida_final_stream_8mhz_8h.md](docs/evidencia_corrida_final_stream_8mhz_8h.md)
+- [evidencia_corridas_finales_autorate_8h.md](docs/evidencia_corridas_finales_autorate_8h.md)
 - [tesis_fuente_overleaf_arinc429.tex](docs/tex/tesis_fuente_overleaf_arinc429.tex)
 - [modelo_osi_arquitectura_arinc429.tex](docs/tex/modelo_osi_arquitectura_arinc429.tex)
 - [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)
