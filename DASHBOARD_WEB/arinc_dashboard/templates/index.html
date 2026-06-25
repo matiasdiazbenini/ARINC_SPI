@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard ARINC</title>
+  <title>ARINC 429</title>
   <style>
     :root {
-      --bg: #eef4fb;
+      --bg: #f4f6f9;
       --surface: #ffffff;
-      --ink: #172033;
-      --muted: #5b677d;
+      --surface-muted: #f8fafc;
+      --ink: #1f2937;
+      --muted: #667085;
+      --border: #d9e1ec;
       --accent: #0f766e;
-      --accent-soft: #ccfbf1;
-      --ok: #166534;
-      --ok-soft: #dcfce7;
+      --accent-ink: #0b4f4a;
+      --ok: #15803d;
+      --warn: #b45309;
       --err: #b91c1c;
-      --err-soft: #fee2e2;
-      --border: #dce6f2;
-      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
     }
 
     * {
@@ -27,254 +27,308 @@
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, sans-serif;
-      background:
-        radial-gradient(circle at top left, #dbeafe 0, transparent 24%),
-        radial-gradient(circle at top right, #d1fae5 0, transparent 22%),
-        var(--bg);
+      background: var(--bg);
       color: var(--ink);
     }
 
     .page {
-      max-width: 1380px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 18px;
     }
 
-    .hero,
-    .card,
-    .stat-box,
-    .instrument-box {
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
       background: var(--surface);
       border: 1px solid var(--border);
+      border-radius: 8px;
       box-shadow: var(--shadow);
     }
 
-    .hero {
-      border-radius: 20px;
-      padding: 24px;
-      background: linear-gradient(135deg, #0f172a, #164e63);
-      color: white;
-    }
-
-    .hero h1 {
-      margin: 0 0 8px;
-      font-size: 34px;
-    }
-
-    .hero p {
+    h1 {
       margin: 0;
-      color: #dbeafe;
-      max-width: 920px;
-      line-height: 1.5;
+      font-size: 25px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
     }
 
     .status-strip {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+      max-width: 720px;
+      line-height: 1.4;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
       margin-top: 14px;
-      font-size: 14px;
-      color: #cbd5e1;
     }
 
-    .card {
-      border-radius: 18px;
-      padding: 18px;
-      margin-top: 18px;
-    }
-
-    .row,
-    .stats-row {
+    .controls {
       display: grid;
-      gap: 14px;
-    }
-
-    .row {
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: minmax(240px, 1.2fr) minmax(260px, 1.4fr) minmax(120px, 0.6fr) auto;
+      gap: 12px;
       align-items: end;
     }
 
-    .stats-row {
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      margin-top: 18px;
+    .controls.serial {
+      grid-template-columns: minmax(200px, 1fr) minmax(140px, 0.6fr) minmax(260px, 1.4fr) auto;
     }
 
     label {
       display: block;
-      font-size: 13px;
+      margin-bottom: 5px;
       color: var(--muted);
-      margin-bottom: 6px;
+      font-size: 12px;
       font-weight: 600;
+      text-transform: uppercase;
     }
 
-    input, select, button {
-      width: 100%;
-      padding: 10px 12px;
-      font-size: 14px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: white;
-    }
-
+    input,
+    select,
     button {
-      cursor: pointer;
-      font-weight: 700;
-      background: #f8fafc;
-      transition: transform 0.12s ease, background 0.12s ease;
+      width: 100%;
+      min-height: 38px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      font-size: 14px;
+      padding: 8px 10px;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-      background: #eef6ff;
+    input[readonly] {
+      background: var(--surface-muted);
+      color: var(--muted);
+    }
+
+    .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      height: 38px;
+      color: var(--ink);
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      background: #fff;
+    }
+
+    .checkbox-line input {
+      width: auto;
+      min-height: auto;
+      margin: 0;
     }
 
     .actions {
       display: flex;
-      gap: 10px;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
       flex-wrap: wrap;
+    }
+
+    button {
+      width: auto;
+      min-width: 112px;
+      cursor: pointer;
+      font-weight: 650;
+      background: var(--surface-muted);
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button:hover {
+      border-color: #9aa8ba;
+    }
+
+    .metric-grid,
+    .instrument-grid,
+    .detail-grid {
+      display: grid;
+      gap: 12px;
       margin-top: 14px;
     }
 
-    .actions button {
-      width: auto;
-      min-width: 140px;
+    .metric-grid {
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
     }
 
-    .stat-box,
-    .instrument-box {
-      border-radius: 16px;
-      padding: 16px;
+    .instrument-grid {
+      grid-template-columns: repeat(3, minmax(220px, 1fr));
     }
 
-    .stat-title,
-    .instrument-title {
-      font-size: 12px;
+    .detail-grid {
+      grid-template-columns: 1fr 1fr 1.25fr;
+    }
+
+    .metric,
+    .instrument,
+    .detail-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .metric-title,
+    .instrument-title,
+    .detail-title {
       color: var(--muted);
-      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      margin-bottom: 7px;
     }
 
-    .stat-value {
-      font-size: 30px;
-      font-weight: 800;
-    }
-
+    .metric-value,
     .instrument-value {
-      font-size: 30px;
-      font-weight: 800;
-      margin-bottom: 6px;
+      font-size: 27px;
+      font-weight: 750;
+      line-height: 1.15;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
     }
 
-    .instrument-meta {
+    .instrument-meta,
+    .metric-meta {
+      margin-top: 6px;
+      color: var(--muted);
       font-size: 13px;
-      color: #405168;
-      line-height: 1.5;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
     }
 
     .ok {
       color: var(--ok);
-      font-weight: 700;
+    }
+
+    .warn {
+      color: var(--warn);
     }
 
     .err {
       color: var(--err);
-      font-weight: 700;
-    }
-
-    .soft-ok {
-      background: var(--ok-soft);
-    }
-
-    .soft-err {
-      background: var(--err-soft);
-    }
-
-    h3 {
-      margin-top: 0;
     }
 
     ul {
       margin: 0;
-      padding-left: 18px;
-      line-height: 1.6;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
       font-size: 14px;
+      line-height: 1.35;
     }
 
-    th, td {
-      border-bottom: 1px solid var(--border);
-      padding: 8px;
-      text-align: left;
-      vertical-align: top;
+    li {
+      padding: 7px 0;
+      border-bottom: 1px solid #edf1f6;
+      overflow-wrap: anywhere;
     }
 
-    th {
-      background: #f8fafc;
+    li:last-child {
+      border-bottom: 0;
     }
 
-    @media (max-width: 900px) {
-      .actions {
-        flex-direction: column;
+    @media (max-width: 1100px) {
+      .metric-grid {
+        grid-template-columns: repeat(3, minmax(160px, 1fr));
       }
 
-      .actions button {
+      .detail-grid,
+      .instrument-grid,
+      .controls,
+      .controls.serial {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .page {
+        padding: 10px;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        text-align: left;
+      }
+
+      .metric-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      button {
         width: 100%;
       }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <section class="hero">
-      <h1>Dashboard ARINC 429 logico</h1>
-      <p>
-        {% if source_mode == "bridge" %}
-        Visualizacion desde la Raspberry Pi 3B+ a traves del bridge SPI del sniffer. Flask consume eventos ya filtrados por la Pico
-        y Grafana puede apoyarse sobre las metricas consolidadas de este mismo dashboard.
-        {% else %}
-        Captura serial desde la Pico ARINC-SNIFFER con parseo de lineas <code>MATCH -&gt;</code> o <code>MATCH,...</code>.
-        El filtro de esta pantalla es post-captura; el filtrado primario lo hace la Raspberry sniffer antes de llegar al dashboard.
-        {% endif %}
-      </p>
-      <div class="status-strip" id="status-strip">Sesion inactiva</div>
-    </section>
-
-    <section class="card">
-      {% if source_mode == "bridge" %}
-      <div class="row">
-        <div>
-          <label>Fuente activa</label>
-          <input type="text" value="Bridge SPI en {{ bridge_url }}" readonly>
-        </div>
-
-        <div>
-          <label for="filter_entries">Filtro embebido del sniffer</label>
-          <input id="filter_entries" type="text" placeholder="Ej: 0xA5/0, 0xB1/1, 0xC2/2">
-        </div>
-
-        <div>
-          <label for="pass_all">Modo pass-all</label>
-          <input id="pass_all" type="checkbox" style="width:auto; transform: scale(1.15); margin-top: 12px;">
-        </div>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <h1>ARINC 429</h1>
+        <div class="subtitle">{{ "Bridge SPI" if source_mode == "bridge" else "Captura serial" }}</div>
       </div>
+      <div class="status-strip" id="status-strip">Sin datos</div>
+    </header>
 
-      <p style="margin: 14px 0 0; color: #405168; font-size: 14px; line-height: 1.5;">
-        El sniffer sigue haciendo el filtrado primario en la Pico. Desde aca solo se consulta o reconfigura esa whitelist a traves del bridge SPI de la Raspberry Pi 3B+.
-      </p>
-
-      <div class="actions">
-        <button onclick="applyBridgeFilter()">Aplicar filtro</button>
-        <button onclick="refreshBridgeFilter()">Leer filtro actual</button>
-        <button onclick="resetBridgeCounters()">Resetear contadores</button>
+    <section class="panel">
+      {% if source_mode == "bridge" %}
+      <div class="controls">
+        <div>
+          <label>Fuente</label>
+          <input type="text" value="{{ bridge_url }}" readonly>
+        </div>
+        <div>
+          <label for="filter_entries">Whitelist</label>
+          <input id="filter_entries" type="text" placeholder="0xA5/0, 0xB1/1, 0xC2/2">
+        </div>
+        <div>
+          <label>Modo</label>
+          <div class="checkbox-line">
+            <input id="pass_all" type="checkbox">
+            <span>Pass all</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" onclick="applyBridgeFilter()">Aplicar</button>
+          <button onclick="refreshBridgeFilter()">Leer</button>
+          <button onclick="resetBridgeCounters()">Reset</button>
+        </div>
       </div>
       {% else %}
-      <div class="row">
+      <div class="controls serial">
         <div>
           <label for="port">Puerto</label>
           <select id="port">
@@ -283,83 +337,84 @@
             {% endfor %}
           </select>
         </div>
-
         <div>
           <label for="baudrate">Baudrate</label>
           <input id="baudrate" type="number" value="{{ baudrate }}">
         </div>
-
         <div>
-          <label for="filter_text">Filtro de visualizacion</label>
-          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="Ej: TEMPERATURA o SSM_TXT: NORMAL">
+          <label for="filter_text">Filtro</label>
+          <input id="filter_text" type="text" value="{{ filter_text }}" placeholder="TEMPERATURA, NORMAL">
         </div>
-      </div>
-
-      <p style="margin: 14px 0 0; color: #405168; font-size: 14px; line-height: 1.5;">
-        Fuente esperada: el puerto COM de la tercera Pico con firmware <code>ARINC-SNIFFER</code>.
-        No abras ese mismo COM con Tera Term mientras Flask este capturando.
-      </p>
-
-      <div class="actions">
-        <button onclick="startCapture()">Iniciar</button>
-        <button onclick="stopCapture()">Detener</button>
-        <button onclick="clearConsole()">Limpiar</button>
-        <button onclick="refreshPorts()">Actualizar puertos</button>
+        <div class="actions">
+          <button class="primary" onclick="startCapture()">Iniciar</button>
+          <button onclick="stopCapture()">Detener</button>
+          <button onclick="clearConsole()">Limpiar</button>
+          <button onclick="refreshPorts()">Puertos</button>
+        </div>
       </div>
       {% endif %}
     </section>
 
-    <section class="stats-row">
-      <div class="stat-box">
-        <div class="stat-title">Tramas capturadas</div>
-        <div class="stat-value" id="stat-total">0</div>
+    <section class="metric-grid">
+      <div class="metric">
+        <div class="metric-title">Tramas</div>
+        <div class="metric-value" id="stat-total">0</div>
       </div>
-      <div class="stat-box soft-ok">
-        <div class="stat-title">Parity OK</div>
-        <div class="stat-value ok" id="stat-ok">0</div>
+      <div class="metric">
+        <div class="metric-title">Paridad OK</div>
+        <div class="metric-value ok" id="stat-ok">0</div>
       </div>
-      <div class="stat-box soft-err">
-        <div class="stat-title">Parity ERROR</div>
-        <div class="stat-value err" id="stat-err">0</div>
+      <div class="metric">
+        <div class="metric-title">Paridad Error</div>
+        <div class="metric-value err" id="stat-err">0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">SPI Errors</div>
+        <div class="metric-value" id="stat-spi-errors">0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">Bitrate</div>
+        <div class="metric-value" id="stat-bitrate">--</div>
+      </div>
+      <div class="metric">
+        <div class="metric-title">Supervisor</div>
+        <div class="metric-value" id="stat-supervisor">--</div>
       </div>
     </section>
 
-    <section class="stats-row">
-      <div class="instrument-box">
-        <div class="instrument-title">Temperatura actual</div>
+    <section class="instrument-grid">
+      <div class="instrument">
+        <div class="instrument-title">Temperatura</div>
         <div class="instrument-value" id="temp-value">--</div>
         <div class="instrument-meta" id="temp-meta">Sin datos</div>
       </div>
-
-      <div class="instrument-box">
-        <div class="instrument-title">Velocidad actual</div>
+      <div class="instrument">
+        <div class="instrument-title">Velocidad</div>
         <div class="instrument-value" id="speed-value">--</div>
         <div class="instrument-meta" id="speed-meta">Sin datos</div>
       </div>
-
-      <div class="instrument-box">
-        <div class="instrument-title">Altitud actual</div>
+      <div class="instrument">
+        <div class="instrument-title">Altitud</div>
         <div class="instrument-value" id="alt-value">--</div>
         <div class="instrument-meta" id="alt-meta">Sin datos</div>
       </div>
     </section>
 
-    <section class="card">
-      <h3>Resumen por Label</h3>
-      <ul id="label-summary"></ul>
+    <section class="detail-grid">
+      <div class="detail-panel">
+        <div class="detail-title">Labels</div>
+        <ul id="label-summary"></ul>
+      </div>
+      <div class="detail-panel">
+        <div class="detail-title">SSM</div>
+        <ul id="ssm-summary"></ul>
+      </div>
+      <div class="detail-panel">
+        <div class="detail-title">Sistema</div>
+        <ul id="sniffer-summary"></ul>
+      </div>
     </section>
-
-    <section class="card">
-      <h3>Resumen por SSM</h3>
-      <ul id="ssm-summary"></ul>
-    </section>
-
-    <section class="card">
-      <h3>Estado del Sniffer</h3>
-      <ul id="sniffer-summary"></ul>
-    </section>
-
-  </div>
+  </main>
 
   <script>
     const REFRESH_MS = 33;
@@ -369,6 +424,22 @@
     function fetchNoStore(path) {
       const separator = path.includes("?") ? "&" : "?";
       return fetch(`${path}${separator}_ts=${Date.now()}`, { cache: "no-store" });
+    }
+
+    function formatNumber(value) {
+      const number = Number(value ?? 0);
+      return Number.isFinite(number) ? number.toLocaleString("es-AR") : "0";
+    }
+
+    function setClassByState(element, state) {
+      element.classList.remove("ok", "warn", "err");
+      if (state === "ok") {
+        element.classList.add("ok");
+      } else if (state === "warn") {
+        element.classList.add("warn");
+      } else if (state === "err") {
+        element.classList.add("err");
+      }
     }
 
     function setInstrument(prefix, rec) {
@@ -384,32 +455,60 @@
 
       valueEl.textContent = `${rec.value} ${rec.unit}`;
       valueEl.className = `instrument-value ${rec.parity === "OK" ? "ok" : "err"}`;
-      metaEl.textContent = `Label ${rec.label} | ${rec.ssm_txt} | Parity ${rec.parity} | ${rec.timestamp}`;
+      metaEl.textContent = `${rec.label} | ${rec.ssm_txt} | ${rec.timestamp}`;
     }
 
     function updateStatusStrip(data) {
       const strip = document.getElementById("status-strip");
+      const state = data.connected ? "Conectado" : "Reconectando";
+      const port = data.port || "-";
+      const lastRx = data.last_rx_time ? ` | RX ${data.last_rx_time}` : "";
+      const error = data.last_error ? ` | ${data.last_error}` : "";
+
       if (SOURCE_MODE === "bridge") {
-        if (data.running && data.connected) {
-          strip.textContent = `Bridge SPI activo en ${data.port || "-"} | refresco ${REFRESH_MS} ms | host ${BRIDGE_URL}`;
-        } else if (data.running) {
-          strip.textContent = `Bridge SPI reconectando en ${data.port || "-"} | refresco ${REFRESH_MS} ms | host ${BRIDGE_URL}`;
-          if (data.last_error) {
-            strip.textContent += ` | ultimo error ${data.last_error}`;
-          }
-        } else {
-          strip.textContent = `Bridge SPI inactivo | host ${BRIDGE_URL}`;
-          if (data.last_error) {
-            strip.textContent += ` | error ${data.last_error}`;
-          }
-        }
+        strip.textContent = `${state} | ${port}${lastRx}${error}`;
         return;
       }
 
-      if (data.running) {
-        strip.textContent = `Sesion activa en ${data.port || "-"} | refresco ${REFRESH_MS} ms`;
-      } else {
-        strip.textContent = "Sesion inactiva";
+      strip.textContent = data.running ? `Activo | ${port}${lastRx}` : "Inactivo";
+    }
+
+    function updateMetricCards(data) {
+      document.getElementById("stat-total").textContent = formatNumber(data.total);
+      document.getElementById("stat-ok").textContent = formatNumber(data.parity_ok);
+      document.getElementById("stat-err").textContent = formatNumber(data.parity_error);
+
+      const spiErrors = document.getElementById("stat-spi-errors");
+      const spiErrorCount = Number(data.spi_errors ?? 0);
+      spiErrors.textContent = formatNumber(spiErrorCount);
+      setClassByState(spiErrors, spiErrorCount === 0 ? "ok" : "err");
+
+      const bitrate = document.getElementById("stat-bitrate");
+      bitrate.textContent = data.detected_bit_rate_txt || "unknown";
+      setClassByState(bitrate, data.detected_bit_rate_bps ? "ok" : "warn");
+
+      const supervisor = document.getElementById("stat-supervisor");
+      const supervisorState = data.supervisor_state || data.supervisor?.state || "UNKNOWN";
+      const supervisorHealth = data.supervisor_health || data.supervisor?.health || "unknown";
+      supervisor.textContent = supervisorState;
+      setClassByState(supervisor, supervisorHealth === "ok" ? "ok" : (supervisorHealth === "fault" ? "err" : "warn"));
+    }
+
+    function fillList(elementId, entries, emptyText) {
+      const list = document.getElementById(elementId);
+      list.innerHTML = "";
+
+      if (!entries.length) {
+        const li = document.createElement("li");
+        li.textContent = emptyText;
+        list.appendChild(li);
+        return;
+      }
+
+      for (const text of entries) {
+        const li = document.createElement("li");
+        li.textContent = text;
+        list.appendChild(li);
       }
     }
 
@@ -418,72 +517,47 @@
         const response = await fetchNoStore("/stats");
         const data = await response.json();
 
-        document.getElementById("stat-total").textContent = data.total;
-        document.getElementById("stat-ok").textContent = data.parity_ok;
-        document.getElementById("stat-err").textContent = data.parity_error;
+        updateMetricCards(data);
 
-        const labelSummary = document.getElementById("label-summary");
-        labelSummary.innerHTML = "";
-        for (const [label, count] of Object.entries(data.by_label)) {
-          const li = document.createElement("li");
-          li.textContent = `${label}: ${count}`;
-          labelSummary.appendChild(li);
-        }
+        const labelEntries = Object.entries(data.by_label || {})
+          .map(([label, count]) => `${label}: ${formatNumber(count)}`);
+        fillList("label-summary", labelEntries, "Sin datos");
 
-        const ssmSummary = document.getElementById("ssm-summary");
-        ssmSummary.innerHTML = "";
-        for (const [ssm, count] of Object.entries(data.by_ssm)) {
-          const li = document.createElement("li");
-          li.textContent = `${ssm}: ${count}`;
-          ssmSummary.appendChild(li);
-        }
+        const ssmEntries = Object.entries(data.by_ssm || {})
+          .map(([ssm, count]) => `${ssm}: ${formatNumber(count)}`);
+        fillList("ssm-summary", ssmEntries, "Sin datos");
 
-        const snifferSummary = document.getElementById("sniffer-summary");
-        snifferSummary.innerHTML = "";
         const summaryItems = [
-          `Estado del enlace: ${data.connected ? "CONECTADO" : "RECONECTANDO"}`,
-          `ACK observados: ${data.ack_events ?? 0}`,
-          `Palabras aceptadas por sniffer: ${data.accepted_words ?? 0}`,
-          `Palabras descartadas por filtro: ${data.filtered_words ?? 0}`,
-          `Velocidad ARINC detectada: ${data.detected_bit_rate_txt || "unknown"}`,
-          `Overflow de captura: ${data.overflow_events ?? 0}`,
-          `Resync FWD: ${data.fwd_resync_events ?? 0}`,
-          `Resync REV: ${data.rev_resync_events ?? 0}`,
-          `Drops SPI: ${data.spi_drop_events ?? 0}`,
-          `Slots activos: ${data.slot_count ?? 0}`,
-          `Evictions snapshot: ${data.slot_evictions ?? 0}`,
-          `Revision snapshot: ${data.snapshot_revision ?? 0}`
+          `Enlace: ${data.connected ? "CONECTADO" : "RECONECTANDO"}`,
+          `Aceptadas: ${formatNumber(data.accepted_words)}`,
+          `Filtradas: ${formatNumber(data.filtered_words)}`,
+          `Overflow: ${formatNumber(data.overflow_events)}`,
+          `Resync FWD: ${formatNumber(data.fwd_resync_events)}`,
+          `Resync REV: ${formatNumber(data.rev_resync_events)}`,
+          `Drops SPI: ${formatNumber(data.spi_drop_events)}`,
+          `Slots: ${formatNumber(data.slot_count)}`,
+          `Snapshot: ${formatNumber(data.snapshot_revision)}`
         ];
+
         if (SOURCE_MODE === "bridge") {
           const filterModeText = (data.filter_mode ?? 0) === 1 ? "PASS_ALL" : "WHITELIST";
-          const filterEntriesText = (data.filter_entries || []).length ? data.filter_entries.join(", ") : "(vacío)";
-          summaryItems.push(`Modo de filtro: ${filterModeText}`);
-          summaryItems.push(`Whitelist activa: ${filterEntriesText}`);
+          const filterEntriesText = (data.filter_entries || []).length ? data.filter_entries.join(", ") : "sin entradas";
           const supervisor = data.supervisor || {};
-          summaryItems.push(`Modo dios: ${data.supervisor_state || supervisor.state || "UNKNOWN"} | ${data.supervisor_health || supervisor.health || "unknown"}`);
-          if (data.supervisor_issue || supervisor.issue) {
-            summaryItems.push(`Diagnostico modo dios: ${data.supervisor_issue || supervisor.issue}`);
-          }
+          summaryItems.push(`Filtro: ${filterModeText}`);
+          summaryItems.push(`Whitelist: ${filterEntriesText}`);
+          summaryItems.push(`Supervisor: ${data.supervisor_state || supervisor.state || "UNKNOWN"} | ${data.supervisor_health || supervisor.health || "unknown"}`);
+          summaryItems.push(`Diagnostico: ${data.supervisor_issue || supervisor.issue || "none"}`);
           if (data.supervisor_last_action || supervisor.last_action) {
-            summaryItems.push(`Ultima accion modo dios: ${data.supervisor_last_action || supervisor.last_action}`);
+            summaryItems.push(`Ultima accion: ${data.supervisor_last_action || supervisor.last_action}`);
           }
         }
-        for (const item of summaryItems) {
-          const li = document.createElement("li");
-          li.textContent = item;
-          snifferSummary.appendChild(li);
-        }
+        fillList("sniffer-summary", summaryItems, "Sin datos");
 
         const latest = data.latest_by_name || {};
         setInstrument("temp", latest["TEMPERATURA"]);
         setInstrument("speed", latest["VELOCIDAD"]);
         setInstrument("alt", latest["ALTITUD"]);
         updateStatusStrip(data);
-        if (data.last_rx_time) {
-          const counterLabel = SOURCE_MODE === "bridge" ? "tramas" : "lineas";
-          const counterValue = SOURCE_MODE === "bridge" ? (data.total ?? 0) : (data.serial_lines ?? 0);
-          document.getElementById("status-strip").textContent += ` | ultima RX ${data.last_rx_time} | ${counterLabel} ${counterValue}`;
-        }
       } catch (err) {
       }
     }
@@ -568,7 +642,7 @@
         cache: "no-store"
       });
       const data = await response.json();
-      alert(data.ok ? "Filtro aplicado en el sniffer" : (data.msg || "No se pudo aplicar el filtro"));
+      alert(data.ok ? "Filtro aplicado" : (data.msg || "No se pudo aplicar el filtro"));
       refreshStats();
     }
 
@@ -586,9 +660,7 @@
       refreshStats();
     }
 
-    setInterval(() => {
-      refreshStats();
-    }, REFRESH_MS);
+    setInterval(refreshStats, REFRESH_MS);
 
     if (SOURCE_MODE === "bridge") {
       refreshBridgeFilter();
