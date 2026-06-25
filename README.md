@@ -255,6 +255,8 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 ## Documentos clave
 
 - [Entrega consolidada para el tutor](docs/entrega_tutor/README.md)
+- [Trabajo final en formato tesis PDF](docs/pdf/trabajo_final_arinc429.pdf)
+- [Fuente LaTeX del trabajo final](docs/tex/trabajo_final_arinc429.tex)
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
 - [FASE2_ARINC429_LOGIC.md](FASE2_ARINC429_LOGIC.md)
 - [resumen_proyecto_arinc429.md](docs/resumen_proyecto_arinc429.md)
@@ -266,6 +268,7 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 - [evidencia_corrida_final_stream_8mhz_8h.md](docs/evidencia_corrida_final_stream_8mhz_8h.md)
 - [evidencia_corridas_finales_autorate_8h.md](docs/evidencia_corridas_finales_autorate_8h.md)
 - [tesis_fuente_overleaf_arinc429.tex](docs/tex/tesis_fuente_overleaf_arinc429.tex)
+- [trabajo_final_arinc429.tex](docs/tex/trabajo_final_arinc429.tex)
 - [modelo_osi_arquitectura_arinc429.tex](docs/tex/modelo_osi_arquitectura_arinc429.tex)
 - [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)
 

@@ -59,6 +59,8 @@ Corridas finales de ocho horas:
 ## Informes incluidos
 
 - [Guia didactica para explicar el sistema al tutor](../pdf/guia_didactica_tutor_arinc429.pdf)
+- [Trabajo final en formato tesis](../pdf/trabajo_final_arinc429.pdf)
+- [Fuente LaTeX del trabajo final](../tex/trabajo_final_arinc429.tex)
 - [Informe descriptivo integral del sistema](../pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [Comandos de arranque y rescate](../pdf/comandos_servicios_3b_autoarranque.pdf)
 - [Notas de version arinc-logic-v1.1.0](notas_version_arinc_logic_v1.1.0.md)

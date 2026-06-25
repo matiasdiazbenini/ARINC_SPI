@@ -14,6 +14,8 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 ## Resumenes tecnicos
 
+- [Trabajo final en formato tesis](pdf/trabajo_final_arinc429.pdf)
+- [Fuente LaTeX del trabajo final](tex/trabajo_final_arinc429.tex)
 - [Informe descriptivo integral del sistema](pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [Guia didactica para explicar al tutor](pdf/guia_didactica_tutor_arinc429.pdf)
 - [Comandos de arranque y rescate](pdf/comandos_servicios_3b_autoarranque.pdf)
@@ -32,6 +34,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [arquitectura_completa_sistema_arinc429.tex](tex/arquitectura_completa_sistema_arinc429.tex)
 - [modelo_osi_arquitectura_arinc429.tex](tex/modelo_osi_arquitectura_arinc429.tex)
 - [tesis_fuente_overleaf_arinc429.tex](tex/tesis_fuente_overleaf_arinc429.tex)
+- [trabajo_final_arinc429.tex](tex/trabajo_final_arinc429.tex)
 
 ## Diagramas de bloques internos
 
@@ -44,6 +47,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 ## PDF ya generados
 
 - [guia_didactica_tutor_arinc429.pdf](pdf/guia_didactica_tutor_arinc429.pdf)
+- [trabajo_final_arinc429.pdf](pdf/trabajo_final_arinc429.pdf)
 - [informe_descriptivo_sistema_arinc429.pdf](pdf/informe_descriptivo_sistema_arinc429.pdf)
 - [comandos_servicios_3b_autoarranque.pdf](pdf/comandos_servicios_3b_autoarranque.pdf)
 - [resumen_proyecto_arinc429.pdf](pdf/resumen_proyecto_arinc429.pdf)
