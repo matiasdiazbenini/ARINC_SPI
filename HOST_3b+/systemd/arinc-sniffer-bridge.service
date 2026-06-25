@@ -23,6 +23,7 @@ Environment=ARINC_SPI_DRDY_TIMEOUT_SEC=0.250
 Environment=ARINC_SPI_POLL_SEC=0.006
 Environment=ARINC_SPI_STATS_SEC=0.06
 Environment=ARINC_SPI_RECOVERY_GAP_SEC=0.012
+Environment=ARINC_SUPERVISOR_STATUS=/home/mdiaz501/PAMPA/HOST_3b+/arinc_supervisor_status.json
 Environment=ARINC_BRIDGE_HOST=127.0.0.1
 Environment=ARINC_BRIDGE_PORT=5100
 ExecStart=/home/mdiaz501/PAMPA/HOST_3b+/.venv/bin/python spi_sniffer_bridge.py

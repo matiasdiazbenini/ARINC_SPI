@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -107,6 +108,10 @@ if SPI_REQUEST_MODE not in ("poll", "drdy"):
 SPI_DRDY_GPIO = int(os.getenv("ARINC_SPI_DRDY_GPIO", "25"))
 SPI_DRDY_POLL_SEC = float(os.getenv("ARINC_SPI_DRDY_POLL_SEC", "0.010"))
 SPI_DRDY_TIMEOUT_SEC = float(os.getenv("ARINC_SPI_DRDY_TIMEOUT_SEC", "0.250"))
+SUPERVISOR_STATUS_PATH = os.getenv(
+    "ARINC_SUPERVISOR_STATUS",
+    os.path.join(os.getcwd(), "arinc_supervisor_status.json"),
+).strip()
 
 ACK_LABEL = 0xAC
 ACK_SDI = 0x03
@@ -140,6 +145,7 @@ bridge_state = {
     "spi_snapshot_requests": 0,
     "spi_drdy_timeouts": 0,
     "spi_drdy_error": "",
+    "spi_transport_resets": 0,
     "last_rx_time": None,
     "total_events": 0,
     "ack_events": 0,
@@ -268,6 +274,7 @@ class SpiSnifferClient:
         self.sequence = 1
         self.cs = None
         self.active_transfer_mode = "frame" if SPI_TRANSFER_MODE == "auto" else SPI_TRANSFER_MODE
+        self.needs_transport_recovery = True
 
     def open(self):
         if spidev is None:
@@ -285,12 +292,14 @@ class SpiSnifferClient:
             spi.no_cs = True
             self.cs = ManualCsController(SPI_CS_GPIO)
         self.spi = spi
+        self.needs_transport_recovery = True
 
     def close(self):
         if self.spi is not None:
             self.spi.close()
             self.spi = None
         self.cs = None
+        self.needs_transport_recovery = True
 
     def _next_sequence(self):
         sequence = self.sequence & 0xFFFF
@@ -337,9 +346,27 @@ class SpiSnifferClient:
     def _transport_reset(self) -> int:
         return self._xfer_byte(SNIFFER_SPI_TRANSPORT_RESET)
 
+    def _transport_reset_frame(self) -> bytes:
+        return self._xfer_frame(
+            bytes([SNIFFER_SPI_TRANSPORT_RESET] * SNIFFER_SPI_PACKET_SIZE)
+        )
+
     def _recovery_pause(self) -> None:
         if SPI_RECOVERY_GAP_SEC > 0.0:
             time.sleep(SPI_RECOVERY_GAP_SEC)
+
+    def _recover_transport(self, transfer_mode: str) -> None:
+        reset_count = max(SPI_RESET_BURST, 1)
+        if transfer_mode == "pio-frame":
+            for _reset_index in range(reset_count):
+                self._transport_reset_frame()
+        else:
+            for _reset_index in range(reset_count):
+                self._transport_reset()
+
+        with data_lock:
+            bridge_state["spi_transport_resets"] += reset_count
+        self._recovery_pause()
 
     def _transport_send_request(self, packet: bytes) -> None:
         for byte in packet:
@@ -416,9 +443,10 @@ class SpiSnifferClient:
 
         for _ in range(max(SPI_RESPONSE_RETRIES, 1)):
             for transfer_mode in self._candidate_modes():
-                if last_exc is not None:
-                    self._recovery_pause()
                 try:
+                    if self.needs_transport_recovery or last_exc is not None:
+                        self._recover_transport(transfer_mode)
+                        self.needs_transport_recovery = False
                     response = self._exchange_once(request_packet, transfer_mode)
                     self.active_transfer_mode = transfer_mode
                     with data_lock:
@@ -428,6 +456,22 @@ class SpiSnifferClient:
                     last_exc = exc
 
         raise last_exc or ProtocolError("no se pudo sincronizar la respuesta SPI del sniffer")
+
+    def recover_transport(self) -> dict:
+        if self.spi is None:
+            self.open()
+
+        transfer_mode = self.active_transfer_mode
+        self._recover_transport(transfer_mode)
+        self.needs_transport_recovery = False
+
+        with data_lock:
+            reset_count = bridge_state["spi_transport_resets"]
+        return {
+            "ok": True,
+            "transfer_mode": transfer_mode,
+            "spi_transport_resets": reset_count,
+        }
 
     def pop_event(self):
         response = self.exchange(CMD_POP_EVENT)
@@ -647,6 +691,7 @@ def reset_bridge_session_state(stats_payload: dict):
         bridge_state["spi_snapshot_requests"] = 0
         bridge_state["spi_drdy_timeouts"] = 0
         bridge_state["spi_drdy_error"] = ""
+        bridge_state["spi_transport_resets"] = 0
 
 
 def mark_bridge_ok():
@@ -671,6 +716,32 @@ def mark_bridge_error(exc: Exception):
         else:
             bridge_state["spi_startup_errors"] += 1
         bridge_state["last_error"] = str(exc)
+
+
+def load_supervisor_status() -> dict:
+    if not SUPERVISOR_STATUS_PATH:
+        return {
+            "state": "UNKNOWN",
+            "state_code": 0,
+            "health": "unknown",
+            "issue": "status_disabled",
+            "age_sec": None,
+        }
+
+    try:
+        with open(SUPERVISOR_STATUS_PATH, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        payload["age_sec"] = max(0.0, time.time() - os.path.getmtime(SUPERVISOR_STATUS_PATH))
+        return payload
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "state": "UNKNOWN",
+            "state_code": 0,
+            "health": "unknown",
+            "issue": "status_missing",
+            "error": str(exc),
+            "age_sec": None,
+        }
 
 
 def refresh_snapshot_from_sniffer(known_revision: int) -> int:
@@ -820,6 +891,7 @@ def compute_dashboard_stats() -> dict:
         spi_snapshot_requests = bridge_state["spi_snapshot_requests"]
         spi_drdy_timeouts = bridge_state["spi_drdy_timeouts"]
         spi_drdy_error = bridge_state["spi_drdy_error"]
+        spi_transport_resets = bridge_state["spi_transport_resets"]
         last_rx_time = bridge_state["last_rx_time"]
         ack_events = bridge_state["ack_events"]
         spi_errors = bridge_state["spi_errors"]
@@ -841,6 +913,7 @@ def compute_dashboard_stats() -> dict:
     parity_ok = sniffer_stats.get("accepted_words", 0)
     parity_error = sniffer_stats.get("parity_errors", 0)
     latest_by_name = {}
+    supervisor_status = load_supervisor_status()
 
     for slot in latest_slots:
         if not slot.get("valid"):
@@ -889,6 +962,7 @@ def compute_dashboard_stats() -> dict:
         "spi_snapshot_requests": spi_snapshot_requests,
         "spi_drdy_timeouts": spi_drdy_timeouts,
         "spi_drdy_error": spi_drdy_error,
+        "spi_transport_resets": spi_transport_resets,
         "source_mode": "spi_bridge",
         "ack_events": ack_events,
         "spi_errors": spi_errors,
@@ -913,6 +987,12 @@ def compute_dashboard_stats() -> dict:
         "rev_resync_events": sniffer_stats.get("rev_resync_events", 0),
         "filter_mode": filter_config.get("mode", FILTER_MODE_WHITELIST),
         "filter_entries": format_filter_entries(filter_config.get("entries", [])),
+        "supervisor": supervisor_status,
+        "supervisor_state": supervisor_status.get("state", "UNKNOWN"),
+        "supervisor_health": supervisor_status.get("health", "unknown"),
+        "supervisor_issue": supervisor_status.get("issue", "status_missing"),
+        "supervisor_last_action": supervisor_status.get("last_action", ""),
+        "supervisor_status_age_sec": supervisor_status.get("age_sec"),
     }
 
 
@@ -1005,10 +1085,27 @@ def reset_endpoint():
         return jsonify({"ok": False, "msg": str(exc)}), 502
 
 
+@app.route("/control/recover_spi", methods=["POST"])
+def recover_spi_endpoint():
+    try:
+        with bridge_lock:
+            result = client.recover_transport()
+        return jsonify(result)
+    except Exception as exc:  # pragma: no cover - depende del estado del hardware SPI
+        mark_bridge_error(exc)
+        return jsonify({"ok": False, "msg": str(exc)}), 502
+
+
+@app.route("/supervisor/status")
+def supervisor_status_endpoint():
+    return jsonify(load_supervisor_status())
+
+
 @app.route("/metrics")
 def metrics():
     snapshot = compute_dashboard_stats()
     latest_by_name = snapshot["latest_by_name"]
+    supervisor = snapshot.get("supervisor", {})
 
     lines = [
         "# HELP arinc_records_total Registros ARINC filtrados en memoria del bridge SPI.",
@@ -1036,6 +1133,19 @@ def metrics():
         "# HELP arinc_detected_bit_rate_bps Velocidad ARINC detectada por el sniffer en el canal FWD.",
         "# TYPE arinc_detected_bit_rate_bps gauge",
         f"arinc_detected_bit_rate_bps {snapshot['detected_bit_rate_bps']}",
+        "# HELP arinc_supervisor_state Estado numerico del supervisor modo dios.",
+        "# TYPE arinc_supervisor_state gauge",
+        "arinc_supervisor_state"
+        f'{{state="{prometheus_escape(supervisor.get("state", "UNKNOWN"))}",'
+        f'health="{prometheus_escape(supervisor.get("health", "unknown"))}",'
+        f'issue="{prometheus_escape(supervisor.get("issue", ""))}"}} '
+        f'{int(supervisor.get("state_code", 0) or 0)}',
+        "# HELP arinc_supervisor_status_age_sec Edad del archivo de estado del supervisor.",
+        "# TYPE arinc_supervisor_status_age_sec gauge",
+        f"arinc_supervisor_status_age_sec {-1 if supervisor.get('age_sec') is None else float(supervisor.get('age_sec', 0.0)):.3f}",
+        "# HELP arinc_supervisor_actions_total Acciones correctivas acumuladas del supervisor.",
+        "# TYPE arinc_supervisor_actions_total gauge",
+        f"arinc_supervisor_actions_total {int(supervisor.get('actions_total', 0) or 0)}",
         "# HELP arinc_spi_drop_events_total Eventos SPI descartados por cola llena en el sniffer.",
         "# TYPE arinc_spi_drop_events_total gauge",
         f"arinc_spi_drop_events_total {snapshot['spi_drop_events']}",
@@ -1045,6 +1155,9 @@ def metrics():
         "# HELP arinc_spi_startup_errors_total Errores SPI de arranque antes de la primera comunicacion valida.",
         "# TYPE arinc_spi_startup_errors_total gauge",
         f"arinc_spi_startup_errors_total {snapshot['spi_startup_errors']}",
+        "# HELP arinc_spi_transport_resets_total Resets de transporte SPI enviados por el bridge para resincronizar.",
+        "# TYPE arinc_spi_transport_resets_total gauge",
+        f"arinc_spi_transport_resets_total {snapshot['spi_transport_resets']}",
         "# HELP arinc_spi_error_armed Estado del contador operativo de errores SPI.",
         "# TYPE arinc_spi_error_armed gauge",
         f"arinc_spi_error_armed {1 if snapshot['spi_error_armed'] else 0}",

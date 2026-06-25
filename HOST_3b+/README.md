@@ -128,6 +128,7 @@ Los unit files versionados son:
 
 - `systemd/arinc-sniffer-bridge.service`
 - `systemd/arinc-dashboard-flask.service`
+- `systemd/arinc-supervisor.service`
 
 Instalacion:
 
@@ -135,15 +136,16 @@ Instalacion:
 cd ~/PAMPA/HOST_3b+
 sudo cp systemd/arinc-sniffer-bridge.service /etc/systemd/system/
 sudo cp systemd/arinc-dashboard-flask.service /etc/systemd/system/
+sudo cp systemd/arinc-supervisor.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask
-sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
+sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 ```
 
 Verificacion:
 
 ```bash
-systemctl status arinc-sniffer-bridge arinc-dashboard-flask --no-pager
+systemctl status arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor --no-pager
 curl http://127.0.0.1:5100/stats
 curl http://127.0.0.1:5000/stats
 ```
@@ -177,7 +179,7 @@ sniffer_arinc429_logic_pio_frame
 Build tag esperado por USB:
 
 ```text
-SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4
+SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5
 ```
 
 En esta build, `GET_LATEST_META` tambien informa la velocidad detectada por la
@@ -208,6 +210,61 @@ El bridge separa los errores SPI de arranque de los errores operativos:
   - son los errores relevantes para una corrida estable
 
 Asi se puede dejar el bridge arrancado antes de alimentar las Pico sin ensuciar el contador operativo de la prueba.
+
+## Modo dios / supervisor de recuperacion
+
+La 3B+ incluye un supervisor liviano de segunda capa:
+
+- archivo: `arinc_supervisor.py`
+- servicio: `arinc-supervisor.service`
+- frecuencia por defecto: una verificacion cada `5 s`
+
+El supervisor no participa del camino de datos. Consulta
+`http://127.0.0.1:5100/stats`, verifica procesos y clasifica el sistema en una
+maquina de estados:
+
+- `BOOTING`
+- `WAITING_SNIFFER`
+- `SPI_SYNCING`
+- `RUNNING`
+- `ARINC_STALLED`
+- `CABLE_FAULT`
+- `BRIDGE_FAULT`
+- `DASHBOARD_FAULT`
+- `RECOVERING`
+
+Acciones escalonadas:
+
+1. Si el bridge sigue vivo pero el protocolo SPI queda desfasado, llama primero
+   a `POST /control/recover_spi`.
+2. Si la falla persiste o un servicio cae, reinicia `arinc-sniffer-bridge` y
+   `arinc-dashboard-flask`.
+3. Si el problema parece fisico (`CABLE_FAULT`), registra la condicion y evita
+   reinicios infinitos porque un cable o una Pico apagada no se corrigen con
+   software.
+
+El estado se publica en:
+
+- archivo local: `~/PAMPA/HOST_3b+/arinc_supervisor_status.json`
+- bridge: `http://127.0.0.1:5100/supervisor/status`
+- `/stats`: campos `supervisor_*`
+- `/metrics`: `arinc_supervisor_state`,
+  `arinc_supervisor_status_age_sec` y `arinc_supervisor_actions_total`
+
+Comandos utiles:
+
+```bash
+sudo systemctl restart arinc-supervisor
+systemctl status arinc-supervisor --no-pager
+curl http://127.0.0.1:5100/supervisor/status
+journalctl -u arinc-supervisor -f
+sudo systemctl stop arinc-supervisor
+sudo systemctl disable arinc-supervisor
+```
+
+El contador `/stats -> spi_transport_resets` indica cuantas tramas de reset SPI
+envio el bridge para recuperar el transporte. En modo `pio-frame`, cada reset es
+una trama completa de `32 bytes` con valor `0xF0`.
 
 ## Registro estadistico de pruebas
 

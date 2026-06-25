@@ -459,6 +459,14 @@
           const filterEntriesText = (data.filter_entries || []).length ? data.filter_entries.join(", ") : "(vacío)";
           summaryItems.push(`Modo de filtro: ${filterModeText}`);
           summaryItems.push(`Whitelist activa: ${filterEntriesText}`);
+          const supervisor = data.supervisor || {};
+          summaryItems.push(`Modo dios: ${data.supervisor_state || supervisor.state || "UNKNOWN"} | ${data.supervisor_health || supervisor.health || "unknown"}`);
+          if (data.supervisor_issue || supervisor.issue) {
+            summaryItems.push(`Diagnostico modo dios: ${data.supervisor_issue || supervisor.issue}`);
+          }
+          if (data.supervisor_last_action || supervisor.last_action) {
+            summaryItems.push(`Ultima accion modo dios: ${data.supervisor_last_action || supervisor.last_action}`);
+          }
         }
         for (const item of summaryItems) {
           const li = document.createElement("li");

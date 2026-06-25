@@ -365,29 +365,56 @@ Estado:
 - evidencia:
   - [evidencia_barrido_frecuencia_spi.md](evidencia_barrido_frecuencia_spi.md)
 
-## Estado de las observaciones del tutor
+## Punto 9 - Recuperacion ante desconexiones y reinicios
 
-Completado:
+### Problema
 
-1. Bridge restringido a loopback y Flask expuesto a la red.
-2. Transporte SPI por tramas completas mediante PIO-frame.
-3. Separacion entre errores SPI de arranque y operativos.
-4. Corridas prolongadas con `spi_errors = 0`.
-5. Stream aleatorio sin dependencia de lotes de 1000 palabras.
-6. Barrido SPI hasta 50 MHz y seleccion justificada de 8 MHz.
-7. Diagramas internos de las cuatro placas/nodos.
-8. Separacion documentada entre modo laboratorio y sniffer pasivo real.
-9. Paridad estricta validada mediante inyeccion controlada.
-10. Exportacion automatica de CSV, JSON y PDF.
+Las pruebas de falla mostraron dos casos debiles:
 
-Siguiente fase:
+- si el sniffer se reinicia o se reconecta con el TX ya transmitiendo, puede
+  arrancar en mitad de una palabra ARINC y acumular errores de paridad;
+- si el bridge o la 3B+ reinician con el sniffer ya encendido, el transporte
+  `pio-frame` puede quedar fuera de fase hasta una resincronizacion manual.
 
-- receptor ARINC 429 electrico real;
-- proteccion y alta impedancia de entrada;
-- adaptador de laboratorio;
-- posterior migracion a PCB.
+### Accion aplicada
 
-## Punto 9 - Paridad estricta y evidencia exportable
+Se agrego recuperacion en tres capas:
+
+1. Sniffer:
+   - build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5`;
+   - si hay racha invalida o timeout, la PIO se reinicia esperando reposo
+     electrico estable del canal antes de volver a capturar.
+2. Bridge:
+   - en `pio-frame`, el reset de transporte es una trama completa de `32 bytes`
+     con valor `0xF0`;
+   - el bridge la envia al abrir SPI y ante respuestas invalidas;
+   - se expone `spi_transport_resets` en `/stats` y
+     `arinc_spi_transport_resets_total` en `/metrics`.
+3. Raspberry Pi 3B+:
+   - se agrego `arinc_supervisor.py`;
+   - se agrego `systemd/arinc-supervisor.service`;
+   - el supervisor consulta `/stats` cada `5 s`;
+   - clasifica estados `BOOTING`, `WAITING_SNIFFER`, `SPI_SYNCING`, `RUNNING`,
+     `ARINC_STALLED`, `CABLE_FAULT`, `BRIDGE_FAULT`, `DASHBOARD_FAULT` y
+     `RECOVERING`;
+   - primero ejecuta `POST /control/recover_spi` si el bridge vive pero SPI esta
+     desfasado;
+   - reinicia bridge/Flask si hay fallas repetidas de servicio, HTTP o
+     protocolo;
+   - registra `CABLE_FAULT` sin entrar en reinicios infinitos.
+
+### Alcance
+
+La recuperacion cubre fallas de proceso, arranque fuera de fase y
+desalineacion de protocolo. No puede corregir por software un cable fisicamente
+desconectado, masa comun perdida o una Pico sin alimentacion.
+
+Documento asociado:
+
+- [procedimiento_recuperacion_fallas_arinc429.md](procedimiento_recuperacion_fallas_arinc429.md)
+- [evidencia_recuperacion_fallas_v5.md](evidencia_recuperacion_fallas_v5.md)
+
+## Punto 10 - Paridad estricta y evidencia exportable
 
 Estado de implementacion:
 
@@ -442,3 +469,26 @@ Corrida larga final completada:
 - resultado: `PASS`
 - evidencia:
   [evidencia_corrida_final_stream_8mhz_8h.md](evidencia_corrida_final_stream_8mhz_8h.md)
+
+## Estado de las observaciones del tutor
+
+Completado:
+
+1. Bridge restringido a loopback y Flask expuesto a la red.
+2. Transporte SPI por tramas completas mediante PIO-frame.
+3. Separacion entre errores SPI de arranque y operativos.
+4. Corridas prolongadas con `spi_errors = 0`.
+5. Stream aleatorio sin dependencia de lotes de 1000 palabras.
+6. Barrido SPI hasta 50 MHz y seleccion justificada de 8 MHz.
+7. Diagramas internos de las cuatro placas/nodos.
+8. Separacion documentada entre modo laboratorio y sniffer pasivo real.
+9. Modo dios v2 para clasificacion y recuperacion escalonada.
+10. Paridad estricta validada mediante inyeccion controlada.
+11. Exportacion automatica de CSV, JSON y PDF.
+
+Siguiente fase:
+
+- receptor ARINC 429 electrico real;
+- proteccion y alta impedancia de entrada;
+- adaptador de laboratorio;
+- posterior migracion a PCB.

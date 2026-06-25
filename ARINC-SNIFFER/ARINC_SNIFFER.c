@@ -55,6 +55,10 @@
 #define RESYNC_WORD_THRESHOLD     32u
 #define REV_RESYNC_LOG_EVERY      32u
 #define FWD_STALL_RESYNC_US       500000u
+#define RESYNC_IDLE_HIGH_US       20u
+#define RESYNC_IDLE_LOW_US        120u
+#define RESYNC_IDLE_UNKNOWN_US    20u
+#define RESYNC_IDLE_TIMEOUT_US    50000u
 #define BIT_RATE_DETECT_WINDOW_US 2000000u
 #define BIT_RATE_HIGH_HZ          100000u
 #define BIT_RATE_LOW_HZ           12500u
@@ -88,7 +92,7 @@
 #define ARINC429_LOGIC_MODE       0u
 #endif
 #if SNIFFER_SPI_PIO_FRAME_TRANSPORT && ARINC429_LOGIC_MODE
-#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4"
+#define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5"
 #elif SNIFFER_SPI_PIO_FRAME_TRANSPORT
 #define SNIFFER_BUILD_TAG         "SPI-PIOFRAME-RL1"
 #elif ARINC429_LOGIC_MODE
@@ -502,10 +506,66 @@ static void arinc_rx_program_init(PIO pio, uint sm, uint offset, uint pin_base) 
     pio_sm_set_enabled(pio, sm, true);
 }
 
-static void restart_rx_state_machine(PIO pio, uint sm) {
+static uint channel_pin_base(uint8_t channel) {
+    return channel == CHANNEL_FWD ? ARINC_FWD_PIN_BASE : ARINC_REV_PIN_BASE;
+}
+
+static bool channel_is_null_level(uint8_t channel) {
+    const uint pin_base = channel_pin_base(channel);
+    return !gpio_get(pin_base + 0u) && !gpio_get(pin_base + 1u);
+}
+
+static uint32_t bit_rate_detector_effective_bps(const bit_rate_detector_t *detector) {
+    if (detector->detected_bit_rate_bps == BIT_RATE_HIGH_HZ ||
+        detector->detected_bit_rate_bps == BIT_RATE_LOW_HZ) {
+        return detector->detected_bit_rate_bps;
+    }
+
+    if (detector->last_words_per_sec >= BIT_RATE_HIGH_MIN_WPS) {
+        return BIT_RATE_HIGH_HZ;
+    }
+    if (detector->last_words_per_sec >= BIT_RATE_LOW_MIN_WPS) {
+        return BIT_RATE_LOW_HZ;
+    }
+    return 0u;
+}
+
+static uint32_t resync_idle_required_us(uint32_t bit_rate_bps) {
+    if (bit_rate_bps == BIT_RATE_LOW_HZ) {
+        return RESYNC_IDLE_LOW_US;
+    }
+    if (bit_rate_bps == BIT_RATE_HIGH_HZ) {
+        return RESYNC_IDLE_HIGH_US;
+    }
+    return RESYNC_IDLE_UNKNOWN_US;
+}
+
+static void restart_rx_state_machine_after_idle(PIO pio,
+                                                uint sm,
+                                                uint8_t channel,
+                                                uint32_t bit_rate_bps) {
+    const uint32_t idle_required_us = resync_idle_required_us(bit_rate_bps);
+    const uint64_t started_us = time_us_64();
+    uint64_t idle_started_us = 0u;
+
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_clear_fifos(pio, sm);
     pio_sm_restart(pio, sm);
+
+    while ((time_us_64() - started_us) < RESYNC_IDLE_TIMEOUT_US) {
+        const uint64_t now_us = time_us_64();
+        if (channel_is_null_level(channel)) {
+            if (idle_started_us == 0u) {
+                idle_started_us = now_us;
+            } else if ((now_us - idle_started_us) >= idle_required_us) {
+                break;
+            }
+        } else {
+            idle_started_us = 0u;
+        }
+        tight_loop_contents();
+    }
+
     pio_sm_set_enabled(pio, sm, true);
 }
 
@@ -760,7 +820,10 @@ static void enqueue_from_sm(PIO pio,
             log_logic_rejected_word(word, channel, filter, stats);
             ++(*invalid_streak);
             if (*invalid_streak >= RESYNC_WORD_THRESHOLD) {
-                restart_rx_state_machine(pio, sm);
+                restart_rx_state_machine_after_idle(pio,
+                                                    sm,
+                                                    channel,
+                                                    bit_rate_detector_effective_bps(&g_fwd_rate_detector));
                 note_channel_resync(channel, "invalid_streak", stats);
                 *invalid_streak = 0u;
                 return;
@@ -773,7 +836,10 @@ static void enqueue_from_sm(PIO pio,
             log_logic_rejected_word(word, channel, filter, stats);
             ++(*invalid_streak);
             if (*invalid_streak >= RESYNC_WORD_THRESHOLD) {
-                restart_rx_state_machine(pio, sm);
+                restart_rx_state_machine_after_idle(pio,
+                                                    sm,
+                                                    channel,
+                                                    bit_rate_detector_effective_bps(&g_fwd_rate_detector));
                 note_channel_resync(channel, "invalid_streak", stats);
                 *invalid_streak = 0u;
                 return;
@@ -1314,6 +1380,15 @@ static bool spi_pio_read_frame(spi_link_state_t *spi_link,
     return true;
 }
 
+static bool spi_pio_frame_is_transport_reset(const uint8_t *frame) {
+    for (uint8_t i = 0u; i < SNIFFER_SPI_PACKET_SIZE; ++i) {
+        if (frame[i] != SNIFFER_SPI_TRANSPORT_RESET) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void spi_pio_init_link(spi_link_state_t *spi_link) {
     PIO pio = SNIFFER_SPI_PIO;
     const uint sm_rx = SNIFFER_SPI_PIO_SM_RX;
@@ -1774,6 +1849,13 @@ static void service_spi_link(spi_link_state_t *spi_link,
         spi_link->last_byte_us = time_us_64();
         spi_diag_gpio_note_spi_activity();
 
+        if (spi_pio_frame_is_transport_reset(frame)) {
+            ++spi_link->reset_counter;
+            spi_transport_to_idle(spi_link);
+            spi_pio_preload_idle_frame(spi_link);
+            continue;
+        }
+
         if (spi_link->phase == SPI_LINK_PHASE_STREAM_RESPONSE) {
             ++spi_link->pio_response_frame_count;
             spi_link->response_rx_count = SNIFFER_SPI_PACKET_SIZE;
@@ -2000,7 +2082,10 @@ int main(void) {
 
         if (queued_words == 0u &&
             absolute_time_diff_us(last_valid_fwd_time, now) >= (int64_t)FWD_STALL_RESYNC_US) {
-            restart_rx_state_machine(pio, sm_fwd);
+            restart_rx_state_machine_after_idle(pio,
+                                                sm_fwd,
+                                                CHANNEL_FWD,
+                                                bit_rate_detector_effective_bps(&g_fwd_rate_detector));
             invalid_streak_fwd = 0u;
             last_valid_fwd_time = now;
             note_channel_resync(CHANNEL_FWD, "timeout", &stats);

@@ -1,0 +1,29 @@
+[Unit]
+Description=ARINC Bridge/Dashboard Supervisor
+After=network.target arinc-sniffer-bridge.service arinc-dashboard-flask.service
+Wants=arinc-sniffer-bridge.service arinc-dashboard-flask.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/mdiaz501/PAMPA/HOST_3b+
+Environment=ARINC_SUPERVISOR_BRIDGE_URL=http://127.0.0.1:5100
+Environment=ARINC_SUPERVISOR_INTERVAL_SEC=5
+Environment=ARINC_SUPERVISOR_HTTP_TIMEOUT_SEC=2
+Environment=ARINC_SUPERVISOR_STARTUP_GRACE_SEC=35
+Environment=ARINC_SUPERVISOR_TRAFFIC_STALL_SEC=30
+Environment=ARINC_SUPERVISOR_FAULT_THRESHOLD=3
+Environment=ARINC_SUPERVISOR_RESTART_COOLDOWN_SEC=45
+Environment=ARINC_SUPERVISOR_ACTIONS=1
+Environment=ARINC_SUPERVISOR_SPI_RECOVER=1
+Environment=ARINC_SUPERVISOR_SPI_RECOVER_MAX_ATTEMPTS=2
+Environment=ARINC_SUPERVISOR_RESTART_ON_ARINC_STALL=0
+Environment=ARINC_SUPERVISOR_BRIDGE_SERVICE=arinc-sniffer-bridge
+Environment=ARINC_SUPERVISOR_FLASK_SERVICE=arinc-dashboard-flask
+Environment=ARINC_SUPERVISOR_STATUS=/home/mdiaz501/PAMPA/HOST_3b+/arinc_supervisor_status.json
+Environment=ARINC_SUPERVISOR_LOG=/home/mdiaz501/PAMPA/HOST_3b+/arinc_supervisor_events.jsonl
+ExecStart=/home/mdiaz501/PAMPA/HOST_3b+/.venv/bin/python arinc_supervisor.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

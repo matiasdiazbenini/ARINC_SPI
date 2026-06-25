@@ -2,12 +2,13 @@
 
 ## 1. Funcion de la placa
 
-La Raspberry Pi 3B+ cumple cuatro funciones:
+La Raspberry Pi 3B+ cumple cinco funciones:
 
 1. Actua como maestro SPI del ARINC-SNIFFER.
 2. Mantiene una imagen en memoria de estadisticas, filtro y ultimos valores.
 3. Expone esos datos por HTTP local mediante el bridge.
 4. Sirve el dashboard Flask hacia la notebook por Ethernet.
+5. Vigila bridge/Flask con un supervisor liviano de recuperacion.
 
 La captura ARINC no ocurre en Flask. Ocurre en el RP2040 del sniffer.
 
@@ -20,6 +21,11 @@ flowchart LR
 
     BR -->|"JSON de respuesta"| FL["Proceso 2<br/>Flask dashboard app.py<br/>0.0.0.0:5000"]
     FL -->|"HTTP GET/POST por<br/>127.0.0.1"| BR
+
+    SUP["Proceso 3<br/>arinc_supervisor.py<br/>modo dios cada 5 s"] -->|"GET /stats"| BR
+    SUP -.->|"POST /control/recover_spi<br/>si SPI se desfasa"| BR
+    SUP -.->|"systemctl restart<br/>si hay fallas repetidas"| BR
+    SUP -.->|"systemctl restart<br/>si hay fallas repetidas"| FL
 
     FL -->|"Ethernet<br/>192.168.50.2:5000"| WEB["Navegador notebook"]
     PROM["Prometheus notebook<br/>192.168.50.1"] -->|"GET /metrics cada 1 s"| FL
@@ -281,7 +287,29 @@ Cada frontera tiene una responsabilidad definida: PIO conserva temporizacion,
 la CPU del sniffer valida, SPI transporta estado, el bridge centraliza acceso y
 Flask presenta la informacion.
 
-## 13. Registro de evidencia
+## 13. Supervisor de recuperacion
+
+`arinc_supervisor.py` corre como servicio `systemd` independiente. No usa SPI
+directamente ni modifica el dashboard; consulta `/stats`, controla procesos y
+publica un archivo JSON de estado.
+
+Estados principales:
+
+- `RUNNING`: sistema con progreso normal.
+- `SPI_SYNCING`: el bridge esta intentando sincronizar SPI.
+- `ARINC_STALLED`: hay SPI, pero no avanzan palabras aceptadas.
+- `CABLE_FAULT`: probable falla fisica externa al software.
+- `BRIDGE_FAULT` / `DASHBOARD_FAULT`: proceso o HTTP caido.
+- `RECOVERING`: accion correctiva en ejecucion.
+
+Si el bridge vive pero el protocolo SPI esta desfasado, primero llama
+`POST /control/recover_spi`. Si la falla persiste o un servicio cae, reinicia
+`arinc-sniffer-bridge` y `arinc-dashboard-flask`.
+
+La frecuencia por defecto es `5 s`, por lo que su carga es despreciable frente
+al bridge SPI y al dashboard.
+
+## 14. Registro de evidencia
 
 `stats_recorder.py` es un tercer proceso opcional. Solo consulta `/stats` por
 loopback y no accede a SPI:
@@ -298,11 +326,13 @@ flowchart LR
 Puede finalizar por duracion, cantidad de palabras, orden manual o desconexion
 sostenida. Los archivos se guardan en `~/PAMPA/ARINC_RESULTS`.
 
-## 14. Fuentes de implementacion
+## 15. Fuentes de implementacion
 
 - [`HOST_3b+/spi_sniffer_bridge.py`](../../HOST_3b+/spi_sniffer_bridge.py)
 - [`HOST_3b+/sniffer_spi_protocol.py`](../../HOST_3b+/sniffer_spi_protocol.py)
+- [`HOST_3b+/arinc_supervisor.py`](../../HOST_3b+/arinc_supervisor.py)
 - [`HOST_3b+/stats_recorder.py`](../../HOST_3b+/stats_recorder.py)
 - [`HOST_3b+/systemd/arinc-sniffer-bridge.service`](../../HOST_3b+/systemd/arinc-sniffer-bridge.service)
+- [`HOST_3b+/systemd/arinc-supervisor.service`](../../HOST_3b+/systemd/arinc-supervisor.service)
 - [`DASHBOARD_WEB/arinc_dashboard/app.py`](../../DASHBOARD_WEB/arinc_dashboard/app.py)
 - [`prometheus/prometheus.yml`](../../prometheus/prometheus.yml)

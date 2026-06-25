@@ -16,7 +16,7 @@ del canal `FWD` sin que `ARINC-TX` ni `ARINC-RX` se la informen por software.
 La sniffer debe mostrar por USB:
 
 ```text
-Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4
+Build: SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5
 ```
 
 El TX autorate elige una velocidad al arrancar entre:

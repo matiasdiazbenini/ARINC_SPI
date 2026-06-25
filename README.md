@@ -30,6 +30,11 @@ Quedo validado:
 - transporte SPI por tramas completas validado con `sniffer_arinc429_logic_pio_frame`
 - corrida PIO-frame de 6-7 horas con `spi_errors = 0`
 - mecanismo DRDY implementado para consultar snapshot por demanda
+- recuperacion V5 implementada para:
+  - resincronizar captura ARINC esperando reposo electrico del canal
+  - resetear transporte SPI `pio-frame` con trama completa de `32 bytes`
+  - supervisar bridge/Flask con modo dios v2 (`arinc-supervisor.service`)
+  - clasificar estados y ejecutar recuperacion escalonada
 - paridad estricta implementada en RX y SNIFFER
 - deteccion autonoma en sniffer de velocidad `FWD` entre `100 kbps` y `12.5 kbps`
 - resync FWD separados entre arranque y regimen

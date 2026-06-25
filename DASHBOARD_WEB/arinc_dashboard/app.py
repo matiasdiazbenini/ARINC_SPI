@@ -408,6 +408,15 @@ def stats():
                 "slot_count": 0,
                 "filter_mode": 0,
                 "filter_entries": [],
+                "supervisor": {
+                    "state": "UNKNOWN",
+                    "health": "unknown",
+                    "issue": "bridge_unreachable",
+                },
+                "supervisor_state": "UNKNOWN",
+                "supervisor_health": "unknown",
+                "supervisor_issue": "bridge_unreachable",
+                "supervisor_last_action": "",
             }), 502
 
     with data_lock:

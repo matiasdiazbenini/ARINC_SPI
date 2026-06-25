@@ -234,16 +234,18 @@ powershell -ExecutionPolicy Bypass -File .\start_prometheus_grafana.ps1 -Stop
             "4. 3B+ - verificar que el autoarranque funciono",
             """
 systemctl status arinc-sniffer-bridge arinc-dashboard-flask --no-pager
+systemctl status arinc-supervisor --no-pager
 curl http://127.0.0.1:5100/stats
+curl http://127.0.0.1:5100/supervisor/status
 curl http://127.0.0.1:5000/stats
 """,
         ),
         command_section(
             "5. 3B+ - rescate rapido si Flask o bridge no arrancaron",
             """
-sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 sleep 2
-systemctl status arinc-sniffer-bridge arinc-dashboard-flask --no-pager
+systemctl status arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor --no-pager
 """,
         ),
         command_section(
@@ -277,6 +279,7 @@ cd ~/PAMPA/HOST_3b+
 
 sudo cp systemd/arinc-sniffer-bridge.service /etc/systemd/system/
 sudo cp systemd/arinc-dashboard-flask.service /etc/systemd/system/
+sudo cp systemd/arinc-supervisor.service /etc/systemd/system/
 
 sudo systemctl daemon-reload
 """,
@@ -284,26 +287,26 @@ sudo systemctl daemon-reload
         command_section(
             "10. 3B+ - habilitar autoarranque",
             """
-sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask
-sudo systemctl start arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
+sudo systemctl start arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 """,
         ),
         command_section(
             "11. 3B+ - detenerlos ahora",
             """
-sudo systemctl stop arinc-dashboard-flask arinc-sniffer-bridge
+sudo systemctl stop arinc-supervisor arinc-dashboard-flask arinc-sniffer-bridge
 """,
         ),
         command_section(
             "12. 3B+ - evitar autoarranque en el futuro",
             """
-sudo systemctl disable arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl disable arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 """,
         ),
         command_section(
             "13. 3B+ - volver a habilitar autoarranque",
             """
-sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 """,
         ),
         command_section(
@@ -311,6 +314,7 @@ sudo systemctl enable arinc-sniffer-bridge arinc-dashboard-flask
             """
 journalctl -u arinc-sniffer-bridge -f
 journalctl -u arinc-dashboard-flask -f
+journalctl -u arinc-supervisor -f
 """,
         ),
         command_section(
@@ -318,7 +322,7 @@ journalctl -u arinc-dashboard-flask -f
             """
 pkill -f '[s]pi_sniffer_bridge.py'
 pkill -f '[a]rinc_dashboard/.*/app.py'
-sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask
+sudo systemctl restart arinc-sniffer-bridge arinc-dashboard-flask arinc-supervisor
 """,
         ),
         callout(

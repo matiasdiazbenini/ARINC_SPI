@@ -71,6 +71,17 @@ Se comprobo:
 - transporte SPI por tramas completas validado con PIO-frame
 - mecanismo `DRDY` usado como disparador principal de snapshot, con polling solo
   como respaldo por timeout
+- recuperacion V5 agregada:
+  - el sniffer resincroniza la PIO ARINC esperando reposo electrico del canal
+    antes de volver a capturar
+  - el bridge envia reset de transporte por trama completa en modo `pio-frame`
+    al arrancar y ante errores de protocolo
+  - la 3B+ puede ejecutar modo dios v2 con `arinc-supervisor.service`
+  - el supervisor clasifica `BOOTING`, `WAITING_SNIFFER`, `SPI_SYNCING`,
+    `RUNNING`, `ARINC_STALLED`, `CABLE_FAULT`, `BRIDGE_FAULT`,
+    `DASHBOARD_FAULT` y `RECOVERING`
+  - ante falla SPI intenta `POST /control/recover_spi` antes de reiniciar
+    bridge/Flask
 - aceptacion estricta por paridad implementada en RX y SNIFFER
 - soporte implementado para prueba autorate `100 kbps` / `12.5 kbps`:
   - TX puede elegir velocidad al arrancar con `arinc_tx_arinc429_logic_stream_autorate`
@@ -92,6 +103,7 @@ Se comprobo:
 - resync FWD separados entre arranque y regimen operativo
 - registrador CSV/JSON/PDF agregado para pruebas en la 3B+
 - target recomendado del sniffer logico: `sniffer_arinc429_logic_pio_frame`
+- build esperada del sniffer logico: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5`
 - corrida PIO-frame de 6-7 horas con `spi_errors = 0`
 - labels utiles detectados:
   - `0xA5 TEMPERATURA`
@@ -285,7 +297,7 @@ Si en el futuro se quiere trabajar con mas variables simultaneas:
 `DRDY` queda implementado como mejora post-validacion:
 
 - Pico sniffer `GP20` -> Raspberry Pi `GPIO25`
-- build esperada: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4`
+- build esperada: `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5`
 - bridge: `ARINC_SPI_REQUEST_MODE=drdy`
 - fallback: timeout periodico si no se detecta DRDY
 

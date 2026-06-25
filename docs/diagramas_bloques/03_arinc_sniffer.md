@@ -75,7 +75,31 @@ Registros usados:
 Las state machines FWD y REV son independientes. Una rafaga REV no detiene la
 captura FWD y viceversa.
 
-## 4. Del FIFO PIO a la cola circular
+## 4. Recuperacion de fase ARINC
+
+Si la sniffer se enciende o se reconecta mientras el TX esta transmitiendo, la
+PIO puede empezar a contar en mitad de una palabra. En ese caso los niveles
+electricos son correctos, pero los grupos de 32 bits quedan corridos y fallan
+por paridad/filtro.
+
+La build V5 corrige esto asi:
+
+```mermaid
+flowchart TD
+    BAD["Racha de palabras invalidas<br/>o timeout sin palabras aceptadas"] --> STOP["Deshabilitar SM<br/>limpiar FIFO<br/>reiniciar SM"]
+    STOP --> WAIT["Esperar reposo electrico<br/>A=0 y B=0 estable"]
+    WAIT --> RATE{"Velocidad detectada"}
+    RATE -->|"100 kbps"| H["reposo aprox. 20 us"]
+    RATE -->|"12.5 kbps"| L["reposo aprox. 120 us"]
+    H --> ON["Rehabilitar PIO"]
+    L --> ON
+    ON --> CAPTURE["Volver a capturar desde<br/>inicio de palabra"]
+```
+
+La espera no busca la mitad nula de un bit, sino el espacio nulo entre palabras.
+Por eso reduce el riesgo de volver a entrar desfasado.
+
+## 5. Del FIFO PIO a la cola circular
 
 La CPU llama a `enqueue_from_sm` para drenar ambos FIFO:
 
@@ -118,16 +142,18 @@ Comportamiento de la cola:
 - Si se llena, descarta la entrada nueva e incrementa `overflow_events`.
 - En cada vuelta del lazo principal se procesan hasta 8 entradas.
 
-## 5. Resincronizacion
+## 6. Resincronizacion
 
 El sniffer vigila dos sintomas:
 
 1. Una racha de 32 palabras no plausibles.
 2. En FWD, 500 ms sin recibir una palabra cruda y con la cola vacia.
 
-Ante esas condiciones reinicia la state machine PIO del canal afectado y
-actualiza `fwd_resync_events` o `rev_resync_events`. La resincronizacion no
-borra las estadisticas generales ni obliga a reiniciar la placa.
+Ante esas condiciones detiene la state machine PIO del canal afectado, limpia
+su FIFO y espera reposo electrico estable antes de volver a habilitarla.
+Tambien actualiza `fwd_resync_events` o `rev_resync_events`. La
+resincronizacion no borra las estadisticas generales ni obliga a reiniciar la
+placa.
 
 En FWD tambien clasifica:
 
@@ -135,7 +161,7 @@ En FWD tambien clasifica:
 - `fwd_operational_resync_events`: despues de que el enlace FWD ya quedo
   armado.
 
-## 6. Filtro y decodificacion
+## 7. Filtro y decodificacion
 
 ```mermaid
 flowchart TD
@@ -179,7 +205,7 @@ Rangos de plausibilidad actuales:
 | Altitud | 0 a 15000 ft |
 | ACK | 0 a 100000 |
 
-## 7. Snapshot de ultimos valores
+## 8. Snapshot de ultimos valores
 
 El bridge no necesita extraer millones de eventos individuales. El sniffer
 mantiene hasta 16 slots, identificados por:
@@ -216,7 +242,7 @@ flowchart TD
 Esto conserva el ultimo estado y el conteo acumulado de cada parametro sin
 mantener una copia RAM de cada palabra aceptada.
 
-## 8. Paquete SPI
+## 9. Paquete SPI
 
 Cada request y cada response ocupa exactamente 32 bytes:
 
@@ -244,7 +270,7 @@ Comandos implementados:
 | `GET_LATEST_META` | Leer revision y cantidad de slots |
 | `GET_LATEST_SLOT` | Leer un slot por indice |
 
-## 9. SPI slave PIO-frame
+## 10. SPI slave PIO-frame
 
 La implementacion vigente usa PIO1 y mueve una trama completa por transaccion,
 no una llamada SPI por byte.
@@ -288,7 +314,7 @@ Registros del PIO SPI:
 La CPU invierte los bits dentro de cada byte al empacar y desempaquetar porque
 el orden natural del desplazamiento PIO y el orden SPI de los bytes difieren.
 
-## 10. Fases internas del enlace SPI
+## 11. Fases internas del enlace SPI
 
 ```mermaid
 stateDiagram-v2
@@ -298,15 +324,20 @@ stateDiagram-v2
     REQUEST_READY --> STREAM_RESPONSE: request valido y response preparada
     STREAM_RESPONSE --> IDLE: host relojeara 32 bytes de respuesta
     COLLECT_REQUEST --> IDLE: trama incompleta o reset
+    STREAM_RESPONSE --> IDLE: reset de trama completa
 ```
 
 El request y la response son dos transacciones separadas. Esto da tiempo a la
 CPU del RP2040 para validar el paquete, consultar el snapshot y cargar el FIFO
 TX antes de que el maestro genere los clocks de respuesta.
 
-## 11. DRDY
+En modo V5, el reset del transporte `pio-frame` es una trama completa de
+`32 bytes` con valor `0xF0`. La sniffer la reconoce aunque estuviera esperando
+request o terminando una response.
 
-En la build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-V4`, `GP20` se
+## 12. DRDY
+
+En la build `SPI-PIOFRAME-ARINC429-STRICTPARITY-DRDY-AUTORATE-RECOVERY-V5`, `GP20` se
 usa como `DRDY` puro:
 
 - sube cuando el snapshot recibe una palabra aceptada nueva;
@@ -317,7 +348,7 @@ El host puede seguir usando polling como fallback. La mejora reduce consultas
 inutiles: la 3B+ solo pide snapshot cuando el sniffer avisa que hay estado
 nuevo, o cuando vence el timeout de respaldo.
 
-## 12. Capacidades y cuellos de botella
+## 13. Capacidades y cuellos de botella
 
 | Etapa | Capacidad / ritmo |
 |---|---|
@@ -336,7 +367,7 @@ volumen exportado: la Raspberry consulta estado y contadores, no intenta copiar
 cada una de las palabras recibidas. La prueba de 9 horas a 8 MHz termino con
 `spi_errors=0`, sin drops ni overflow.
 
-## 13. Limite para uso en campo
+## 14. Limite para uso en campo
 
 GP2..GP5 reciben niveles logicos de laboratorio. El sniffer plug-and-play final
 necesita delante de cada par:
@@ -348,7 +379,7 @@ necesita delante de cada par:
 - conectores, blindaje y referencia de masa definidos;
 - validacion de umbrales, ruido, common mode y fallas de cableado.
 
-## 14. Fuentes de implementacion
+## 15. Fuentes de implementacion
 
 - [`ARINC-SNIFFER/ARINC_SNIFFER.c`](../../ARINC-SNIFFER/ARINC_SNIFFER.c)
 - [`ARINC-SNIFFER/arinc429_logic.pio`](../../ARINC-SNIFFER/arinc429_logic.pio)
