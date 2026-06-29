@@ -46,6 +46,11 @@ Quedo validado:
   - retorno a cero
   - pulsos de `5 us`
   - bit time de `10 us`
+  - modo autorate:
+    - `100 kbps`: palabra de `320 us` y gap visible de `44 us`
+    - `12.5 kbps`: media celda de `40 us`, bit de `80 us` y gap visible de
+      `360 us`
+    - relacion de gaps `360/44 = 8.18`, coherente con la relacion teorica `8:1`
   - reconstruccion diferencial `+3.3 / 0 / -3.3 V`
 
 ## Estructura del repo
@@ -267,6 +272,7 @@ El perfil de estres mas agresivo fue probado y aguanto varias horas, pero con un
 - [procedimiento_registro_estadistico.md](docs/procedimiento_registro_estadistico.md)
 - [evidencia_corrida_final_stream_8mhz_8h.md](docs/evidencia_corrida_final_stream_8mhz_8h.md)
 - [evidencia_corridas_finales_autorate_8h.md](docs/evidencia_corridas_finales_autorate_8h.md)
+- [evidencia_osciloscopio_autorate_20260629.md](docs/evidencia_osciloscopio_autorate_20260629.md)
 - [tesis_fuente_overleaf_arinc429.tex](docs/tex/tesis_fuente_overleaf_arinc429.tex)
 - [trabajo_final_arinc429.tex](docs/tex/trabajo_final_arinc429.tex)
 - [modelo_osi_arquitectura_arinc429.tex](docs/tex/modelo_osi_arquitectura_arinc429.tex)

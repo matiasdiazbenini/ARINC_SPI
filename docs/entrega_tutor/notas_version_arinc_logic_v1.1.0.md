@@ -56,6 +56,21 @@ ARINC_SPI_STATS_SEC=0.06
 
 ## Evidencia de aceptacion
 
+### Osciloscopio autorate
+
+La validacion instrumental final del 2026-06-29 registro:
+
+- a `100 kbps`:
+  - palabra completa de `320 us`;
+  - palabra mas gap visible de `364 us`;
+  - gap visible de `44 us`;
+- a `12.5 kbps`:
+  - media celda activa de `40 us`;
+  - bit completo de `80 us`;
+  - gap visible de `360 us`;
+- relacion de gaps visibles:
+  - `360/44 = 8.18`, coherente con la relacion teorica `8:1`.
+
 ### Corrida 12.5 kbps
 
 Sesion:

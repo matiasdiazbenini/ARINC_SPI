@@ -23,6 +23,7 @@ Validaciones principales:
 | Prueba | Resultado |
 | --- | --- |
 | Enlace bipolar RZ logico | 100 kbps y 12.5 kbps |
+| Osciloscopio autorate | 100 kbps: palabra 320 us, gap 44 us; 12.5 kbps: bit 80 us, gap 360 us |
 | SPI por trama completa | PIO-frame estable a 8 MHz |
 | Barrido SPI | 8 y 9 MHz PASS; 10 MHz parcial; 16 y 50 MHz FAIL |
 | Paridad estricta | 1 error cada 100 palabras detectado y descartado |
@@ -77,6 +78,7 @@ Corridas finales de ocho horas:
 - [Resumen general del proyecto](../pdf/resumen_proyecto_arinc429.pdf)
 - [Instructivo y evidencia de osciloscopio](../pdf/instructivo_osciloscopio_arinc429_logic.pdf)
 - [Evidencia de osciloscopio ARINC logico 2026-06-19](../pdf/evidencia_osciloscopio_arinc429_20260619.pdf)
+- [Evidencia de osciloscopio autorate 2026-06-29](../evidencia_osciloscopio_autorate_20260629.md)
 
 Los CSV completos permanecen en `ARINC_RESULTS` fuera del repositorio. Se
 conservan fuera de Git para evitar versionar cientos de miles de muestras. Los
@@ -93,6 +95,7 @@ JSON y PDF incluidos permiten auditar configuracion, contadores y veredicto.
 - [Stream aleatorio sin lote fijo](../evidencia_stream_aleatorio_post_tutor.md)
 - [Errores SPI operativos en cero](../evidencia_spi_errors_cero_post_tutor.md)
 - [Osciloscopio ARINC logico 2026-06-19](../evidencia_osciloscopio_arinc429_20260619.md)
+- [Osciloscopio autorate 2026-06-29](../evidencia_osciloscopio_autorate_20260629.md)
 
 ## Diagramas internos
 

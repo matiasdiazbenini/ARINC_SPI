@@ -223,3 +223,26 @@ La relacion entre tasas medias aceptadas fue:
 Esto es consistente con la relacion ideal `8:1` entre `100 kbps` y `12.5 kbps`.
 La evidencia detallada queda en
 [evidencia_corridas_finales_autorate_8h.md](evidencia_corridas_finales_autorate_8h.md).
+
+## Complemento de osciloscopio 2026-06-29
+
+La funcionalidad autorate tambien fue verificada instrumentalmente:
+
+| Velocidad | Medicion | Valor |
+|---|---|---:|
+| 100 kbps | palabra completa | `320 us` |
+| 100 kbps | gap visible entre palabras | `44 us` |
+| 12.5 kbps | media celda activa | `40 us` |
+| 12.5 kbps | bit completo | `80 us` |
+| 12.5 kbps | palabra completa esperada | `2.56 ms` |
+| 12.5 kbps | gap visible entre palabras | `360 us` |
+
+La relacion entre gaps visibles fue:
+
+```text
+360 us / 44 us = 8.18
+```
+
+Esto refuerza que la diferencia temporal entre ambas configuraciones sigue la
+relacion teorica `8:1`. La evidencia con imagenes queda en
+[evidencia_osciloscopio_autorate_20260629.md](evidencia_osciloscopio_autorate_20260629.md).

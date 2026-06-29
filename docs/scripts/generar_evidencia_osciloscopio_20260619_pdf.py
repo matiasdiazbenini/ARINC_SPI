@@ -24,6 +24,7 @@ from PIL import Image as PILImage
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 IMAGE_DIR = ROOT / "imagenes" / "validacion_2026-06-19"
+IMAGE_DIR_AUTORATE = ROOT / "imagenes" / "validacion_2026-06-29"
 PDF_DIR = DOCS / "pdf"
 PDF_PATH = PDF_DIR / "evidencia_osciloscopio_arinc429_20260619.pdf"
 
@@ -148,10 +149,21 @@ def scaled_image(path: Path, max_width: float, max_height: float) -> Image:
     return Image(str(path), width=width_px * ratio, height=height_px * ratio)
 
 
-def image_section(story: list, st: dict[str, ParagraphStyle], filename: str, title: str, caption: str) -> None:
+def image_section_from(
+    story: list,
+    st: dict[str, ParagraphStyle],
+    base_dir: Path,
+    filename: str,
+    title: str,
+    caption: str,
+) -> None:
     story.append(p(title, st["h1"]))
-    story.append(scaled_image(IMAGE_DIR / filename, max_width=7.2 * inch, max_height=4.35 * inch))
+    story.append(scaled_image(base_dir / filename, max_width=7.2 * inch, max_height=4.35 * inch))
     story.append(p(caption, st["caption"]))
+
+
+def image_section(story: list, st: dict[str, ParagraphStyle], filename: str, title: str, caption: str) -> None:
+    image_section_from(story, st, IMAGE_DIR, filename, title, caption)
 
 
 def build_pdf() -> None:
@@ -170,7 +182,10 @@ def build_pdf() -> None:
 
     story = [
         p("Evidencia de osciloscopio ARINC 429 logico", st["title"]),
-        p("Capturas del 19 de junio de 2026. Validacion temporal con niveles GPIO de 3,3 V.", st["subtitle"]),
+        p(
+            "Capturas del 19 y 29 de junio de 2026. Validacion temporal con niveles GPIO de 3,3 V.",
+            st["subtitle"],
+        ),
         p(
             "Estas capturas verifican la forma de onda bipolar con retorno a cero, "
             "la palabra de 32 bits, el gap entre palabras y la interpretacion de "
@@ -189,6 +204,8 @@ def build_pdf() -> None:
             ["Retorno a cero", "5 us"],
             ["Longitud de palabra", "32 bits = 320 us"],
             ["Gap minimo", "4 bits = 40 us de NULL"],
+            ["Autorate 12.5 kbps", "bit de 80 us, media celda de 40 us"],
+            ["Gap visible validado", "44 us a 100 kbps; 360 us a 12.5 kbps"],
             ["Nivel logico diferencial", "+3,3 V / 0 V / -3,3 V aprox."],
         ],
         colWidths=[2.4 * inch, 4.8 * inch],
@@ -293,6 +310,85 @@ def build_pdf() -> None:
     )
 
     story.append(PageBreak())
+    story.append(p("Complemento autorate 2026-06-29", st["h1"]))
+    story.append(
+        p(
+            "Estas capturas cierran la validacion instrumental de las dos velocidades "
+            "soportadas por el modo autorate: 100 kbps y 12.5 kbps.",
+            st["body"],
+        )
+    )
+    autorate_table = Table(
+        [
+            ["Velocidad", "Medicion", "Valor"],
+            ["100 kbps", "Palabra completa", "320 us"],
+            ["100 kbps", "Palabra + gap visible", "364 us"],
+            ["100 kbps", "Gap visible", "44 us"],
+            ["12.5 kbps", "Media celda activa", "40 us"],
+            ["12.5 kbps", "Bit completo", "80 us"],
+            ["12.5 kbps", "Gap visible", "360 us"],
+        ],
+        colWidths=[1.45 * inch, 3.35 * inch, 1.45 * inch],
+    )
+    autorate_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), PALE_BLUE),
+                ("TEXTCOLOR", (0, 0), (-1, 0), NAVY),
+                ("FONTNAME", (0, 0), (-1, 0), BOLD_FONT),
+                ("FONTNAME", (0, 1), (-1, -1), BODY_FONT),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.4),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5DF")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(autorate_table)
+    story.append(Spacer(1, 8))
+    story.append(
+        code(
+            "Relacion de gaps visibles:\n"
+            "360 us / 44 us = 8.18\n"
+            "Resultado coherente con la relacion teorica 8:1 entre 100 kbps y 12.5 kbps.",
+            st["code"],
+        )
+    )
+    image_section_from(
+        story,
+        st,
+        IMAGE_DIR_AUTORATE,
+        "TEK0014_100k_palabra_320us.JPG",
+        "100 kbps - palabra de 320 us",
+        "La palabra completa ocupa 320 us: 32 bits de 10 us cada uno.",
+    )
+    image_section_from(
+        story,
+        st,
+        IMAGE_DIR_AUTORATE,
+        "TEK0016_100k_gap_44us.JPG",
+        "100 kbps - gap visible de 44 us",
+        "El gap visible queda cerca del minimo esperado de cuatro tiempos de bit.",
+    )
+    image_section_from(
+        story,
+        st,
+        IMAGE_DIR_AUTORATE,
+        "TEK0012_12k5_bit_80us.JPG",
+        "12.5 kbps - bit completo de 80 us",
+        "El bit completo a baja velocidad mide 80 us; la media celda activa es de 40 us.",
+    )
+    image_section_from(
+        story,
+        st,
+        IMAGE_DIR_AUTORATE,
+        "TEK0009_12k5_gap_360us.JPG",
+        "12.5 kbps - gap visible de 360 us",
+        "El gap visible escala de forma coherente respecto de la medicion a 100 kbps.",
+    )
+
+    story.append(PageBreak())
     story.append(p("Reconstruccion de palabra", st["h1"]))
     story.append(
         p(
@@ -333,8 +429,9 @@ def build_pdf() -> None:
     story.append(p("Conclusion", st["h1"]))
     story.append(
         p(
-            "La evidencia valida el comportamiento temporal y logico: 10 us por bit, 32 bits por palabra, "
-            "retorno a cero, gap minimo de 40 us y niveles diferenciales logicos de aproximadamente +/-3,3 V. "
+            "La evidencia valida el comportamiento temporal y logico: 10 us por bit a 100 kbps, "
+            "80 us por bit a 12.5 kbps, 32 bits por palabra, retorno a cero, gap visible coherente "
+            "con la escala de velocidad y niveles diferenciales logicos de aproximadamente +/-3,3 V. "
             "La interfaz aun no representa los niveles electricos reales de campo (+/-10 V diferencial); "
             "esa conversion queda para la etapa de front-end electrico.",
             st["body"],

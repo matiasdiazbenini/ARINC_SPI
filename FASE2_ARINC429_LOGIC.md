@@ -1,89 +1,116 @@
 # Fase 2: ARINC 429 Logic
 
 ## Estado
-- Fase 1 cerrada como `emulacion funcional`.
-- Fase 2 validada como `recreacion logica/temporal` a `100 kbps`.
-- La `3B+` conserva el bridge/dashboard y suma exportacion estadistica de
-  pruebas mediante `stats_recorder.py`.
 
-## Firmware de esta fase
-- `arinc_tx_arinc429_logic`
-- `arinc_rx_arinc429_logic`
-- `sniffer_arinc429_logic`
+- Fase 1 cerrada como `emulacion funcional`.
+- Fase 2 cerrada como `recreacion logica/temporal` de ARINC 429 sobre GPIO.
+- Velocidades validadas:
+  - `100 kbps`
+  - `12.5 kbps`
+- La `3B+` conserva bridge/dashboard y suma exportacion estadistica mediante
+  `stats_recorder.py`.
+
+## Firmware principal
+
+- TX:
+  - `arinc_tx_arinc429_logic_stream_autorate`
+  - `arinc_tx_arinc429_logic_stream_12k5`
+- RX:
+  - `arinc_rx_arinc429_logic_stream`
+- SNIFFER:
+  - `sniffer_arinc429_logic_pio_frame`
 
 ## Objetivo logrado
+
 - Mantener la arquitectura:
-  - `master -> slave -> sniffer -> 3B+ -> bridge -> Flask/dashboard`
-- Cambiar solo la forma de generacion/captura de la trama entre las Pico.
-- Conservar:
-  - labels
-  - filtro
-  - SPI con la `3B+`
-  - dashboard
-  - ACK semantico
+  - `ARINC-TX -> ARINC-RX`
+  - `ARINC-SNIFFER` pasivo sobre la linea
+  - `SNIFFER -> 3B+ -> bridge -> Flask/dashboard`
+- Recrear palabra, temporizacion, retorno a cero, label, SDI, SSM y paridad.
+- Validar captura pasiva y filtrado por `label + SDI`.
+- Exportar snapshot, contadores y estado por SPI hacia la 3B+.
+- Visualizar y registrar resultados con dashboard, Prometheus/Grafana y
+  `stats_recorder.py`.
 
 ## Caracteristicas tecnicas validadas
+
 - Codificacion `RZ` bipolar logica:
   - `HI = 10`
   - `LO = 01`
   - `NULL = 00`
-- Adaptacion interna del label al formato wire.
-- Modo dual:
-  - `legacy`
-  - `arinc429_logic`
-- Sniffer con snapshot SPI byte-a-byte compatible con la fase anterior.
-
-## Resultado de validacion
-- `arinc_tx_arinc429_logic + arinc_rx_arinc429_logic`: operativo.
-- `arinc_tx_arinc429_logic + arinc_rx_arinc429_logic + sniffer_arinc429_logic`: operativo.
-- `3B+` con bridge + Flask + dashboard: operativo sin cambios funcionales.
-- Corrida larga aproximada de `12 horas`: estable.
+- Palabras ARINC logicas de `32 bits`.
+- Paridad estricta en RX y SNIFFER.
+- Modo stream sin depender de lotes fijos de `1000` palabras.
+- Autorate:
+  - TX puede arrancar en `100 kbps` o `12.5 kbps`.
+  - RX recibe sin configuracion externa de velocidad.
+  - SNIFFER detecta autonomamente la velocidad FWD.
+- Transporte SPI final:
+  - `pio-frame`
+  - tramas completas de `32 bytes`
+  - `DRDY` como disparador principal
+  - `8 MHz` como perfil operativo recomendado
+  - `byte` queda solo como fallback historico estable.
+- Supervisor en 3B+:
+  - autoarranque de bridge/Flask/supervisor
+  - recuperacion de transporte SPI
+  - clasificacion de estados operativos.
 
 ## Perfil recomendado de bridge/dashboard
+
 - Bridge SPI:
-  - `ARINC_SPI_HZ = 800000`
-  - `ARINC_SPI_TRANSFER_MODE = byte`
-  - `ARINC_SPI_BYTE_DELAY_US = 25`
+  - `ARINC_SPI_HZ = 8000000`
+  - `ARINC_SPI_TRANSFER_MODE = pio-frame`
+  - `ARINC_SPI_REQUEST_MODE = drdy`
+  - `ARINC_SPI_DRDY_GPIO = 25`
+  - `ARINC_SPI_MANUAL_CS = 1`
+  - `ARINC_SPI_CS_SETUP_US = 100`
+  - `ARINC_SPI_CS_HOLD_US = 100`
+  - `ARINC_SPI_BYTE_DELAY_US = 0`
   - `ARINC_SPI_POLL_SEC = 0.006`
   - `ARINC_SPI_STATS_SEC = 0.06`
-  - `ARINC_SPI_RESPONSE_DELAY_SEC = 0.00005`
 - Dashboard:
   - `REFRESH_MS = 33`
 
-## Perfil de estres maximo observado
-- Bridge SPI:
-  - `ARINC_SPI_HZ = 1200000`
-  - `ARINC_SPI_BYTE_DELAY_US = 0`
-  - `ARINC_SPI_POLL_SEC = 0.005`
-  - `ARINC_SPI_STATS_SEC = 0.05`
-  - `ARINC_SPI_RESPONSE_DELAY_SEC = 0.0`
-- Dashboard:
-  - `REFRESH_MS = 25`
-- Resultado:
-  - se sostuvo muchas horas
-  - pero con crecimiento apreciable de `spi_errors`
-  - no queda como perfil recomendado para uso continuo
+## Evidencia de validacion
 
-## Indicadores observados en la corrida larga
-- `connected = true`
-- `last_error = ""`
-- `spi_drop_events = 0`
-- `overflow_events = 0`
-- `parity_error = 0`
-- `slot_evictions = 0`
-- `rev_resync_events = 0`
-- `fwd_resync_events` bajo y tolerable
-- `ACK_BATCH` coherente con `ssm = NORMAL`
+### Corridas finales autorate de 8 horas
 
-## Lectura tecnica
-- La fase `arinc429_logic` quedo validada en:
-  - funcionalidad
-  - integracion con la `3B+`
-  - estabilidad larga
-- Lo pendiente a futuro ya no es esta capa logica, sino la futura interfaz electrica ARINC 429 real.
+- `12.5 kbps`:
+  - sesion: `20260619_212806_corrida8h_12k5`
+  - `received_words = 9,876,638`
+  - `accepted_words = 2,962,992`
+  - `spi_errors = 0`
+  - `parity_errors_sniffer = 0`
+  - `overflow_events = 0`
+  - `spi_drop_events = 0`
+  - resultado: `PASS`
+- `100 kbps`:
+  - sesion: `20260620_065154_corrida8h_100k`
+  - `received_words = 76,707,606`
+  - `accepted_words = 23,012,283`
+  - `spi_errors = 0`
+  - `parity_errors_sniffer = 0`
+  - `overflow_events = 0`
+  - `spi_drop_events = 0`
+  - resultado: `PASS`
 
-## Validacion adicional completada
-- Aceptacion estricta por paridad validada en hardware.
+### Osciloscopio autorate 2026-06-29
+
+- `100 kbps`:
+  - palabra completa: `320 us`
+  - palabra mas gap visible: `364 us`
+  - gap visible: `44 us`
+- `12.5 kbps`:
+  - media celda activa: `40 us`
+  - bit completo: `80 us`
+  - palabra completa esperada: `2.56 ms`
+  - gap visible: `360 us`
+- relacion entre gaps:
+  - `360/44 = 8.18`, coherente con la relacion teorica `8:1`.
+
+### Paridad estricta
+
 - Prueba controlada:
   - `received_words = 610905`
   - `accepted_words = 177163`
@@ -92,16 +119,22 @@
   - balance de clasificacion: `0`
   - `spi_errors = 0`
   - resultado: `PASS`
-- Exportacion CSV, JSON y PDF validada con `stats_recorder.py`.
 
-## Proximo paso futuro
-- La evidencia larga final sin inyeccion quedo completada:
-  - ocho horas
-  - `58273540` palabras recibidas
-  - balance de clasificacion igual a cero
-  - sin errores SPI, paridad, overflow, drops ni resync FWD operativos
-  - resultado `PASS`
-- Mantener esta fase como baseline logica estable.
-- En una fase posterior:
-  - agregar transceptores/receptores ARINC 429 reales
-  - reutilizar SPI, bridge, dashboard y semantica de datos sin rediseñar el resto
+## Documentos asociados
+
+- `docs/pdf/trabajo_final_arinc429.pdf`
+- `docs/tex/trabajo_final_arinc429.tex`
+- `docs/evidencia_corridas_finales_autorate_8h.md`
+- `docs/evidencia_osciloscopio_autorate_20260629.md`
+- `docs/evidencia_autorate_100k_12k5.md`
+- `docs/evidencia_barrido_frecuencia_spi.md`
+
+## Lectura tecnica
+
+La fase `arinc429_logic` queda validada en funcionalidad, temporizacion,
+integracion con la 3B+, estabilidad larga, autorate, paridad estricta,
+transporte SPI por trama completa y evidencia instrumental por osciloscopio.
+
+Lo pendiente a futuro ya no es corregir esta capa logica, sino avanzar hacia
+la interfaz electrica ARINC 429 real con entrada diferencial, proteccion,
+alta impedancia y adaptacion de niveles.

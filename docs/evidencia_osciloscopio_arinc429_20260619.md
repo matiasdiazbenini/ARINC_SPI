@@ -143,3 +143,27 @@ alguno de esos labels, o ser descartada por el filtro si corresponde a ruido.
 - Los canales individuales no son buses separados: son el par diferencial.
 - La MATH del osciloscopio permite ver el equivalente diferencial positivo,
   cero y negativo.
+
+## Complemento autorate 2026-06-29
+
+La validacion instrumental se completo con capturas nuevas para las dos
+velocidades soportadas por el modo autorate:
+
+| Velocidad | Medicion | Valor |
+|---|---|---:|
+| 100 kbps | palabra completa | `320 us` |
+| 100 kbps | palabra + gap visible | `364 us` |
+| 100 kbps | gap visible | `44 us` |
+| 12.5 kbps | media celda activa | `40 us` |
+| 12.5 kbps | bit completo | `80 us` |
+| 12.5 kbps | gap visible | `360 us` |
+
+La relacion entre gaps visibles fue:
+
+```text
+360 us / 44 us = 8.18
+```
+
+Esto es coherente con la relacion teorica `8:1` entre `100 kbps` y
+`12.5 kbps`. La evidencia completa queda documentada en
+[evidencia_osciloscopio_autorate_20260629.md](evidencia_osciloscopio_autorate_20260629.md).

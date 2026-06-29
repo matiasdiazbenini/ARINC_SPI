@@ -161,6 +161,18 @@ Se comprobo:
     - `80 us`
   - media celda activa:
     - `40 us`
+- validacion instrumental autorate 2026-06-29:
+  - `100 kbps`:
+    - palabra completa: `320 us`
+    - palabra mas gap visible: `364 us`
+    - gap visible: `44 us`
+  - `12.5 kbps`:
+    - media celda activa: `40 us`
+    - bit completo: `80 us`
+    - palabra completa esperada: `2.56 ms`
+    - gap visible medido: `360 us`
+  - relacion de gaps visibles:
+    - `360 us / 44 us = 8.18`
 
 ### Bridge / dashboard recomendado
 
@@ -295,6 +307,7 @@ Decision post reunion con tutor:
 ### Archivos relacionados
 
 - [instructivo_osciloscopio_arinc429_logic.md](docs/instructivo_osciloscopio_arinc429_logic.md)
+- [evidencia_osciloscopio_autorate_20260629.md](docs/evidencia_osciloscopio_autorate_20260629.md)
 - [osciloscopio_descripcion_imagenes.tex](docs/tex/osciloscopio_descripcion_imagenes.tex)
 - carpeta [imagenes](imagenes/)
 

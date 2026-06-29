@@ -24,6 +24,7 @@
 
 \graphicspath{
   {../../imagenes/validacion_2026-06-19/}
+  {../../imagenes/validacion_2026-06-29/}
   {../../imagenes/FWD/CH1 - CH2/}
   {../../imagenes/REV/CH1 - CH2/}
 }
@@ -896,6 +897,7 @@ Las capturas de osciloscopio confirman:
   \item amplitud logica individual aproximada de 3.3 V;
   \item retorno a cero en cada bit;
   \item bit time de 10 us a 100 kbps;
+  \item bit time de 80 us a 12.5 kbps;
   \item lectura diferencial aproximada +3.3 V, 0 V y -3.3 V;
   \item palabras de 32 bits separadas por estado nulo.
 \end{itemize}
@@ -924,6 +926,77 @@ Las capturas de osciloscopio confirman:
   \caption{Tren de pulsos sin MATH.}
 \end{subfigure}
 \caption{Medicion de canales logicos individuales. Los canales no se pisan: representan polaridades opuestas o estado nulo.}
+\end{figure}
+
+\subsection*{Validacion autorate final}
+
+El 2026-06-29 se completo la evidencia instrumental de las dos velocidades del
+modo autorate. Para 100 kbps se midio una palabra completa de 320 us, una
+ventana palabra mas gap de 364 us y un gap visible de 44 us. Para 12.5 kbps se
+midio una media celda activa de 40 us, un bit completo de 80 us y un gap visible
+de 360 us.
+
+\begin{table}[H]
+\centering
+\caption{Mediciones de osciloscopio para autorate}
+\begin{tabular}{lll}
+\toprule
+Velocidad & Medicion & Valor \\
+\midrule
+100 kbps & Palabra completa & 320 us \\
+100 kbps & Palabra + gap visible & 364 us \\
+100 kbps & Gap visible & 44 us \\
+12.5 kbps & Media celda activa & 40 us \\
+12.5 kbps & Bit completo & 80 us \\
+12.5 kbps & Palabra completa esperada & 2.56 ms \\
+12.5 kbps & Gap visible & 360 us \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La relacion entre los gaps visibles medidos fue:
+
+\begin{equation}
+\frac{360\ \mu s}{44\ \mu s} = 8.18
+\end{equation}
+
+El resultado es consistente con la relacion teorica 8:1 entre 100 kbps y
+12.5 kbps. La diferencia respecto del valor exacto se explica por la colocacion
+manual de cursores y por medir el gap visible entre actividad de palabras en la
+pantalla del osciloscopio.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\textwidth}
+  \includegraphics[width=\textwidth]{TEK0014_100k_palabra_320us.JPG}
+  \caption{100 kbps: palabra de 320 us.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+  \includegraphics[width=\textwidth]{TEK0016_100k_gap_44us.JPG}
+  \caption{100 kbps: gap visible de 44 us.}
+\end{subfigure}
+\caption{Mediciones temporales finales a 100 kbps.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\textwidth}
+  \includegraphics[width=\textwidth]{TEK0011_12k5_media_celda_40us.JPG}
+  \caption{12.5 kbps: media celda activa de 40 us.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+  \includegraphics[width=\textwidth]{TEK0012_12k5_bit_80us.JPG}
+  \caption{12.5 kbps: bit completo de 80 us.}
+\end{subfigure}
+\caption{Mediciones temporales finales a 12.5 kbps.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\textwidth]{TEK0009_12k5_gap_360us.JPG}
+\caption{12.5 kbps: gap visible entre palabras de aproximadamente 360 us.}
 \end{figure}
 
 \section{Barrido de frecuencia SPI}
@@ -1146,11 +1219,14 @@ El reinicio del sniffer podia dejar al bridge sincronizado con una respuesta
 invalida. Se agrego reset de transporte por trama completa y recuperacion V5,
 con espera de reposo del canal antes de reactivar captura.
 
-\section{Gap temporal entre bits}
+\section{Gap temporal entre palabras}
 
 Las mediciones iniciales mostraban separacion mayor a la esperada. El ajuste de
 PIO TX dejo la celda de bit en 10 us a 100 kbps, con 5 us activos y retorno a
-nulo, validado por osciloscopio.
+nulo, validado por osciloscopio. La validacion final registro tambien la
+separacion visible entre palabras: 44 us a 100 kbps y 360 us a 12.5 kbps. La
+relacion 360/44 = 8.18 confirma que la escala temporal del gap acompana el
+cambio de velocidad esperado.
 
 \section{Robustez de servicios}
 
@@ -1171,10 +1247,11 @@ errores de paridad, cero overflow, cero drops SPI, cero resync FWD operativos y
 supervisor en estado sano. La tasa observada escala aproximadamente 8:1 entre
 ambas velocidades, como predice la relacion teorica.
 
-La medicion con osciloscopio confirmo el retorno a cero, la duracion de bit y
-la forma diferencial logica. El transporte SPI por tramas completas, la linea
-DRDY y el supervisor convierten al sistema en una plataforma operable y no solo
-en una prueba aislada de firmware.
+La medicion con osciloscopio confirmo el retorno a cero, la duracion de bit, la
+forma diferencial logica, la palabra completa de 32 bits a 100 kbps y la escala
+temporal correcta del modo 12.5 kbps. El transporte SPI por tramas completas, la
+linea DRDY y el supervisor convierten al sistema en una plataforma operable y
+no solo en una prueba aislada de firmware.
 
 La arquitectura final queda ordenada por responsabilidades: TX genera trafico,
 RX reconstruye palabras, SNIFFER observa pasivamente, la 3B+ traduce a HTTP y

@@ -137,6 +137,16 @@ Las corridas de 8 h validan el cierre de la fase logica `arinc-logic-v1.1.0`:
 - supervisor activo sin necesidad de recuperacion;
 - balance de contadores exacto.
 
+La validacion instrumental complementaria del 2026-06-29 confirmo ademas:
+
+- `100 kbps`: palabra de `320 us` y gap visible de `44 us`;
+- `12.5 kbps`: media celda de `40 us`, bit de `80 us` y gap visible de
+  `360 us`;
+- relacion de gaps `360/44 = 8.18`, consistente con la relacion teorica `8:1`.
+
+La evidencia con capturas queda en
+[evidencia_osciloscopio_autorate_20260629.md](evidencia_osciloscopio_autorate_20260629.md).
+
 El siguiente paso tecnico ya no es de software logico, sino de interfaz
 electrica ARINC real: entrada diferencial, proteccion, alta impedancia y
 adaptacion de niveles hacia la Pico sniffer.

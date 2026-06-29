@@ -207,6 +207,42 @@ En esta seccion se muestra la resta diferencial del par REV. Esta observacion pe
     \item Se observa con claridad el retorno a cero entre simbolos y entre rafagas.
 \end{itemize}
 
+\section{Validacion autorate 2026-06-29}
+
+La validacion final incorporo capturas especificas de las dos velocidades
+soportadas por el modo autorate. Estas imagenes complementan las capturas
+iniciales de FWD/REV y permiten cerrar la medicion temporal de palabra y gap.
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/validacion_2026-06-29/TEK0014_100k_palabra_320us.JPG}
+    \caption{Medicion a 100 kbps con funcion diferencial. La palabra completa ocupa aproximadamente 320 us, consistente con 32 bits de 10 us cada uno.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/validacion_2026-06-29/TEK0016_100k_gap_44us.JPG}
+    \caption{Medicion a 100 kbps del gap visible entre palabras. El valor registrado fue de aproximadamente 44 us, cercano al minimo esperado de 4 tiempos de bit.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/validacion_2026-06-29/TEK0011_12k5_media_celda_40us.JPG}
+    \caption{Medicion a 12.5 kbps de media celda activa. El valor registrado fue de 40 us, coherente con un bit completo de 80 us.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/validacion_2026-06-29/TEK0012_12k5_bit_80us.JPG}
+    \caption{Medicion a 12.5 kbps de bit completo. La lectura de 80 us confirma la escala temporal esperada para la velocidad baja.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \scopeimg{imagenes/validacion_2026-06-29/TEK0009_12k5_gap_360us.JPG}
+    \caption{Medicion a 12.5 kbps del gap visible entre palabras. El valor registrado fue de aproximadamente 360 us. La relacion 360/44 = 8.18 respecto del gap a 100 kbps es coherente con la relacion teorica de velocidades 8:1.}
+\end{figure}
+
 \section{Conclusiones de laboratorio asociadas a estas imagenes}
 
 A partir del conjunto de capturas seleccionadas, puede dejarse asentado lo siguiente:
@@ -215,6 +251,9 @@ A partir del conjunto de capturas seleccionadas, puede dejarse asentado lo sigui
     \item En los canales individuales se observaron niveles compatibles con logica GPIO de 3.3 V.
     \item La duracion del pulso activo se mantuvo sistematicamente en torno a 5 us.
     \item Dado que cada bit se compone de una mitad activa y una mitad en reposo, la base temporal es coherente con un tiempo de bit de aproximadamente 10 us, es decir, una tasa del orden de 100 kbps.
+    \item En modo 12.5 kbps se midio una media celda activa de 40 us y un bit completo de 80 us.
+    \item La palabra completa a 100 kbps se midio en 320 us y el gap visible en 44 us.
+    \item El gap visible a 12.5 kbps se midio en 360 us, con relacion cercana a 8:1 respecto del gap de 100 kbps.
     \item La resta diferencial de ambos hilos, mediante la funcion \texttt{MATH}, evidencio la presencia de pulsos positivos y negativos respecto del nivel cero.
     \item Tanto en el canal FWD como en el canal REV se verifico la presencia de retorno a cero entre simbolos.
     \item Las capturas constituyen evidencia experimental suficiente para sostener que la fase \texttt{arinc429\_logic} logro recrear una codificacion logica/temporal de tipo bipolar con retorno a cero.

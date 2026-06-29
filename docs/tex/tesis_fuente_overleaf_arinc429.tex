@@ -49,6 +49,11 @@
   pdfkeywords={ARINC 429, Raspberry Pi Pico, Raspberry Pi 3B+, SPI, sniffer, dashboard}
 }
 
+\graphicspath{
+  {../../imagenes/validacion_2026-06-29/}
+  {../../imagenes/validacion_2026-06-19/}
+}
+
 \titleformat{\chapter}[display]
   {\bfseries\Large}
   {\filleft\Huge\thechapter}
@@ -111,7 +116,7 @@ El presente documento resume, estructura y deja asentado el trabajo realizado ha
 
 El trabajo se organizo en fases. En una primera etapa se construyo y valido una arquitectura funcional completa basada en un canal de transmision directo, un canal de ACK inverso, una Pico sniffer intermedia y un enlace SPI con la Raspberry Pi 3B+. Luego se estabilizo el transporte SPI entre la Pico sniffer y la 3B+ mediante un esquema byte a byte y una logica de snapshots robustos. Posteriormente se optimizo el bridge y el dashboard para mejorar fluidez visual y estabilidad de largo plazo. Finalmente se desarrollo una nueva fase denominada \textit{ARINC429 logic}, en la cual se mantuvo la arquitectura general y se reemplazo la generacion/captura de tramas por una recreacion logica y temporal mas fiel, con simbolos bipolares logicos y retorno a cero.
 
-Los resultados obtenidos son positivos. Se valido el funcionamiento del sistema completo, se comprobaron corridas largas de muchas horas sin caidas funcionales y se definio un perfil operativo recomendado para uso continuo, asi como un perfil de estres util para explorar los limites del enlace SPI con la 3B+. El siguiente paso natural del proyecto es la validacion instrumental mediante osciloscopio y, a futuro, la incorporacion de transceptores y adaptacion electrica real ARINC 429 para evolucionar desde una recreacion logica/temporal hacia una implementacion plug and play sobre una linea fisica real.
+Los resultados obtenidos son positivos. Se valido el funcionamiento del sistema completo, se comprobaron corridas largas de muchas horas sin caidas funcionales, se definio un perfil operativo recomendado y se completo la validacion instrumental mediante osciloscopio. La plataforma quedo cerrada como una recreacion logica y temporal de ARINC 429 sobre niveles GPIO, con evidencia de retorno a cero, palabra de 32 bits, operacion a 100 kbps y 12.5 kbps, captura pasiva y visualizacion web.
 
 \chapter{Introduccion}
 
@@ -607,7 +612,7 @@ Ese orden redujo mucho la complejidad del debugging.
 
 \section{Proposito}
 
-El siguiente paso natural del proyecto no es un nuevo gran cambio de firmware, sino la obtencion de evidencia instrumental. El objetivo es demostrar visualmente que la fase \texttt{arinc429\_logic} ya implementa una recreacion logica/temporal con retorno a cero.
+La validacion con osciloscopio permite demostrar visualmente que la fase \texttt{arinc429\_logic} implementa una recreacion logica/temporal con retorno a cero. En particular, se registraron capturas a 100 kbps y 12.5 kbps para confirmar duracion de bit, longitud de palabra y separacion visible entre palabras.
 
 \section{Conexion sugerida}
 
@@ -652,6 +657,48 @@ En vista diferencial conceptual, deberian aparecer tres estados:
     \item negativo.
 \end{itemize}
 
+\section{Resultados instrumentales finales}
+
+La medicion final del 2026-06-29 dejo los siguientes valores:
+
+\begin{table}[H]
+\centering
+\caption{Mediciones temporales finales con osciloscopio}
+\begin{tabular}{lll}
+\toprule
+Velocidad & Medicion & Valor \\
+\midrule
+100 kbps & Palabra completa & 320 us \\
+100 kbps & Palabra + gap visible & 364 us \\
+100 kbps & Gap visible & 44 us \\
+12.5 kbps & Media celda activa & 40 us \\
+12.5 kbps & Bit completo & 80 us \\
+12.5 kbps & Palabra completa esperada & 2.56 ms \\
+12.5 kbps & Gap visible & 360 us \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La relacion entre gaps visibles medidos fue:
+
+\begin{equation}
+\frac{360\ \mu s}{44\ \mu s} = 8.18
+\end{equation}
+
+El valor es coherente con la relacion teorica 8:1 entre 100 kbps y 12.5 kbps.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\textwidth]{TEK0014_100k_palabra_320us.JPG}
+\caption{Medicion a 100 kbps: palabra ARINC logica completa de 32 bits en 320 us.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\textwidth]{TEK0009_12k5_gap_360us.JPG}
+\caption{Medicion a 12.5 kbps: gap visible entre palabras de aproximadamente 360 us.}
+\end{figure}
+
 \section{Aclaracion importante}
 
 La validacion con osciloscopio en esta fase no demuestra todavia la capa electrica ARINC 429 real. Lo que valida es la recreacion logica y temporal implementada con GPIO y PIO. La futura fase electrica real requerira drivers, receptores y adaptacion de linea especifica.
@@ -695,7 +742,7 @@ Aunque esta etapa puede darse por cerrada, todavia existen mejoras optativas:
 
 El proyecto se encuentra en un punto muy favorable. Se logro construir una base funcional completa, estabilizar la integracion SPI con la Raspberry Pi 3B+, validar un dashboard operativo, y evolucionar hacia una fase \texttt{arinc429\_logic} que ya ofrece una recreacion logica y temporal mucho mas fiel de la senal de interes.
 
-La arquitectura demostro ser robusta y flexible. El trabajo realizado hasta aqui no solo cumple objetivos funcionales inmediatos, sino que ordena claramente la siguiente fase del proyecto: la validacion con osciloscopio y, posteriormente, la incorporacion de una capa electrica ARINC 429 real.
+La arquitectura demostro ser robusta y flexible. El trabajo realizado cumple los objetivos funcionales de esta parte logica: generacion de palabras, transmision bipolar logica con retorno a cero, recepcion, sniffing pasivo, transporte SPI por tramas completas, visualizacion, registro estadistico y validacion instrumental.
 
 En este sentido, el proyecto ya no se encuentra en una etapa exploratoria inicial, sino en una fase madura de consolidacion. La documentacion, los perfiles operativos definidos, las pruebas de largo plazo y la modularidad alcanzada constituyen una base muy util para la futura redaccion de la tesis completa y para las siguientes iteraciones del desarrollo.
 
@@ -746,7 +793,7 @@ Este archivo esta pensado como fuente viva de tesis. Conviene completarlo con:
     \item caratula formal,
     \item capturas del dashboard,
     \item fotos del montaje,
-    \item capturas del osciloscopio,
+    \item seleccion final de capturas del osciloscopio,
     \item y referencias bibliograficas especificas sobre ARINC 429.
 \end{itemize}
 

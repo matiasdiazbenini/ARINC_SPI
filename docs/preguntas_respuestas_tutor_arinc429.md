@@ -2,13 +2,13 @@
 
 Proyecto PAMPA / ARINC 429 logico-temporal
 
-Fecha de preparacion: 3 de junio de 2026
+Fecha de preparacion: 29 de junio de 2026
 
 Este documento reune veinte preguntas posibles de un tutor o evaluador tecnico sobre el estado actual del proyecto. Las respuestas estan pensadas para una explicacion oral: tecnicas, directas y honestas sobre lo que ya fue validado y lo que todavia pertenece a una fase futura.
 
 ## 1. Cual es el objetivo concreto del proyecto hasta esta fase?
 
-El objetivo fue construir y validar una arquitectura de laboratorio inspirada en ARINC 429, separando la generacion, recepcion, sniffing, transporte hacia host y visualizacion. En la fase actual no se declara cumplimiento electrico ARINC 429 real; se declara una recreacion logica y temporal a 100 kbps con codificacion bipolar logica con retorno a cero, captura pasiva, ACK inverso, bridge SPI/HTTP y dashboard operativo.
+El objetivo fue construir y validar una arquitectura de laboratorio inspirada en ARINC 429, separando la generacion, recepcion, sniffing, transporte hacia host y visualizacion. En la fase actual no se declara cumplimiento electrico ARINC 429 real; se declara una recreacion logica y temporal a 100 kbps y 12.5 kbps con codificacion bipolar logica con retorno a cero, captura pasiva, bridge SPI/HTTP y dashboard operativo.
 
 La importancia del resultado es que el sistema completo ya funciona como cadena extremo a extremo: ARINC-TX transmite, ARINC-RX recibe y responde, ARINC-SNIFFER observa ambas direcciones, la Raspberry Pi 3B+ publica el estado y la notebook visualiza y guarda historico con Prometheus/Grafana.
 
@@ -16,7 +16,7 @@ La importancia del resultado es que el sistema completo ya funciona como cadena 
 
 En ARINC 429 real, la informacion se transmite con tres estados electricos diferenciales: positivo, negativo y nulo. En este proyecto se recreo esa idea en forma logica usando dos pines por canal. Para un bit alto se activa una linea, para un bit bajo se activa la otra, y luego ambas vuelven a cero durante la segunda mitad del bit.
 
-Por eso se habla de retorno a cero: cada bit tiene una mitad activa y una mitad en estado nulo. A 100 kbps, cada bit dura 10 us; en la implementacion validada la media celda activa dura aproximadamente 5 us y la segunda media celda vuelve a cero.
+Por eso se habla de retorno a cero: cada bit tiene una mitad activa y una mitad en estado nulo. A 100 kbps, cada bit dura 10 us: 5 us activos y 5 us en nulo. A 12.5 kbps, cada bit dura 80 us: 40 us activos y 40 us en nulo.
 
 ## 3. Esto ya es ARINC 429 real o todavia es una emulacion?
 
@@ -38,15 +38,15 @@ En la arquitectura queda separado: FWD transporta datos utiles y REV transporta 
 
 ## 6. Que valida exactamente el osciloscopio?
 
-El osciloscopio valida que la forma temporal generada por las Pico coincide con lo esperado para la fase logica: pulsos de aproximadamente 5 us de media celda activa, bit time de 10 us a 100 kbps y retorno a cero en la segunda mitad del bit.
+El osciloscopio valida que la forma temporal generada por las Pico coincide con lo esperado para la fase logica: pulsos de 5 us de media celda activa a 100 kbps, bit time de 10 us, palabra completa de 320 us y retorno a cero. En modo 12.5 kbps se midieron 40 us de media celda activa y 80 us de bit completo.
 
-Tambien se valido la reconstruccion diferencial conceptual mediante MATH = CH1 - CH2, observando tres estados: positivo, cero y negativo. Esto demuestra la bipolaridad logica de la senal, aunque todavia no valide niveles electricos ARINC 429 reales.
+Tambien se valido la reconstruccion diferencial conceptual mediante MATH = CH1 - CH2, observando tres estados: positivo, cero y negativo. La medicion final registro gap visible de 44 us a 100 kbps y 360 us a 12.5 kbps; la relacion 360/44 = 8.18 es coherente con la relacion teorica 8:1.
 
 ## 7. Por que se eligio 100 kbps?
 
-100 kbps es una velocidad clasica asociada a ARINC 429 de alta velocidad y permite una referencia clara para la validacion temporal. A esa tasa, el bit time es 10 us, una escala que se puede medir con osciloscopio y que es razonable para generar con PIO en Raspberry Pi Pico.
+100 kbps es una velocidad clasica asociada a ARINC 429 de alta velocidad y permite una referencia clara para la validacion temporal. A esa tasa, el bit time es 10 us, una escala que se puede medir con osciloscopio y que es razonable para generar con PIO en Raspberry Pi Pico. Tambien se agrego soporte para 12.5 kbps, que corresponde a baja velocidad ARINC y permite probar autorate.
 
-Elegir 100 kbps tambien permite separar problemas: primero se valida que la capa logica y temporal funcione a una tasa representativa; luego, en una fase electrica, se puede trabajar sobre transceptores y proteccion sin redisenar todo el software.
+El TX puede elegir la velocidad al arrancar y el sniffer la detecta sin que TX o RX se la informen por software. Eso demuestra que la captura no depende de una constante fija cargada manualmente en el host.
 
 ## 8. Que hace cada placa Pico en la arquitectura actual?
 
@@ -62,27 +62,27 @@ Esto evita que la Raspberry Pi 3B+ y el dashboard tengan que procesar todo el fl
 
 ## 10. Hay algun cuello de botella actual?
 
-El cuello principal no esta en Flask ni en el dashboard. Lo que mas condiciona el sistema es el intercambio sniffer -> 3B+ por SPI y el patron de polling del bridge. Cuando se forzo el sistema con un perfil mas agresivo, aumento mucho la cantidad de errores SPI sin mejorar realmente la utilidad operativa.
+El cuello principal no esta en Flask ni en el dashboard. Lo que mas condicionaba el sistema era el intercambio sniffer -> 3B+ por SPI y el patron de polling del bridge. Esa parte se mejoro usando SPI `pio-frame`, tramas completas de 32 bytes, `DRDY` como aviso de datos nuevos y un supervisor de recuperacion.
 
-Por eso quedo recomendado un perfil equilibrado: SPI a 800 kHz, delay por byte de 25 us, polling del bridge de 6 ms y refresco de dashboard de 33 ms. Ese perfil dio mas estabilidad y menos errores que el modo de stress.
+El perfil final recomendado usa SPI a 8 MHz, CS manual, `DRDY` y fallback por timeout. En corridas de ocho horas a 100 kbps y 12.5 kbps cerro con cero errores SPI operativos, cero errores de paridad, cero overflow y cero drops.
 
 ## 11. Si TX y RX trabajan a 100 kbps, por que SPI puede ir a 800 kHz?
 
-Son enlaces distintos y cumplen funciones distintas. El enlace TX/RX a 100 kbps representa la comunicacion logica tipo ARINC. El enlace SPI entre sniffer y 3B+ no retransmite la forma de onda bit a bit; transporta snapshots, contadores y datos filtrados.
+Son enlaces distintos y cumplen funciones distintas. El enlace TX/RX a 100 kbps o 12.5 kbps representa la comunicacion logica tipo ARINC. El enlace SPI entre sniffer y 3B+ no retransmite la forma de onda bit a bit; transporta snapshots, contadores y datos filtrados.
 
-SPI necesita suficiente margen para consultar al sniffer, leer estructuras, actualizar estadisticas y responder al dashboard sin atrasarse. Por eso puede trabajar a 800 kHz aunque el enlace observado sea de 100 kbps. No hay contradiccion: uno es el enlace observado y el otro es el canal de telemetria del observador.
+SPI necesita margen para consultar al sniffer, leer estructuras, actualizar estadisticas y responder al dashboard sin atrasarse. Por eso trabaja a 8 MHz aunque el enlace observado sea mucho mas lento. No hay contradiccion: ARINC es el enlace observado y SPI es el canal de telemetria del observador.
 
 ## 12. Por que no usar siempre el perfil SPI de stress a 1.2 MHz?
 
-Porque mas rapido no significo mejor. El perfil de stress a 1.2 MHz sobrevivio muchas horas, pero acumulo muchos mas spi_errors. En comparaciones largas, el perfil recomendado movio mas palabras utiles con una tasa de errores SPI muchisimo menor.
+Porque mas rapido no significo automaticamente mejor. Se hizo un barrido hasta 50 MHz: 8 y 9 MHz pasaron, 10 MHz fue parcial, y 16/50 MHz fallaron. El perfil elegido fue 8 MHz porque dio margen operativo real y cero errores en corridas largas.
 
 El criterio de ingenieria elegido fue estabilidad operativa, no velocidad maxima. Para una demostracion y para uso continuo conviene un sistema que mantenga conectividad, sin overflow, sin drops y con errores despreciables.
 
 ## 13. SPI es la mejor opcion entre sniffer y 3B+? Que pasa con UART o I2C?
 
-SPI es una buena opcion porque tiene buena velocidad, baja latencia y una separacion clara entre master y slave. Sin embargo, en la Pico como SPI slave aparecieron desafios practicos de framing, tiempos y lectura estable. Por eso el proyecto termino usando un protocolo byte a byte robusto y parametros conservadores.
+SPI es una buena opcion porque tiene buena velocidad, baja latencia y una separacion clara entre master y slave. En la Pico como SPI slave hardware aparecieron desafios practicos de framing, tiempos y lectura estable. Por eso se migro el slave SPI del sniffer a PIO y a transacciones completas de 32 bytes.
 
-UART podria ser mas simple de estabilizar, pero se aleja del objetivo de explorar un enlace host-sniffer por SPI y puede limitar framing o control temporal. I2C no parece la mejor opcion para esta etapa: tiene mas overhead, opera con lineas compartidas, pull-ups, direccionamiento y posibles problemas de clock stretching. Una evolucion interesante seria un SPI slave implementado por PIO, porque daria mas control del framing.
+UART podria ser mas simple para una version basica, pero SPI permite mas margen y un protocolo host-sniffer mas estructurado. I2C no es conveniente para esta etapa por overhead, pull-ups, direccionamiento y posibles esperas. La solucion final actual es SPI por PIO, que da control de `CS`, `SCK`, `MOSI` y `MISO`.
 
 ## 14. Por que Ethernet directo mejoro la estabilidad frente a Wi-Fi?
 
@@ -103,9 +103,9 @@ polling queda solo como fallback por timeout.
 
 ## 16. Como se interpreta la corrida larga con mas de 27 millones de palabras?
 
-La corrida reporto aproximadamente 27,5 millones de palabras aceptadas, cero errores de paridad, cero overflow, cero drops SPI, cero evictions de slots y solo 36 spi_errors. Eso representa una tasa de error extremadamente baja para una corrida de varias horas.
+Las corridas finales autorate reportaron ocho horas a 12.5 kbps y ocho horas a 100 kbps, ambas con cero errores SPI operativos, cero errores de paridad, cero overflow y cero drops. A 100 kbps se recibieron 76.707.606 palabras; a 12.5 kbps se recibieron 9.876.638 palabras.
 
-Tambien se mantuvieron vivas las variables TEMPERATURA, VELOCIDAD, ALTITUD y ACK_BATCH, todas con paridad OK y SSM NORMAL. La lectura correcta es que el sistema ya no es una prueba breve: es una baseline estable para mostrar.
+La lectura correcta es que el sistema ya no es una prueba breve: es una baseline estable, con datos exportados a JSON/PDF/CSV y con evidencia de osciloscopio.
 
 ## 17. Que limitaciones conocidas quedan en el sniffer?
 
@@ -127,6 +127,6 @@ No conviene delegar ciegamente el diseno fisico completo. La revision electrica,
 
 ## 20. Que se puede afirmar con seguridad ante el tutor?
 
-Se puede afirmar que la fase arinc429_logic quedo validada como recreacion logica/temporal estable a 100 kbps, con ACK reverso, sniffer pasivo, filtrado por label + SDI, bridge SPI/HTTP, dashboard Flask, Prometheus/Grafana y evidencia de osciloscopio.
+Se puede afirmar que la fase arinc429_logic quedo validada como recreacion logica/temporal estable a 100 kbps y 12.5 kbps, con sniffer pasivo, autorate, filtrado por label + SDI, paridad estricta, SPI por tramas completas, bridge HTTP, dashboard Flask, Prometheus/Grafana, supervisor y evidencia de osciloscopio.
 
-Tambien se puede afirmar que la arquitectura modular fue correcta: se pudo cambiar la forma de generacion/captura de la senal sin redisenar la 3B+, el bridge ni el dashboard. Lo que sigue ya no es corregir esta fase, sino avanzar hacia la interfaz electrica ARINC 429 real y, despues, hacia una PCB.
+Tambien se puede afirmar que la arquitectura modular fue correcta: se pudo cambiar la forma de generacion/captura de la senal sin redisenar la 3B+, el bridge ni el dashboard. Lo que sigue ya no es corregir esta fase logica, sino avanzar hacia la interfaz electrica ARINC 429 real y, despues, hacia una PCB.

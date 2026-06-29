@@ -27,6 +27,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 - [instructivo_osciloscopio_arinc429_logic.md](instructivo_osciloscopio_arinc429_logic.md)
 - [evidencia_osciloscopio_arinc429_20260619.md](evidencia_osciloscopio_arinc429_20260619.md)
+- [evidencia_osciloscopio_autorate_20260629.md](evidencia_osciloscopio_autorate_20260629.md)
 - [osciloscopio_descripcion_imagenes.tex](tex/osciloscopio_descripcion_imagenes.tex)
 
 ## Arquitectura / OSI / tesis
@@ -77,6 +78,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [evidencia_recuperacion_fallas_v5.md](evidencia_recuperacion_fallas_v5.md)
 - [evidencia_barrido_frecuencia_spi.md](evidencia_barrido_frecuencia_spi.md)
 - [evidencia_osciloscopio_arinc429_20260619.md](evidencia_osciloscopio_arinc429_20260619.md)
+- [evidencia_osciloscopio_autorate_20260629.md](evidencia_osciloscopio_autorate_20260629.md)
 - [procedimiento_barrido_frecuencia_spi.md](procedimiento_barrido_frecuencia_spi.md)
 - [procedimiento_prueba_paridad_estricta.md](procedimiento_prueba_paridad_estricta.md)
 - [procedimiento_prueba_autorate_100k_12k5.md](procedimiento_prueba_autorate_100k_12k5.md)

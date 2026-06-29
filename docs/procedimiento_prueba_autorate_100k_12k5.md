@@ -76,10 +76,16 @@ Si el TX eligio `100 kbps`:
 
 - bit completo esperado: `10 us`
 - media celda activa: `5 us`
+- palabra completa esperada: `320 us`
+- gap visible medido en la validacion final: `44 us`
 
 Si el TX eligio `12.5 kbps`:
 
 - bit completo esperado: `80 us`
 - media celda activa: `40 us`
+- palabra completa esperada: `2.56 ms`
+- gap visible medido en la validacion final: `360 us`
 
 En ambos casos debe mantenerse el retorno a cero en la segunda mitad del bit.
+La relacion entre gaps visibles medidos fue `360/44 = 8.18`, compatible con la
+relacion teorica `8:1` entre ambas velocidades.
