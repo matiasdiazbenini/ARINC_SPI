@@ -14,4 +14,5 @@ Thumbs.db
 tmp/
 output/
 *.kicad_prl
+*.kicad_pro.lck
 **/.history/
