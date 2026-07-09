@@ -68,7 +68,7 @@ Quedo validado:
 - [prometheus](prometheus/README.md)
   - configuracion de Prometheus usada en la notebook
 - [ELECTRICO](ELECTRICO/frontend_arinc429_lab/README.md)
-  - front-end electrico de laboratorio, esquematico KiCad y relevamiento de componentes
+  - front-end electrico de laboratorio, esquematico/PCB KiCad y relevamiento de componentes
 - [imagenes](imagenes/)
   - capturas de osciloscopio organizadas por enlace y canal
 - [docs](docs/README.md)
@@ -84,6 +84,7 @@ Quedo validado:
   - scripts generadores
 - `ELECTRICO/`:
   - proyecto KiCad inicial para el acondicionamiento electrico ARINC-like
+  - PCB preliminar de laboratorio
   - relevamiento de componentes con precios, alternativas y correspondencia con el esquematico
 
 ## Topologia actual recomendada

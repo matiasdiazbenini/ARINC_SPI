@@ -10,7 +10,7 @@ Alcance: componentes para adaptar una senal logica de Raspberry Pi Pico a un ban
 - Si no aparecieron en Cordoba, se uso Buenos Aires / CABA.
 - Si tampoco hubo precio local verificable, se uso fabricante o distribuidor oficial en USD.
 - No se cargo ningun precio "a consultar" como precio final.
-- MercadoLibre no se pudo verificar desde este entorno: la API devolvio 403, la pagina normal devolvio verificacion de trafico y el acceso con Chrome quedo bloqueado por politica del navegador. Queda pendiente incorporar publicaciones concretas si se reciben links o capturas.
+- MercadoLibre no se pudo verificar desde este entorno: la API devolvio 403, la pagina normal devolvio verificacion de trafico y los buscadores publicos no entregaron resultados indexados utiles para Tecnoliveusa. Queda pendiente incorporar publicaciones concretas si se reciben links o capturas.
 
 ## Fuentes y contactos
 
@@ -60,6 +60,28 @@ Sitio: https://www.todomicro.com.ar/
 - WhatsApp tecnica: +54 9 11 2251 3620.
 - WhatsApp logistica: +54 11 2253 3294.
 - Envio gratis informado para compras superiores a ARS 33000.
+
+## Busqueda MercadoLibre / Tecnoliveusa
+
+Se realizo una busqueda adicional porque se observo que varios componentes
+podrian estar publicados en MercadoLibre por el vendedor `Tecnoliveusa`.
+
+Resultado verificable desde este entorno:
+
+| Via consultada | Consultas usadas | Resultado | Decision |
+|---|---|---|---|
+| Bing RSS indexado | `MCP6562 Tecnoliveusa`, `LMV393 Tecnoliveusa`, `LMV331 Tecnoliveusa`, `TLV3702 Tecnoliveusa`, `TLV9352 Tecnoliveusa`, `OPA2197 Tecnoliveusa`, `OPA197 Tecnoliveusa`, `MCP6002 Tecnoliveusa` | No devolvio resultados filtrables que mencionen MercadoLibre/Tecnoliveusa junto con el componente. | No se agregan precios. |
+| Bing RSS indexado | mismos componentes + `MercadoLibre Argentina` | No devolvio resultados filtrables utiles. | No se agregan precios. |
+| Google HTML | busqueda exacta `"MCP6562" "Tecnoliveusa"` | La consulta devolvio pagina de bloqueo/challenge y no resultados utilizables. | No se usa como fuente. |
+| DuckDuckGo HTML | `Tecnoliveusa MCP6562 Mercado Libre` | La consulta devolvio challenge anti-bot. | No se usa como fuente. |
+| API publica MercadoLibre | `https://api.mercadolibre.com/sites/MLA/search?q=MCP6562` | Respuesta HTTP/API `403 forbidden`. | No se usa como fuente. |
+| Listado publico MercadoLibre | `https://listado.mercadolibre.com.ar/mcp6562` | Redireccion a verificacion de cuenta/trafico sospechoso. | No se usa como fuente. |
+
+Conclusion: en esta revision no se pudo verificar precio, vendedor ni link
+directo de Tecnoliveusa por resultados indexados publicos. Si se obtiene un
+link concreto de una publicacion o una captura con precio, conviene incorporarlo
+como evidencia puntual. Hasta entonces se mantiene la decision anterior: no
+cargar precios de MercadoLibre no verificables.
 
 ## Correspondencia con bloques del esquematico KiCad
 

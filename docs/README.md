@@ -27,7 +27,9 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 - [Proyecto KiCad y explicacion tecnica/simple](../ELECTRICO/frontend_arinc429_lab/README.md)
 - [Esquematico KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_lab.kicad_sch)
+- [PCB preliminar KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_lab.kicad_pcb)
 - [Export SVG del esquematico](../ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_lab.svg)
+- [Export SVG de PCB preliminar](../ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_lab_pcb.svg)
 - [Documento descriptivo del front-end](frontend_electrico_arinc429_lab.md)
 - [PDF del front-end electrico](pdf/frontend_electrico_arinc429_lab.pdf)
 - [PDF del esquematico KiCad](pdf/frontend_arinc429_lab_kicad.pdf)
@@ -79,6 +81,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [generar_preguntas_tutor_pdf.py](scripts/generar_preguntas_tutor_pdf.py)
 - [generar_frontend_electrico_arinc429_pdf.py](scripts/generar_frontend_electrico_arinc429_pdf.py)
 - [generar_kicad_frontend_electrico.py](scripts/generar_kicad_frontend_electrico.py)
+- [generar_kicad_frontend_electrico_pcb.py](scripts/generar_kicad_frontend_electrico_pcb.py)
 - [generate_relevamiento_componentes_pdf.py](scripts/generate_relevamiento_componentes_pdf.py)
 
 ## Evidencia

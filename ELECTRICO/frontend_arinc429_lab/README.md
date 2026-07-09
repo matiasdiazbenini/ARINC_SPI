@@ -6,11 +6,15 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
 
 - `frontend_arinc429_lab.kicad_pro`: proyecto KiCad.
 - `frontend_arinc429_lab.kicad_sch`: esquematico funcional.
+- `frontend_arinc429_lab.kicad_pcb`: PCB preliminar de laboratorio.
+- `exports/frontend_arinc429_lab.svg`: export del esquematico.
+- `exports/frontend_arinc429_lab_pcb.svg`: vista rapida de distribucion PCB.
+- `relevamiento_componentes_frontend_electrico.md`: componentes, precios, equivalencias y busqueda de disponibilidad.
 
 ## Alcance
 
-Este esquema es una base de revision y prototipo. No es todavia una PCB final ni un
-transceptor certificable para campo.
+Este esquema y la PCB son una base de revision y prototipo. No son todavia una
+PCB final ni un transceptor certificable para campo.
 
 ## Conexion funcional
 
@@ -82,6 +86,25 @@ a la misma conexion electrica aunque no exista un cable dibujado entre ambos.
 - `VTH_COMP` entra como referencia a `U2A/U2B`; no sale al conector de linea.
 - `RX_A_LOGIC` vuelve a `GP4` y `RX_B_LOGIC` vuelve a `GP5`.
 - `U1` usa alimentacion bipolar separada: `+6V_TX` y `-6V_TX`.
+
+## PCB preliminar
+
+La PCB inicial se genero para tener una aproximacion editable en KiCad antes de
+cerrar la compra final de componentes. La distribucion esta pensada para banco:
+
+- conectores de entrada/salida en bordes;
+- `J1` como header simple hacia la Pico de prueba;
+- `J2` como bornera de linea `LINE_A`, `LINE_B`, `GND_REF`;
+- `J3` como bornera de alimentacion `+3V3`, `+6V`, `-6V`, `GND`;
+- `U1` en DIP8 para TL072/TL082 o equivalente de op-amp dual;
+- `U2` en DIP8 para LM393N de banco o adaptador hacia MCP6562/LMV393 si luego se compran SMD;
+- resistencias y capacitores THT para facilitar cambios;
+- testpoints para `LINE_A`, `LINE_B`, `GND_COMUN` y `VTH_COMP`;
+- pull-ups `R13/R14` marcados como `4k7/DNP`: se montan si se usa LM393/LM393B y se dejan sin montar si el comparador final tiene salida push-pull.
+
+La PCB no debe enviarse a fabricar sin revision manual en KiCad. Falta confirmar
+footprints exactos, dimensiones reales de borneras, corriente disponible de las
+fuentes, separaciones, DRC y comportamiento analogico con componentes reales.
 
 ## Validacion minima
 
