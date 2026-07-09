@@ -10,3 +10,8 @@ build/
 *.log
 *.tmp
 Thumbs.db
+
+tmp/
+output/
+*.kicad_prl
+**/.history/

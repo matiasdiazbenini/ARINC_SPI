@@ -1,0 +1,2083 @@
+(kicad_sch
+	(version 20250610)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "a5ca2251-9f86-50aa-995e-50882222288e")
+	(paper "A3")
+	(title_block
+		(title "Front-end electrico ARINC 429 - banco")
+		(date "2026-07-01")
+		(rev "A")
+		(company "Proyecto PAMPA")
+	)
+	(lib_symbols)
+
+	(text "FRONT-END ELECTRICO ARINC 429 - BANCO DE LABORATORIO"
+		(exclude_from_sim no)
+		(at 18.00 18.00 0)
+		(effects
+			(font
+				(size 3.2 3.2)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "1b0dd7f7-3452-52dc-9a86-f321dece9fd0")
+	)
+	(text "Esquema funcional inicial: Pico 0..3,3 V -> TX bipolar +/-5 V por conductor -> RX protegido -> Pico 0..3,3 V"
+		(exclude_from_sim no)
+		(at 18.00 25.00 0)
+		(effects
+			(font
+				(size 1.35 1.35)
+			)
+			(justify left bottom)
+		)
+		(uuid "a207a269-f398-56c4-8561-0c3018754f33")
+	)
+	(text "NO conectar a una linea ARINC real de campo. Este circuito es para banco controlado."
+		(exclude_from_sim no)
+		(at 18.00 32.00 0)
+		(effects
+			(font
+				(size 1.35 1.35)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "8f960eac-afc4-5412-a0cf-80d2023c8e95")
+	)
+	(wire
+		(pts
+			(xy 272.00 14.00) (xy 407.00 14.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "e4e048b1-2d39-5236-8cf1-c1853dca24d3")
+	)
+	(wire
+		(pts
+			(xy 407.00 14.00) (xy 407.00 40.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "9feafcd6-b69f-5e7f-aa9e-5a674df41585")
+	)
+	(wire
+		(pts
+			(xy 407.00 40.00) (xy 272.00 40.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "f09b8286-fb5e-524f-b980-d84852cae057")
+	)
+	(wire
+		(pts
+			(xy 272.00 40.00) (xy 272.00 14.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "77993075-e2b3-5241-a5f3-9921e13a692d")
+	)
+	(text "Convencion visual"
+		(exclude_from_sim no)
+		(at 285.00 20.00 0)
+		(effects
+			(font
+				(size 1.05 1.05)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "267ef2a6-b6dc-5a05-9112-87ddef007d3b")
+	)
+	(wire
+		(pts
+			(xy 285.00 26.00) (xy 302.00 26.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "1123c2f4-c9f8-5660-922d-d4a30910405f")
+	)
+	(text "senal / linea"
+		(exclude_from_sim no)
+		(at 304.00 27.00 0)
+		(effects
+			(font
+				(size 0.85 0.85)
+			)
+			(justify left bottom)
+		)
+		(uuid "c6c43450-3f38-5968-b5aa-d7187e7de4cb")
+	)
+	(wire
+		(pts
+			(xy 285.00 31.00) (xy 302.00 31.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "866b0599-92c9-5c8f-9f38-2394ab212bdd")
+	)
+	(text "alimentacion"
+		(exclude_from_sim no)
+		(at 304.00 32.00 0)
+		(effects
+			(font
+				(size 0.85 0.85)
+			)
+			(justify left bottom)
+		)
+		(uuid "3ec9edf9-99c2-5eb3-b794-e661d60e2fd8")
+	)
+	(wire
+		(pts
+			(xy 285.00 36.00) (xy 302.00 36.00)
+		)
+		(stroke
+			(width 0.2)
+			(type dash_dot)
+			(color 210 110 0 255)
+		)
+		(uuid "9ab0eea7-9d9d-52f2-8857-6306e56db3e8")
+	)
+	(text "retorno RX"
+		(exclude_from_sim no)
+		(at 304.00 37.00 0)
+		(effects
+			(font
+				(size 0.85 0.85)
+			)
+			(justify left bottom)
+		)
+		(uuid "722805a9-60c6-504f-be8c-02d9e5e09f41")
+	)
+	(wire
+		(pts
+			(xy 345.00 26.00) (xy 362.00 26.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "3308b6da-c723-5481-99fd-c7137c2b3be7")
+	)
+	(text "GND/ref"
+		(exclude_from_sim no)
+		(at 364.00 27.00 0)
+		(effects
+			(font
+				(size 0.85 0.85)
+			)
+			(justify left bottom)
+		)
+		(uuid "b8745ce5-1eb9-5125-94fe-5fe6cab51bbb")
+	)
+	(wire
+		(pts
+			(xy 345.00 31.00) (xy 362.00 31.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "29bd77a2-1fde-5bc9-8df0-77401b00641b")
+	)
+	(text "umbral"
+		(exclude_from_sim no)
+		(at 364.00 32.00 0)
+		(effects
+			(font
+				(size 0.85 0.85)
+			)
+			(justify left bottom)
+		)
+		(uuid "2100beca-467f-5ea8-9c9d-54ced371c55d")
+	)
+	(wire
+		(pts
+			(xy 18.00 45.00) (xy 70.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "d13cc6c8-b44a-54f0-8a86-143e900b2070")
+	)
+	(wire
+		(pts
+			(xy 70.00 45.00) (xy 70.00 128.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "c3ecfd54-2a07-5e6a-a76e-5c4755c7ad22")
+	)
+	(wire
+		(pts
+			(xy 70.00 128.00) (xy 18.00 128.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "161554dc-a901-55ed-b062-24d9db991248")
+	)
+	(wire
+		(pts
+			(xy 18.00 128.00) (xy 18.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "bb2e7390-895b-5971-a505-e9c1f0672ce2")
+	)
+	(text "J1 - Raspberry Pi Pico de prueba"
+		(exclude_from_sim no)
+		(at 22.00 52.00 0)
+		(effects
+			(font
+				(size 1.35 1.35)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "29a60139-5dbc-52b1-abc9-56d91f7205cb")
+	)
+	(text "GP2  TX_A_LOGIC"
+		(exclude_from_sim no)
+		(at 23.00 62.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "b23f4fbc-9fcc-5f34-be52-766c9b3d1034")
+	)
+	(text "GP3  TX_B_LOGIC"
+		(exclude_from_sim no)
+		(at 23.00 70.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "cb365e8d-b0a8-5ad2-bc49-f31cec4f1ec2")
+	)
+	(text "GP4  RX_A_LOGIC"
+		(exclude_from_sim no)
+		(at 23.00 78.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "8fe833d4-1d0e-5a6b-941e-c17eaa91b9c2")
+	)
+	(text "GP5  RX_B_LOGIC"
+		(exclude_from_sim no)
+		(at 23.00 86.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "e89dcb41-c89e-57bd-ac4d-738775ab336f")
+	)
+	(text "3V3  logica"
+		(exclude_from_sim no)
+		(at 23.00 94.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "f0e32123-fc2b-56d1-ab74-24667fda69f1")
+	)
+	(text "GND  comun banco"
+		(exclude_from_sim no)
+		(at 23.00 102.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "e2bfcc30-0260-5d28-b5d1-346a85674e3e")
+	)
+	(wire
+		(pts
+			(xy 88.00 45.00) (xy 183.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "b853da85-891a-508c-92d9-0e4367e6758a")
+	)
+	(wire
+		(pts
+			(xy 183.00 45.00) (xy 183.00 128.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "235f61cd-7614-51c3-bca1-9c7706deeb92")
+	)
+	(wire
+		(pts
+			(xy 183.00 128.00) (xy 88.00 128.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "2e121dc4-41a6-5bca-80af-55ee74eea876")
+	)
+	(wire
+		(pts
+			(xy 88.00 128.00) (xy 88.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "62a5ffcf-059b-5126-8150-6cb87cbda372")
+	)
+	(text "TX bipolar"
+		(exclude_from_sim no)
+		(at 93.00 52.00 0)
+		(effects
+			(font
+				(size 1.55 1.55)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "0d151ab6-05a7-5ab6-be6b-c8c1940741a6")
+	)
+	(wire
+		(pts
+			(xy 98.00 62.00) (xy 168.00 62.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "9e8274e7-9841-55cb-9ad7-fc907581e65d")
+	)
+	(wire
+		(pts
+			(xy 168.00 62.00) (xy 168.00 90.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "9517da3b-a584-5a92-a2dd-32362c334dac")
+	)
+	(wire
+		(pts
+			(xy 168.00 90.00) (xy 98.00 90.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "6fedd46e-e915-5a35-9d4d-6f4ee9edcfbb")
+	)
+	(wire
+		(pts
+			(xy 98.00 90.00) (xy 98.00 62.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "c6810686-d18f-5bd5-99a9-9d1ffe532345")
+	)
+	(text "U1A op-amp diferencial"
+		(exclude_from_sim no)
+		(at 102.00 69.00 0)
+		(effects
+			(font
+				(size 1.25 1.25)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "a57a0b83-2e70-5078-8d2c-42f9dbb59b17")
+	)
+	(text "Rin=20k / Rf=30k / G=1,5\nLINE_A = 1,5*(TX_A-TX_B)"
+		(exclude_from_sim no)
+		(at 102.00 76.00 0)
+		(effects
+			(font
+				(size 1.05 1.05)
+			)
+			(justify left bottom)
+		)
+		(uuid "156b623b-1395-5772-bc3c-cdd440f6d4de")
+	)
+	(wire
+		(pts
+			(xy 98.00 96.00) (xy 168.00 96.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "5b36bb87-03d3-58a2-a3ce-e8e35521c119")
+	)
+	(wire
+		(pts
+			(xy 168.00 96.00) (xy 168.00 119.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "d91b3d03-9672-5eec-af0d-7b6f9283efeb")
+	)
+	(wire
+		(pts
+			(xy 168.00 119.00) (xy 98.00 119.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "91cb8488-a1a4-52b7-ab8e-7b62483b55a8")
+	)
+	(wire
+		(pts
+			(xy 98.00 119.00) (xy 98.00 96.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "336101c9-fd1b-5438-9e92-0da4a4099b50")
+	)
+	(text "U1B inversor"
+		(exclude_from_sim no)
+		(at 102.00 103.00 0)
+		(effects
+			(font
+				(size 1.25 1.25)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "ec5369d3-07e6-5433-8b68-1de6eed9fc77")
+	)
+	(text "R=10k / Rf=10k / G=-1\nLINE_B = -LINE_A"
+		(exclude_from_sim no)
+		(at 102.00 110.00 0)
+		(effects
+			(font
+				(size 1.05 1.05)
+			)
+			(justify left bottom)
+		)
+		(uuid "b33e5cf2-8d4e-59f3-a6f6-6457befb6ea1")
+	)
+	(wire
+		(pts
+			(xy 205.00 60.00) (xy 257.00 60.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "e087ba5d-39ae-54eb-af30-f4b2ce956e40")
+	)
+	(wire
+		(pts
+			(xy 257.00 60.00) (xy 257.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "ca12ee8e-9a00-50d4-97e9-ca7d23cc584c")
+	)
+	(wire
+		(pts
+			(xy 257.00 112.00) (xy 205.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "e8709721-2f5a-5ab9-96dc-8436ff7beea4")
+	)
+	(wire
+		(pts
+			(xy 205.00 112.00) (xy 205.00 60.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "2bd96e06-646b-5cd0-9900-c82dee3c03a3")
+	)
+	(text "J2 - Linea A/B"
+		(exclude_from_sim no)
+		(at 211.00 68.00 0)
+		(effects
+			(font
+				(size 1.45 1.45)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "84c0de30-c6bd-5e92-9018-7a187ed1aa0b")
+	)
+	(text "1 LINE_A"
+		(exclude_from_sim no)
+		(at 213.00 80.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "f05c187c-f3d8-511a-a2a0-96010e190e40")
+	)
+	(text "2 LINE_B"
+		(exclude_from_sim no)
+		(at 213.00 88.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "bfbd1ee0-4905-5639-8d39-6c91de50af0d")
+	)
+	(text "3 GND_REF"
+		(exclude_from_sim no)
+		(at 213.00 96.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+			)
+			(justify left bottom)
+		)
+		(uuid "35099003-8023-5677-b37a-21d40ea75081")
+	)
+	(text "Medir MATH = A-B\nesperado: +10 / 0 / -10 V"
+		(exclude_from_sim no)
+		(at 210.00 118.00 0)
+		(effects
+			(font
+				(size 1.05 1.05)
+			)
+			(justify left bottom)
+		)
+		(uuid "8a5b438b-9757-51cb-8a3a-22b8867082be")
+	)
+	(wire
+		(pts
+			(xy 280.00 45.00) (xy 407.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "451a6b22-606c-5bff-bd4b-84d9568e4adf")
+	)
+	(wire
+		(pts
+			(xy 407.00 45.00) (xy 407.00 158.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "4d404b29-b0f5-5fd7-8118-294d57214c9d")
+	)
+	(wire
+		(pts
+			(xy 407.00 158.00) (xy 280.00 158.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "dc61db18-4f5f-5fb1-9880-1680f4acba9c")
+	)
+	(wire
+		(pts
+			(xy 280.00 158.00) (xy 280.00 45.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "a6f15e7f-4ecf-5db1-aea6-a885bb715322")
+	)
+	(text "RX protegido y comparadores"
+		(exclude_from_sim no)
+		(at 286.00 52.00 0)
+		(effects
+			(font
+				(size 1.45 1.45)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "f1d69299-5122-58b6-8739-de1f91e8af24")
+	)
+	(wire
+		(pts
+			(xy 288.00 64.00) (xy 344.00 64.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "a7cfb548-ec61-52c5-b9dd-927776db6def")
+	)
+	(wire
+		(pts
+			(xy 344.00 64.00) (xy 344.00 88.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "f4365d90-7105-56c7-851f-03dc42403db5")
+	)
+	(wire
+		(pts
+			(xy 344.00 88.00) (xy 288.00 88.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "b22e593d-603b-5067-8ac6-66790fb2bd0d")
+	)
+	(wire
+		(pts
+			(xy 288.00 88.00) (xy 288.00 64.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "19d61e8b-5938-5143-9df1-435ee431672c")
+	)
+	(text "A_SENSE"
+		(exclude_from_sim no)
+		(at 292.00 71.00 0)
+		(effects
+			(font
+				(size 1.2 1.2)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "b9f59425-2ac5-5c5a-af4c-cb16018f5e1e")
+	)
+	(text "LINE_A -> 22k -> nodo\n33k a GND + clamps"
+		(exclude_from_sim no)
+		(at 292.00 78.00 0)
+		(effects
+			(font
+				(size 1.0 1.0)
+			)
+			(justify left bottom)
+		)
+		(uuid "f94afbf8-b34e-5513-b88d-49720663f207")
+	)
+	(wire
+		(pts
+			(xy 288.00 112.00) (xy 344.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "cfddadd1-2508-5888-b65e-5493bd5ab353")
+	)
+	(wire
+		(pts
+			(xy 344.00 112.00) (xy 344.00 136.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "1fcf4dbf-93fb-5bfa-910e-9cc23570ae50")
+	)
+	(wire
+		(pts
+			(xy 344.00 136.00) (xy 288.00 136.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "5d82cc55-e3ad-5e54-8622-42e8367f74e9")
+	)
+	(wire
+		(pts
+			(xy 288.00 136.00) (xy 288.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "f93b16cd-a9c3-5cb0-bbea-260f3189f2cb")
+	)
+	(text "B_SENSE"
+		(exclude_from_sim no)
+		(at 292.00 119.00 0)
+		(effects
+			(font
+				(size 1.2 1.2)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "38e478c3-53ac-549c-8923-0f187733961c")
+	)
+	(text "LINE_B -> 22k -> nodo\n33k a GND + clamps"
+		(exclude_from_sim no)
+		(at 292.00 126.00 0)
+		(effects
+			(font
+				(size 1.0 1.0)
+			)
+			(justify left bottom)
+		)
+		(uuid "c31b9c88-ee1f-5e87-a697-47463c3e179a")
+	)
+	(wire
+		(pts
+			(xy 355.00 64.00) (xy 398.00 64.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "59c9882b-3b25-5c59-8f6e-aefe5425023b")
+	)
+	(wire
+		(pts
+			(xy 398.00 64.00) (xy 398.00 88.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "461537f6-c80c-5af3-b011-f62970b6fe4b")
+	)
+	(wire
+		(pts
+			(xy 398.00 88.00) (xy 355.00 88.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "e99dd133-4c2b-5e7e-b5b7-be55f5b5da25")
+	)
+	(wire
+		(pts
+			(xy 355.00 88.00) (xy 355.00 64.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "24818c1b-3d37-5043-aba4-5610e59e3c12")
+	)
+	(text "U2A MCP6562"
+		(exclude_from_sim no)
+		(at 359.00 71.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "0ecb4ac0-1b91-5689-af3a-e631cff4e675")
+	)
+	(text "A_SENSE > VTH\n-> RX_A_LOGIC / GP4"
+		(exclude_from_sim no)
+		(at 359.00 78.00 0)
+		(effects
+			(font
+				(size 1.0 1.0)
+			)
+			(justify left bottom)
+		)
+		(uuid "96a1f6d3-a0a4-5a17-b772-807e8f8abfa6")
+	)
+	(wire
+		(pts
+			(xy 355.00 112.00) (xy 398.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "77ada987-db0a-5d7d-9cf1-56d9bb330df8")
+	)
+	(wire
+		(pts
+			(xy 398.00 112.00) (xy 398.00 136.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "00fc6595-40f2-5edb-a29d-4abe644783aa")
+	)
+	(wire
+		(pts
+			(xy 398.00 136.00) (xy 355.00 136.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "9fe0bf37-f674-522e-9064-93c3753b9376")
+	)
+	(wire
+		(pts
+			(xy 355.00 136.00) (xy 355.00 112.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "5d370d3b-b4ce-50d4-9073-1c6b0d59df98")
+	)
+	(text "U2B MCP6562"
+		(exclude_from_sim no)
+		(at 359.00 119.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "93596d3e-aea9-5436-a17e-ffa91524fe20")
+	)
+	(text "B_SENSE > VTH\n-> RX_B_LOGIC / GP5"
+		(exclude_from_sim no)
+		(at 359.00 126.00 0)
+		(effects
+			(font
+				(size 1.0 1.0)
+			)
+			(justify left bottom)
+		)
+		(uuid "4d23c52d-96b2-5274-9900-cc7ceb28ef8d")
+	)
+	(text "U2A/U2B: VDD=+3V3_LOGIC, VSS=GND_COMUN. Si U2=LM393: pull-up 4k7 a 3V3."
+		(exclude_from_sim no)
+		(at 288.00 150.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+			)
+			(justify left bottom)
+		)
+		(uuid "0ccba741-1a99-5152-af4a-e957aea4daab")
+	)
+	(text "Misma etiqueta = misma conexion electrica. RX_A/RX_B salen de U2 y vuelven a GP4/GP5 como 0..3,3 V."
+		(exclude_from_sim no)
+		(at 92.00 140.00 0)
+		(effects
+			(font
+				(size 1.08 1.08)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "530f0e09-27de-537e-a1ce-e166f018d7a9")
+	)
+	(wire
+		(pts
+			(xy 70.00 66.00) (xy 98.00 66.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "4a62cff9-20be-5a3f-8019-b14722d0cec8")
+	)
+	(label "TX_A_LOGIC"
+		(at 72.00 64.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "7e1e3d6a-3347-5929-a6ae-822323ace935")
+	)
+	(wire
+		(pts
+			(xy 70.00 74.00) (xy 98.00 74.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "412a7fab-7368-57b0-a096-9ada3d7996a9")
+	)
+	(label "TX_B_LOGIC"
+		(at 72.00 72.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "a4005b1e-ed84-5730-a260-9eb552186c55")
+	)
+	(wire
+		(pts
+			(xy 168.00 74.00) (xy 205.00 74.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "ee5d1fde-d1bf-520d-a491-2a889f02ea67")
+	)
+	(label "LINE_A"
+		(at 172.00 72.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "db368f37-8659-5302-960c-7e6bc1d00f39")
+	)
+	(wire
+		(pts
+			(xy 168.00 82.00) (xy 184.00 82.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "c82b65fb-e504-597f-a987-7f831f996bf3")
+	)
+	(wire
+		(pts
+			(xy 184.00 82.00) (xy 184.00 104.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "af1532c7-99ff-5183-94dc-cf35faca3338")
+	)
+	(wire
+		(pts
+			(xy 184.00 104.00) (xy 168.00 104.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "9bcb8750-27ec-5377-9b5f-9283038184aa")
+	)
+	(label "LINE_A"
+		(at 170.00 86.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "2737223e-bed2-5436-8a3b-9c8c18db8f93")
+	)
+	(wire
+		(pts
+			(xy 168.00 108.00) (xy 188.00 108.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "a63af7c7-d399-596f-b073-96d7a6bfc4a2")
+	)
+	(wire
+		(pts
+			(xy 188.00 108.00) (xy 188.00 92.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "1d0396a9-9d55-51b9-99bf-bc3ef38ce3ae")
+	)
+	(wire
+		(pts
+			(xy 188.00 92.00) (xy 205.00 92.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "9b95e3e4-3c21-5783-b029-fbe37f86c95c")
+	)
+	(label "LINE_B"
+		(at 174.00 104.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "83f6ef11-edd3-5a1f-9a30-555f47c1fc41")
+	)
+	(wire
+		(pts
+			(xy 257.00 74.00) (xy 288.00 74.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "01f40097-0375-5149-84c1-4368778bba7c")
+	)
+	(label "LINE_A"
+		(at 261.00 72.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "b0de9ccc-7cc3-5787-bcb5-241cd3bcc55e")
+	)
+	(wire
+		(pts
+			(xy 257.00 92.00) (xy 273.00 92.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "e9eb2ed6-2ad1-59f0-8489-d9f265eead33")
+	)
+	(wire
+		(pts
+			(xy 273.00 92.00) (xy 273.00 122.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "14455fe4-4a33-51fd-81a4-ee91b3ae4966")
+	)
+	(wire
+		(pts
+			(xy 273.00 122.00) (xy 288.00 122.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "b13b80d3-350c-59b7-9602-643eb3da1550")
+	)
+	(label "LINE_B"
+		(at 261.00 91.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "78c6c723-6711-5a71-8a9b-396d07cb0fa1")
+	)
+	(wire
+		(pts
+			(xy 344.00 76.00) (xy 355.00 76.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "5a378e10-c237-5cb1-be98-55a2a803422f")
+	)
+	(label "A_SENSE"
+		(at 346.00 74.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "ce7ce443-44e4-558e-b8a7-158049532ce2")
+	)
+	(wire
+		(pts
+			(xy 344.00 124.00) (xy 355.00 124.00)
+		)
+		(stroke
+			(width 0.0)
+			(type solid)
+			(color 0 130 0 255)
+		)
+		(uuid "17c9c6fd-a04c-5f0c-838e-b4c59ca30e19")
+	)
+	(label "B_SENSE"
+		(at 346.00 122.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "46353094-ea03-5685-bc8c-b1287f2e918a")
+	)
+	(wire
+		(pts
+			(xy 398.00 76.00) (xy 406.00 76.00)
+		)
+		(stroke
+			(width 0.2)
+			(type dash_dot)
+			(color 210 110 0 255)
+		)
+		(uuid "2a0c59a0-ffce-51b6-8e52-c9624cd5f4fc")
+	)
+	(text "salida: RX_A_LOGIC -> GP4"
+		(exclude_from_sim no)
+		(at 360.00 92.00 0)
+		(effects
+			(font
+				(size 0.82 0.82)
+			)
+			(justify left bottom)
+		)
+		(uuid "8a78b41a-3c3a-5e59-81d3-544079694dc4")
+	)
+	(wire
+		(pts
+			(xy 398.00 124.00) (xy 406.00 124.00)
+		)
+		(stroke
+			(width 0.2)
+			(type dash_dot)
+			(color 210 110 0 255)
+		)
+		(uuid "842cb297-6483-5e92-8da6-35595e0fd7a0")
+	)
+	(text "salida: RX_B_LOGIC -> GP5"
+		(exclude_from_sim no)
+		(at 360.00 140.00 0)
+		(effects
+			(font
+				(size 0.82 0.82)
+			)
+			(justify left bottom)
+		)
+		(uuid "37de26de-b450-5c58-bc7a-dad3c45cf51d")
+	)
+	(wire
+		(pts
+			(xy 70.00 78.00) (xy 84.00 78.00)
+		)
+		(stroke
+			(width 0.2)
+			(type dash_dot)
+			(color 210 110 0 255)
+		)
+		(uuid "1f5c3092-35bf-5e29-bb48-12e20ab40145")
+	)
+	(wire
+		(pts
+			(xy 70.00 86.00) (xy 84.00 86.00)
+		)
+		(stroke
+			(width 0.2)
+			(type dash_dot)
+			(color 210 110 0 255)
+		)
+		(uuid "d20aaf98-cf5d-5787-bf80-d28d10974943")
+	)
+	(wire
+		(pts
+			(xy 70.00 94.00) (xy 84.00 94.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "d5d60b5b-c95b-548b-b549-8a191df4835c")
+	)
+	(label "+3V3_LOGIC"
+		(at 86.00 92.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "bccb0580-8e61-53e5-94fd-92ed45bb7ff3")
+	)
+	(wire
+		(pts
+			(xy 70.00 102.00) (xy 84.00 102.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "85b6eef7-85ee-54f6-b049-0cbb3c7a4078")
+	)
+	(label "GND_COMUN"
+		(at 86.00 100.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "d23881db-f7ad-50ae-9964-9e8e5ad04c2d")
+	)
+	(wire
+		(pts
+			(xy 257.00 96.00) (xy 266.00 96.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "8f504bea-7700-506f-af4c-fe7d1923c2d2")
+	)
+	(label "GND_REF = GND_COMUN"
+		(at 260.00 101.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "0d50ab6d-3c8b-556f-9e34-97ff4746d41d")
+	)
+	(wire
+		(pts
+			(xy 133.00 62.00) (xy 133.00 54.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "ac7af857-0f6e-5101-87d4-52133ea1dc4c")
+	)
+	(label "U1 V+  +6V_TX"
+		(at 135.00 55.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "928f8d86-d8aa-5641-bfca-e65a2b7523bd")
+	)
+	(wire
+		(pts
+			(xy 133.00 119.00) (xy 133.00 125.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "0426f5b3-a1c8-5d3f-a502-6358314991bd")
+	)
+	(label "U1 V-  -6V_TX"
+		(at 135.00 123.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "9e69c902-21bb-5a51-8505-c522d573436c")
+	)
+	(wire
+		(pts
+			(xy 376.00 64.00) (xy 376.00 55.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "3959ada0-44ce-5fd4-88b6-8dc6e75dbcc8")
+	)
+	(label "U2A VDD +3V3"
+		(at 378.00 57.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "e028c995-63b2-5f5c-b318-9e58bc36e283")
+	)
+	(wire
+		(pts
+			(xy 376.00 88.00) (xy 376.00 96.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "1e3d1b05-7bfc-578e-adf2-991f96441eed")
+	)
+	(label "U2A VSS GND"
+		(at 378.00 94.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "ab5ed3e6-7771-5c01-b0b1-4494070c66cd")
+	)
+	(wire
+		(pts
+			(xy 376.00 112.00) (xy 376.00 104.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "c9716d6c-921d-5d20-bab6-ae44f03ca8bb")
+	)
+	(label "U2B VDD +3V3"
+		(at 378.00 110.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "89b88f6b-817d-5b75-8aaa-ed4c10690154")
+	)
+	(wire
+		(pts
+			(xy 376.00 136.00) (xy 376.00 144.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "c821ec75-68ed-5ef4-8077-b6b7a310b0f1")
+	)
+	(label "U2B VSS GND"
+		(at 378.00 142.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "6d08ff1b-584f-5e77-8fa8-e4ff790fb53b")
+	)
+	(wire
+		(pts
+			(xy 316.00 88.00) (xy 316.00 96.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "fcb1a875-8102-5374-b445-6c759e745bb8")
+	)
+	(label "R_A2 33k -> GND"
+		(at 318.00 94.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "0ed7ce01-1266-5e69-8251-f7abaac4aa9b")
+	)
+	(wire
+		(pts
+			(xy 316.00 136.00) (xy 316.00 144.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "b89d41cc-9e97-5f3f-862c-e7251e4a28fa")
+	)
+	(label "R_B2 33k -> GND"
+		(at 318.00 142.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "31b82027-97d5-5d97-b8b2-014db088fd8b")
+	)
+	(wire
+		(pts
+			(xy 18.00 174.00) (xy 170.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "4224038a-22cb-5358-bd02-c5d54077803c")
+	)
+	(wire
+		(pts
+			(xy 170.00 174.00) (xy 170.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "c9d55741-c247-5811-a229-a5a63836d188")
+	)
+	(wire
+		(pts
+			(xy 170.00 248.00) (xy 18.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "e39ec1f0-d927-5511-85af-fa4e502ff7bc")
+	)
+	(wire
+		(pts
+			(xy 18.00 248.00) (xy 18.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "116bdf27-eb97-5403-80c4-2a5bca5f2d68")
+	)
+	(text "J3 - Fuentes y referencias"
+		(exclude_from_sim no)
+		(at 24.00 182.00 0)
+		(effects
+			(font
+				(size 1.45 1.45)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "00030379-4a2b-54e4-a8b1-2478c923b9b0")
+	)
+	(text "+3V3: logica Pico y pull-up comparadores"
+		(exclude_from_sim no)
+		(at 24.00 193.00 0)
+		(effects
+			(font
+				(size 1.12 1.12)
+			)
+			(justify left bottom)
+		)
+		(uuid "fe8673e4-29db-5235-8037-667ad6dd1dc8")
+	)
+	(text "+5V: opcional para comparadores si aplica"
+		(exclude_from_sim no)
+		(at 24.00 201.00 0)
+		(effects
+			(font
+				(size 1.12 1.12)
+			)
+			(justify left bottom)
+		)
+		(uuid "fc729fa5-d0e5-5d95-af7a-c634553b6b23")
+	)
+	(text "+6V / -6V: alimentacion U1 TX bipolar"
+		(exclude_from_sim no)
+		(at 24.00 209.00 0)
+		(effects
+			(font
+				(size 1.12 1.12)
+			)
+			(justify left bottom)
+		)
+		(uuid "2558e7f3-0a70-53c5-8183-c472ca876223")
+	)
+	(text "GND: referencia comun de banco"
+		(exclude_from_sim no)
+		(at 24.00 217.00 0)
+		(effects
+			(font
+				(size 1.12 1.12)
+			)
+			(justify left bottom)
+		)
+		(uuid "dc442ec6-e0a5-5c86-8a95-2dfe7ff04afa")
+	)
+	(text "C1..C6: 100 nF cerca de U1/U2"
+		(exclude_from_sim no)
+		(at 24.00 225.00 0)
+		(effects
+			(font
+				(size 1.12 1.12)
+			)
+			(justify left bottom)
+		)
+		(uuid "718150ea-ada5-5662-834f-23ef6960858b")
+	)
+	(wire
+		(pts
+			(xy 190.00 174.00) (xy 305.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "fcf2bef6-4b30-5229-a079-d8cda7e67522")
+	)
+	(wire
+		(pts
+			(xy 305.00 174.00) (xy 305.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "c8674a25-cc2c-59d8-8add-b4740475f7d0")
+	)
+	(wire
+		(pts
+			(xy 305.00 248.00) (xy 190.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "78751fcc-6bc5-555c-819c-5bca5ebe084d")
+	)
+	(wire
+		(pts
+			(xy 190.00 248.00) (xy 190.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "372bcd54-e637-5140-9f90-fde250447700")
+	)
+	(text "Umbral RX"
+		(exclude_from_sim no)
+		(at 196.00 182.00 0)
+		(effects
+			(font
+				(size 1.45 1.45)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "42157f04-313a-56d2-a081-0fc793db35f9")
+	)
+	(wire
+		(pts
+			(xy 213.00 195.00) (xy 240.00 195.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "2d0ca788-479b-5657-98a4-ce05f74375e0")
+	)
+	(wire
+		(pts
+			(xy 240.00 195.00) (xy 240.00 205.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "b0d959ea-540a-5203-b475-e25ea732a66e")
+	)
+	(wire
+		(pts
+			(xy 240.00 205.00) (xy 213.00 205.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "35cb9ca7-d2a8-55ea-aee9-45cc95fd3ec5")
+	)
+	(wire
+		(pts
+			(xy 213.00 205.00) (xy 213.00 195.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "ebe46053-7d47-55d9-81e0-b523406096ff")
+	)
+	(text "R11 12k"
+		(exclude_from_sim no)
+		(at 216.00 202.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "094d9cdf-2b64-584a-887b-81c3679f69bd")
+	)
+	(wire
+		(pts
+			(xy 213.00 222.00) (xy 240.00 222.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "83b62984-1232-5e57-adbc-6c7331e79789")
+	)
+	(wire
+		(pts
+			(xy 240.00 222.00) (xy 240.00 232.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "9650aa15-e5d7-54eb-a5d8-46a68098fb1d")
+	)
+	(wire
+		(pts
+			(xy 240.00 232.00) (xy 213.00 232.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "bdd5efbd-c397-5966-86e9-9199669f8ff6")
+	)
+	(wire
+		(pts
+			(xy 213.00 232.00) (xy 213.00 222.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "b59e46cc-0a38-51bc-b80e-55316a6a27a1")
+	)
+	(text "R12 10k"
+		(exclude_from_sim no)
+		(at 216.00 229.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "8cdaec66-1e8a-5e30-9d25-0ea4b3cfdd0f")
+	)
+	(wire
+		(pts
+			(xy 226.00 189.00) (xy 226.00 195.00)
+		)
+		(stroke
+			(width 0.3)
+			(type solid)
+			(color 190 20 20 255)
+		)
+		(uuid "12d2760e-2959-5349-9cc6-b05e91f9eaf1")
+	)
+	(label "+3V3_LOGIC"
+		(at 229.00 191.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "cc6b587e-c248-5895-90ea-8f2016f378bb")
+	)
+	(wire
+		(pts
+			(xy 226.00 205.00) (xy 226.00 214.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "8fd14587-4446-5324-9736-e80808061147")
+	)
+	(label "nodo medio: VTH_COMP ~= 1,50V"
+		(at 231.00 212.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "58a1d59d-337a-5729-b813-5a6d9eaff6cd")
+	)
+	(wire
+		(pts
+			(xy 226.00 214.00) (xy 226.00 222.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "fc18a35d-9dde-54ee-bf7d-4c6a0f0d3e3a")
+	)
+	(wire
+		(pts
+			(xy 226.00 232.00) (xy 226.00 239.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "4cbcccd5-50a4-5c9d-bbdc-ee0b17f6fe5b")
+	)
+	(wire
+		(pts
+			(xy 226.00 239.00) (xy 260.00 239.00)
+		)
+		(stroke
+			(width 0.3)
+			(type dash)
+			(color 30 70 180 255)
+		)
+		(uuid "0538eb49-1c87-539b-8e18-905d33f55672")
+	)
+	(label "GND_COMUN"
+		(at 262.00 237.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "d677b17e-b6c2-5c9a-832a-f5de826071af")
+	)
+	(wire
+		(pts
+			(xy 240.00 214.00) (xy 272.00 214.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "0341172d-2529-53c2-a25a-7491fca0bf8f")
+	)
+	(label "misma red que VTH en U2A/U2B"
+		(at 244.00 220.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "edee1df5-fcb5-5986-8c9d-2c30a5a443d3")
+	)
+	(wire
+		(pts
+			(xy 348.00 88.00) (xy 355.00 88.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "400aea96-7b2e-5e1f-867c-497b43a1f6a8")
+	)
+	(label "VTH_COMP"
+		(at 329.00 86.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "9392f999-c9bf-527c-90c1-5d027f87ebc0")
+	)
+	(wire
+		(pts
+			(xy 348.00 136.00) (xy 355.00 136.00)
+		)
+		(stroke
+			(width 0.22)
+			(type dot)
+			(color 155 80 200 255)
+		)
+		(uuid "e1f4b9c3-122f-56c3-b4f0-154620945898")
+	)
+	(label "VTH_COMP"
+		(at 329.00 134.00 0)
+		(effects
+			(font
+				(size 1.1 1.1)
+			)
+			(justify left bottom)
+		)
+		(uuid "af3cb8c4-db75-56c4-b67a-c22dec410638")
+	)
+	(text "Agregar histeresis despues de medir ruido real."
+		(exclude_from_sim no)
+		(at 196.00 242.00 0)
+		(effects
+			(font
+				(size 1.0 1.0)
+			)
+			(justify left bottom)
+		)
+		(uuid "bd31ec5d-fda0-5ba0-af0b-4ed697aeb22b")
+	)
+	(wire
+		(pts
+			(xy 325.00 174.00) (xy 407.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "f3f47aa7-7f3a-5941-a95e-dbb3384d81a3")
+	)
+	(wire
+		(pts
+			(xy 407.00 174.00) (xy 407.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "0a6c9221-0d27-54ad-9cae-c72c53991331")
+	)
+	(wire
+		(pts
+			(xy 407.00 248.00) (xy 325.00 248.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "58931bea-f2c5-5cb0-a378-5a39939dde74")
+	)
+	(wire
+		(pts
+			(xy 325.00 248.00) (xy 325.00 174.00)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+			(color 90 90 90 255)
+		)
+		(uuid "a7d50264-45a8-55ce-833c-8a0ecd59943d")
+	)
+	(text "Tabla funcional"
+		(exclude_from_sim no)
+		(at 331.00 182.00 0)
+		(effects
+			(font
+				(size 1.45 1.45)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "d470d9af-2f1b-5b50-9076-2db631306612")
+	)
+	(text "TX_A=1 TX_B=0 -> A=+5 B=-5 -> RX_A=1 RX_B=0"
+		(exclude_from_sim no)
+		(at 331.00 195.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+			)
+			(justify left bottom)
+		)
+		(uuid "d4286cfe-1e96-5654-a062-c5c402e7e834")
+	)
+	(text "TX_A=0 TX_B=1 -> A=-5 B=+5 -> RX_A=0 RX_B=1"
+		(exclude_from_sim no)
+		(at 331.00 205.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+			)
+			(justify left bottom)
+		)
+		(uuid "d14a00f7-6c7a-535d-a081-9e456e53fc47")
+	)
+	(text "TX_A=0 TX_B=0 -> A=0 B=0 -> RX_A=0 RX_B=0"
+		(exclude_from_sim no)
+		(at 331.00 215.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+			)
+			(justify left bottom)
+		)
+		(uuid "3856d97f-40bc-5f9a-b1d2-f34dc46318f8")
+	)
+	(text "A-B esperado: +10 V / 0 V / -10 V"
+		(exclude_from_sim no)
+		(at 331.00 225.00 0)
+		(effects
+			(font
+				(size 0.95 0.95)
+			)
+			(justify left bottom)
+		)
+		(uuid "47ff832e-72a7-5041-89f5-8416d03d4bf8")
+	)
+	(text "Valores iniciales para prototipo. Validar flancos, niveles y protecciones con osciloscopio antes de conectar a firmware."
+		(exclude_from_sim no)
+		(at 18.00 276.00 0)
+		(effects
+			(font
+				(size 1.15 1.15)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "687913ba-7954-51f3-86cf-585eb0bd882b")
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(symbol_instances)
+)

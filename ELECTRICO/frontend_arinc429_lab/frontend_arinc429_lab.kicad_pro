@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "filename": "frontend_arinc429_lab.kicad_pro",
+    "version": 1
+  },
+  "project": {
+    "files": [],
+    "text_variables": {}
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": [],
+    "meta": {
+      "version": 1
+    },
+    "page_layout_descr_file": "",
+    "plot_directory": "../../docs/pdf"
+  },
+  "sheets": [
+    [
+      "a5ca2251-9f86-50aa-995e-50882222288e",
+      "frontend_arinc429_lab"
+    ]
+  ]
+}
