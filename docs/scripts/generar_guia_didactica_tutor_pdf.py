@@ -28,7 +28,6 @@ from generar_informe_descriptivo_sistema import (
     DOCS,
     FWD_DIFF,
     FWD_SINGLE,
-    REV_DIFF,
     create_architecture_diagram,
     create_arinc_model_diagram,
     create_internal_sniffer_host_diagram,

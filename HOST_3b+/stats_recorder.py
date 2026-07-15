@@ -2,7 +2,6 @@
 import argparse
 import csv
 import json
-import math
 import os
 import re
 import signal
@@ -410,7 +409,7 @@ def draw_chart(canvas, x, y, width, height, title, rows, fields):
     if y_max <= y_min:
         y_max = y_min + 1.0
 
-    canvas.text(x, y - 12, f"0 s", 7)
+    canvas.text(x, y - 12, "0 s", 7)
     canvas.text(x + width - 55, y - 12, f"{x_max:.0f} s", 7)
     canvas.text(x + 3, y + height - 10, f"{y_max:.1f}", 7)
     canvas.text(x + 3, y + 3, f"{y_min:.1f}", 7)

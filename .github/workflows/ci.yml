@@ -1,0 +1,39 @@
+---
+name: CI basico
+
+"on":
+  push:
+    branches:
+      - ARINC
+      - actions-ci-practice
+  pull_request:
+    branches:
+      - ARINC
+
+jobs:
+  validate:
+    name: Validacion basica
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar herramientas
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff yamllint
+
+      - name: Validar YAML
+        run: yamllint .
+
+      - name: Revisar Python con Ruff
+        run: ruff check .
+
+      - name: Compilar Python
+        run: python -m compileall HOST_3b+ DASHBOARD_WEB docs/scripts
