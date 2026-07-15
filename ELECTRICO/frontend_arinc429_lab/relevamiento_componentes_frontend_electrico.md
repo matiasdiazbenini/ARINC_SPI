@@ -10,7 +10,7 @@ Alcance: componentes para adaptar una senal logica de Raspberry Pi Pico a un ban
 - Si no aparecieron en Cordoba, se uso Buenos Aires / CABA.
 - Si tampoco hubo precio local verificable, se uso fabricante o distribuidor oficial en USD.
 - No se cargo ningun precio "a consultar" como precio final.
-- MercadoLibre no se pudo verificar desde este entorno: la API devolvio 403, la pagina normal devolvio verificacion de trafico y los buscadores publicos no entregaron resultados indexados utiles para Tecnoliveusa. Queda pendiente incorporar publicaciones concretas si se reciben links o capturas.
+- MercadoLibre se verifico con Chrome real el 2026-07-09. Los precios se toman como referencia visible de listado y no incluyen necesariamente envio ni garantizan stock futuro.
 
 ## Fuentes y contactos
 
@@ -63,25 +63,34 @@ Sitio: https://www.todomicro.com.ar/
 
 ## Busqueda MercadoLibre / Tecnoliveusa
 
-Se realizo una busqueda adicional porque se observo que varios componentes
-podrian estar publicados en MercadoLibre por el vendedor `Tecnoliveusa`.
+Se realizo una busqueda adicional con Chrome real porque se observo que varios
+componentes podrian estar publicados en MercadoLibre, en varios casos por el
+vendedor `Tecnoliveusa`. Esta via funciono mejor que la busqueda indexada y
+permitio extraer tarjetas de producto con precio visible.
 
-Resultado verificable desde este entorno:
+Los precios siguientes son referencia de listado al 2026-07-09. Deben
+confirmarse manualmente antes de comprar porque MercadoLibre cambia stock,
+envio, cuotas y publicaciones.
 
-| Via consultada | Consultas usadas | Resultado | Decision |
-|---|---|---|---|
-| Bing RSS indexado | `MCP6562 Tecnoliveusa`, `LMV393 Tecnoliveusa`, `LMV331 Tecnoliveusa`, `TLV3702 Tecnoliveusa`, `TLV9352 Tecnoliveusa`, `OPA2197 Tecnoliveusa`, `OPA197 Tecnoliveusa`, `MCP6002 Tecnoliveusa` | No devolvio resultados filtrables que mencionen MercadoLibre/Tecnoliveusa junto con el componente. | No se agregan precios. |
-| Bing RSS indexado | mismos componentes + `MercadoLibre Argentina` | No devolvio resultados filtrables utiles. | No se agregan precios. |
-| Google HTML | busqueda exacta `"MCP6562" "Tecnoliveusa"` | La consulta devolvio pagina de bloqueo/challenge y no resultados utilizables. | No se usa como fuente. |
-| DuckDuckGo HTML | `Tecnoliveusa MCP6562 Mercado Libre` | La consulta devolvio challenge anti-bot. | No se usa como fuente. |
-| API publica MercadoLibre | `https://api.mercadolibre.com/sites/MLA/search?q=MCP6562` | Respuesta HTTP/API `403 forbidden`. | No se usa como fuente. |
-| Listado publico MercadoLibre | `https://listado.mercadolibre.com.ar/mcp6562` | Redireccion a verificacion de cuenta/trafico sospechoso. | No se usa como fuente. |
+| Componente | Resultado encontrado | Precio visible | Vendedor / texto visible | Link |
+|---|---|---:|---|---|
+| MCP6562 | Mcp6562 -e Comparador Dual 1.8v Microchip | ARS 5.243 | Itytarg | https://www.mercadolibre.com.ar/mcp6562-e-comparador-dual-18v-microchip--itytarg/up/MLAU129738995 |
+| LMV331 | Comparador Lmv331 Open Drain TSOP5 | ARS 3.520 | Itytarg / ON Semiconductor | https://www.mercadolibre.com.ar/comparador-lmv331-open-drain-tsop5--itytarg/up/MLAU131657673 |
+| LMV393 compatible | X5 TS3V393, reemplazo declarado de LMV393/LM393/TLC393 | ARS 5.792 | listado de MercadoLibre | https://www.mercadolibre.com.ar/x5-ts3v393-comparador-loffset-3v3-reemp-lmv393-lm393-tlc393/up/MLAU312294725 |
+| TL072 | TL072CP amplificador operacional dual JFET DIP8 | ARS 3.839 | Tecnoliveusa | https://www.mercadolibre.com.ar/tl072cp-tl072-072cp-amplificador-ruido-jfet-dip8-dip8/up/MLAU131881120 |
+| LM393 | Pack x5 LM393P / LM393 DIP8 | ARS 5.990 | Tecnoliveusa | https://www.mercadolibre.com.ar/pack-x-5-circuito-integrado-lm393p-lm-393-p-lm393-p-dip8/up/MLAU120676905 |
+| BAT54S | Pack x10 diodo doble BAT54S SOT23 | ARS 4.490 | Tecnoliveusa | https://www.mercadolibre.com.ar/pack-x10-diodo-doble-bat54s-kl-kl3-kl4-ww-ww1-30v-200ma/up/MLAU135510290 |
+| SMAJ12CA | Diodo TVS bidireccional SMAJ12CA x5 | ARS 8.804 | Dicomse Solucion | https://www.mercadolibre.com.ar/diodo-tvs-bidireccional-smaj12ca--xe-x5-unidades/up/MLAU1474327662 |
+| Bornera 3 vias 5.08 | Bornera terminal PCB 3 pin 15EDGK 5.08 | ARS 3.990 | Tecnoliveusa | https://www.mercadolibre.com.ar/bornera-terminal-conector-montaje-en-pcb-3-pin-15edgk-508/up/MLAU131116809 |
+| MCP6002 | MCP6002 DIP8 | ARS 4.446 a 10.500 | Dicomse Solucion / otros | https://www.mercadolibre.com.ar/circuito-integrado-mcp6002-ip-dip8-mcp6002-ip-ip/p/MLA2091034972 |
 
-Conclusion: en esta revision no se pudo verificar precio, vendedor ni link
-directo de Tecnoliveusa por resultados indexados publicos. Si se obtiene un
-link concreto de una publicacion o una captura con precio, conviene incorporarlo
-como evidencia puntual. Hasta entonces se mantiene la decision anterior: no
-cargar precios de MercadoLibre no verificables.
+Observaciones:
+
+- `MCP6562` aparece con precio real y pasa a ser candidato concreto para `U2A/U2B`.
+- `LMV331` aparece como comparador simple; para dos canales harian falta dos unidades o redisenar el footprint.
+- No se encontro `TLV3702` exacto con precio util. Aparecieron `TLV3501`, `TLV2772` y otros TLV, pero no son reemplazos directos sin revisar hoja de datos.
+- `TS3V393` aparece como reemplazo declarado de `LMV393/LM393/TLC393`; debe verificarse pinout, salida y retardo antes de usarlo como sustituto.
+- `TL072`, `LM393`, `BAT54S` y borneras tienen publicaciones concretas de Tecnoliveusa, utiles para compra rapida de banco.
 
 ## Correspondencia con bloques del esquematico KiCad
 
@@ -100,7 +109,7 @@ La tabla siguiente indica que componente del relevamiento corresponde a cada blo
 | `U1B inversor` | `LINE_B = -LINE_A` | Genera el conductor B invertido. | Segunda mitad del mismo op-amp dual, resistencias 10k/10k. | Debe usar resistencias iguales para que `LINE_B` sea espejo de `LINE_A`. |
 | `J2 - Linea A/B` | `LINE_A`, `LINE_B`, `GND_REF` | Conector del par diferencial de banco. | Borneras 2 o 3 vias, pin headers, TVS de linea. | Usar bornera 3 vias para A, B y GND_REF. La sniffer o medicion se conecta al cable/linea, no a la placa como si fuera una salida dedicada. |
 | `A_SENSE` / `B_SENSE` | `LINE_A -> 22k -> nodo`, `33k a GND`, clamps | Baja y protege cada conductor antes del comparador. | Resistencias 22k/33k, 1N4148, BAV99, BAT54, 1N5819, TVS. | Para laboratorio alcanza divisor + clamps. Para campo real se debe endurecer con proteccion y receptor diferencial mas serio. |
-| `U2A MCP6562` | `A_SENSE > VTH -> RX_A_LOGIC / GP4` | Recupera el canal A como logica 0-3,3 V. | MCP6562 ideal si se consigue, LM393N como alternativa local, LMV393/LMV331 si aparecen, TLV3702 solo como alternativa lenta. | Mejor opcion tecnica: MCP6562/LMV393. Opcion comprable local: LM393N con pull-up a 3V3. |
+| `U2A MCP6562` | `A_SENSE > VTH -> RX_A_LOGIC / GP4` | Recupera el canal A como logica 0-3,3 V. | MCP6562 con precio MercadoLibre, LM393N como alternativa local, LMV393/LMV331 si se confirma compatibilidad, TLV3702 solo como alternativa lenta. | Mejor opcion tecnica: MCP6562. Opcion comprable local inmediata: LM393N con pull-up a 3V3. |
 | `U2B MCP6562` | `B_SENSE > VTH -> RX_B_LOGIC / GP5` | Recupera el canal B como logica 0-3,3 V. | Mismo integrado dual que U2A. | Conviene usar un comparador dual para que ambos canales tengan comportamiento parecido. |
 | `R11/R12 - Umbral RX` | `+3V3 -> R11 12k -> VTH_COMP -> R12 10k -> GND` | Genera `VTH_COMP`, umbral aproximado de 1,50 V. | Resistencias 12k y 10k, idealmente 1%. | Si se usan 5%, medir el umbral real con multimetro. Si hay ruido, agregar histeresis despues de medir. |
 | `J3 - Fuentes y referencias` | `+3V3_LOGIC`, `+6V_TX`, `-6V_TX`, `GND_COMUN` | Entrada de alimentacion y referencia comun. | Fuente de laboratorio dual, ICL7660, LM2596, MT3608, capacitores 10 uF y 100 nF. | Para primeras pruebas, fuente dual de laboratorio es lo mas claro. ICL7660 sirve para baja corriente, no para cargar una linea pesada. |
@@ -112,10 +121,10 @@ La tabla siguiente indica que componente del relevamiento corresponde a cada blo
 
 | Opcion | Sirve para | Ventaja | Limitacion | Decision recomendada |
 |---|---|---|---|---|
-| MCP6562 | RX principal si se consigue | Comparador moderno para baja tension, mas adecuado para logica de 3,3 V. | No se verifico precio local. Antes de comprar confirmar encapsulado, pinout y tipo de salida. | Mejor candidato tecnico para reemplazar al LM393. |
+| MCP6562 | RX principal recomendado | Comparador moderno para baja tension, mas adecuado para logica de 3,3 V. | Precio verificado en MercadoLibre, no en tiendas tradicionales. Antes de comprar confirmar encapsulado, pinout y tipo de salida. | Mejor candidato tecnico para reemplazar al LM393. |
 | LM393N | Banco de laboratorio y pruebas inmediatas | Disponible localmente, barato, conocido, suficientemente rapido para este banco. | Salida open collector: necesita pull-up a 3V3. No es rail-to-rail ni tan moderno. | Comprar para avanzar ya. Pull-up tipico: 4k7 a 3V3, nunca a 5V hacia la Pico. |
-| LMV393 | Alternativa moderna si aparece | Variante de baja tension mas natural para 3,3 V. | No se encontro precio local verificable. | Buena alternativa si aparece en MercadoLibre o tienda local. |
-| LMV331 | Alternativa simple por canal | Util si solo se consigue comparador simple. | Harian falta dos unidades/canales y revisar pinout. | Usar solo si no se consigue dual. |
+| LMV393 | Alternativa moderna si aparece | Variante de baja tension mas natural para 3,3 V. | No se encontro LMV393 exacto; si aparece un reemplazo declarado, revisar hoja de datos. | Buena alternativa si se confirma compatibilidad real. |
+| LMV331 | Alternativa simple por canal | Util si solo se consigue comparador simple. | Hay precio MercadoLibre, pero harian falta dos unidades/canales y revisar pinout. | Usar solo si no se consigue dual. |
 | TLV3702 | Pruebas lentas o bajo consumo | Nanopower y baja tension. | Demasiado lento para margen comodo a 100 kbps. | No usar como primera opcion para ARINC 100 kbps. |
 
 ### Driver TX bipolar (`U1A/U1B`)
@@ -225,18 +234,15 @@ La tabla siguiente indica que componente del relevamiento corresponde a cada blo
 | Tira de pines 1x40 macho 90 grados | Electrocomponentes | ARS 434 | https://www.electrocomponentes.com/tienda/componentes-electronicos/conectores-c01s39s07/tira-de-pines/tira-de-pines-1x40-macho-90-th | Conexiones de prototipo. |
 | Cables Dupont pack x40 | Todomicro | ARS 3112.20 | https://www.todomicro.com.ar/270-dupont | Electrocomponentes no devolvio resultados para Dupont. |
 
-## Componentes no encontrados con precio local verificable
+## Pendientes reales de compra o verificacion
 
 | Componente | Resultado | Accion sugerida |
 |---|---|---|
-| MCP6562 | No aparecio con precio en Electrocomponentes, Dicomse ni Todomicro. Microchip/Mouser/Digikey no dieron precio accesible desde este entorno. MercadoLibre queda pendiente por links concretos. | Si aparece en MercadoLibre con precio razonable, conviene priorizarlo para RX frente a LM393. |
-| LMV393 | No encontrado con precio local verificable. | Usar LM393 para banco o buscar publicacion concreta. |
-| LMV331 | No encontrado con precio local verificable. | Buscar alternativa dual disponible o usar LM393 para banco. |
-| TLV3702 | No encontrado localmente. | TI Store: TLV3702IDR con precio oficial USD 0.822, envio/importacion no incluidos. |
+| LMV393 exacto | No se encontro LMV393 exacto. Aparecio `TS3V393` como reemplazo declarado. | Verificar hoja de datos antes de reemplazar. Si no, usar el comparador ya validado por disponibilidad o LM393 para banco. |
+| TLV3702 | No encontrado localmente ni como publicacion exacta util. | TI Store: TLV3702IDR con precio oficial USD 0.822, envio/importacion no incluidos. |
 | TLV9352 | No encontrado localmente. | TI Store: TLV9352IDR con precio oficial USD 0.340, figuraba sin stock. |
 | OPA2197 | No encontrado localmente. | TI Store: OPA2197ID con precio oficial USD 1.440; OPA2197IDR USD 1.200 pero figuraba sin stock. |
 | OPA197 | No se tomo precio local ni USD verificable en este relevamiento. | Mantener como alternativa tecnica, no como compra inmediata. |
-| MCP6002 | No encontrado en Electrocomponentes. | Relevar MercadoLibre con links concretos o buscar en CABA. |
 | Modulo DC/DC bipolar +/-5 V o +/-6 V | No encontrado en Electrocomponentes. | Para banco inicial usar fuente de laboratorio dual o ICL7660 para baja corriente. |
 | Resistencias TH 1% en valores 10 k, 12 k, 20 k, 30 k | No aparecieron con precio practico. Electrocomponentes mostro 5% y rollos SMD 1% de 5000 unidades. | Comprar kit 1% por MercadoLibre si se verifica publicacion o consultar mostrador. |
 | Capacitor 1 uF 50 V en Electrocomponentes | Aparecio sin precio publicado. | Dicomse tiene 1 uF 50 V SMD a USD 0.50 + IVA. |
@@ -256,4 +262,4 @@ La tabla siguiente indica que componente del relevamiento corresponde a cada blo
 
 ## Observacion tecnica
 
-Para RX, el LM393 permite empezar rapido porque esta disponible y es barato, pero exige pull-up y no es la opcion mas prolija para el producto final. Si se consigue MCP6562 o LMV393 a precio razonable, conviene evaluar esos comparadores porque son mas adecuados para senales logicas modernas. Para TX bipolar, TL072/TL082 sirven para experimentar con fuente dual, pero para un front-end mas serio conviene elegir un operacional rail-to-rail o un driver dedicado y verificar swing, slew rate, corriente de salida y estabilidad con carga.
+Para RX, el LM393 permite empezar rapido porque esta disponible y es barato, pero exige pull-up y no es la opcion mas prolija para el producto final. El MCP6562 ya tiene referencia de compra y conviene evaluarlo porque es mas adecuado para senales logicas modernas. Para TX bipolar, TL072/TL082 sirven para experimentar con fuente dual, pero para un front-end mas serio conviene elegir un operacional rail-to-rail o un driver dedicado y verificar swing, slew rate, corriente de salida y estabilidad con carga.

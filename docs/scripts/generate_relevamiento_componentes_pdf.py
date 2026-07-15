@@ -202,7 +202,11 @@ def build_story(markdown: str):
             story.append(Spacer(1, 3 * mm))
         elif line.startswith("## "):
             heading = line[3:].strip()
-            if heading in {"Componentes con precio local verificado", "Componentes no encontrados con precio local verificable"}:
+            if heading in {
+                "Componentes con precio local verificado",
+                "Componentes no encontrados con precio local verificable",
+                "Pendientes reales de compra o verificacion",
+            }:
                 story.append(PageBreak())
             story.append(para(heading, styles["h2"]))
         elif line.startswith("### "):

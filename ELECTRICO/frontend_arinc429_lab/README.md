@@ -89,8 +89,15 @@ a la misma conexion electrica aunque no exista un cable dibujado entre ambos.
 
 ## PCB preliminar
 
-La PCB inicial se genero para tener una aproximacion editable en KiCad antes de
-cerrar la compra final de componentes. La distribucion esta pensada para banco:
+La PCB preliminar se genero para tener una aproximacion editable en KiCad antes
+de cerrar la compra final de componentes. La revision vigente es `Rev B`: deja
+los footprints separados por bloque funcional y no incluye ruteo final. KiCad
+debe mostrar las conexiones pendientes como airwires/ratsnest para que el ruteo
+se haga manualmente cuando ya esten definidos los encapsulados reales.
+
+La version compacta anterior, con pistas preliminares cruzando la placa, no se
+considera valida como layout para mostrar ni fabricar. La distribucion vigente
+esta pensada para banco:
 
 - conectores de entrada/salida en bordes;
 - `J1` como header simple hacia la Pico de prueba;

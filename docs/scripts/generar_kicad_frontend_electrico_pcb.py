@@ -278,99 +278,84 @@ def build_pcb() -> str:
     nets = "\n".join(f'\t(net {i} "{q(name)}")' for i, name in enumerate(NETS))
     fps: list[str] = []
 
-    fps.append(pin_header("J1", "Pico logic I/O", 12, 22, [
+    # Revision B: placement deliberately spacious and unrouted. The previous
+    # sketch included rough tracks that crossed footprints and made the board
+    # hard to review. For this stage the useful deliverable is a clean KiCad
+    # placement with correct nets/footprints; final routing must be done after
+    # confirming real packages and mechanical constraints.
+    fps.append(pin_header("J1", "Pico logic I/O", 35, 55, [
         ("1", "TX_A_LOGIC"), ("2", "TX_B_LOGIC"), ("3", "RX_A_LOGIC"),
         ("4", "RX_B_LOGIC"), ("5", "+3V3_LOGIC"), ("6", "GND_COMUN"),
     ]))
-    fps.append(terminal_block("J3", "+3V3/+6/-6/GND", 42, 10, [
+    fps.append(terminal_block("J3", "+3V3/+6/-6/GND", 72, 30, [
         ("1", "+3V3_LOGIC"), ("2", "+6V_TX"), ("3", "-6V_TX"), ("4", "GND_COMUN"),
     ]))
-    fps.append(dip8("U1", "TL072/TL082/dual op-amp", 42, 34, {
+    fps.append(dip8("U1", "TL072/TL082/dual op-amp", 84, 70, {
         "1": "LINE_A", "2": "U1A_NEG", "3": "U1A_POS", "4": "-6V_TX",
         "5": "GND_COMUN", "6": "U1B_NEG", "7": "LINE_B", "8": "+6V_TX",
     }))
-    fps.append(dip8("U2", "MCP6562/LM393 dual comp", 80, 42, {
+    fps.append(dip8("U2", "MCP6562/LM393 dual comp", 140, 72, {
         "1": "RX_A_LOGIC", "2": "VTH_COMP", "3": "A_SENSE", "4": "GND_COMUN",
         "5": "B_SENSE", "6": "VTH_COMP", "7": "RX_B_LOGIC", "8": "+3V3_LOGIC",
     }))
-    fps.append(terminal_block("J2", "LINE_A/LINE_B/GND", 100, 24, [
+    fps.append(terminal_block("J2", "LINE_A/LINE_B/GND", 174, 54, [
         ("1", "LINE_A"), ("2", "LINE_B"), ("3", "GND_COMUN"),
     ]))
 
     fps.extend([
-        resistor("R1", "20k", 26, 28, "TX_A_LOGIC", "U1A_POS"),
-        resistor("R2", "30k", 26, 36, "U1A_POS", "GND_COMUN"),
-        resistor("R3", "20k", 26, 44, "TX_B_LOGIC", "U1A_NEG"),
-        resistor("R4", "30k", 42, 24, "LINE_A", "U1A_NEG"),
-        resistor("R5", "10k", 56, 34, "LINE_A", "U1B_NEG"),
-        resistor("R6", "10k", 56, 42, "LINE_B", "U1B_NEG"),
-        resistor("R7", "22k", 80, 24, "LINE_A", "A_SENSE"),
-        resistor("R8", "33k", 70, 30, "A_SENSE", "GND_COMUN", vertical=True),
-        resistor("R9", "22k", 80, 60, "LINE_B", "B_SENSE"),
-        resistor("R10", "33k", 70, 54, "B_SENSE", "GND_COMUN", vertical=True),
-        resistor("R11", "12k", 92, 48, "+3V3_LOGIC", "VTH_COMP", vertical=True),
-        resistor("R12", "10k", 98, 48, "VTH_COMP", "GND_COMUN", vertical=True),
-        resistor("R13", "4k7/DNP", 64, 18, "+3V3_LOGIC", "RX_A_LOGIC"),
-        resistor("R14", "4k7/DNP", 64, 12, "+3V3_LOGIC", "RX_B_LOGIC"),
-        capacitor("C1", "100nF U1+", 34, 16, "+6V_TX", "GND_COMUN"),
-        capacitor("C2", "100nF U1-", 34, 20, "-6V_TX", "GND_COMUN"),
-        capacitor("C3", "100nF U2", 84, 14, "+3V3_LOGIC", "GND_COMUN"),
-        capacitor("C4", "10uF 3V3", 52, 14, "+3V3_LOGIC", "GND_COMUN"),
-        capacitor("C5", "10uF +6V", 52, 18, "+6V_TX", "GND_COMUN"),
-        capacitor("C6", "10uF -6V", 52, 22, "-6V_TX", "GND_COMUN"),
-        diode("D1", "A clamp hi", 92, 30, "A_SENSE", "+3V3_LOGIC"),
-        diode("D2", "A clamp lo", 92, 34, "GND_COMUN", "A_SENSE"),
-        diode("D3", "B clamp hi", 92, 66, "B_SENSE", "+3V3_LOGIC"),
-        diode("D4", "B clamp lo", 92, 70, "GND_COMUN", "B_SENSE"),
-        diode("D5", "TVS A-B", 104, 36, "LINE_A", "LINE_B", vertical=True),
-        testpoint("TP1", "TP_LINE_A", 112, 20, "LINE_A"),
-        testpoint("TP2", "TP_LINE_B", 112, 28, "LINE_B"),
-        testpoint("TP3", "TP_GND", 112, 36, "GND_COMUN"),
-        testpoint("TP4", "TP_VTH", 102, 56, "VTH_COMP"),
+        resistor("R1", "20k", 55, 54, "TX_A_LOGIC", "U1A_POS"),
+        resistor("R2", "30k", 55, 67, "U1A_POS", "GND_COMUN"),
+        resistor("R3", "20k", 55, 80, "TX_B_LOGIC", "U1A_NEG"),
+        resistor("R4", "30k", 84, 50, "LINE_A", "U1A_NEG"),
+        resistor("R5", "10k", 108, 63, "LINE_A", "U1B_NEG"),
+        resistor("R6", "10k", 108, 78, "LINE_B", "U1B_NEG"),
+        resistor("R7", "22k", 154, 45, "LINE_A", "A_SENSE"),
+        resistor("R8", "33k", 128, 45, "A_SENSE", "GND_COMUN", vertical=True),
+        resistor("R9", "22k", 154, 94, "LINE_B", "B_SENSE"),
+        resistor("R10", "33k", 128, 94, "B_SENSE", "GND_COMUN", vertical=True),
+        resistor("R11", "12k", 124, 108, "+3V3_LOGIC", "VTH_COMP", vertical=True),
+        resistor("R12", "10k", 136, 108, "VTH_COMP", "GND_COMUN", vertical=True),
+        resistor("R13", "4k7/DNP", 118, 56, "+3V3_LOGIC", "RX_A_LOGIC"),
+        resistor("R14", "4k7/DNP", 118, 64, "+3V3_LOGIC", "RX_B_LOGIC"),
+        capacitor("C1", "100nF U1+", 74, 48, "+6V_TX", "GND_COMUN"),
+        capacitor("C2", "100nF U1-", 74, 54, "-6V_TX", "GND_COMUN"),
+        capacitor("C3", "100nF U2", 132, 52, "+3V3_LOGIC", "GND_COMUN"),
+        capacitor("C4", "10uF 3V3", 100, 32, "+3V3_LOGIC", "GND_COMUN"),
+        capacitor("C5", "10uF +6V", 100, 38, "+6V_TX", "GND_COMUN"),
+        capacitor("C6", "10uF -6V", 100, 44, "-6V_TX", "GND_COMUN"),
+        diode("D1", "A clamp hi", 166, 66, "A_SENSE", "+3V3_LOGIC"),
+        diode("D2", "A clamp lo", 166, 73, "GND_COMUN", "A_SENSE"),
+        diode("D3", "B clamp hi", 166, 86, "B_SENSE", "+3V3_LOGIC"),
+        diode("D4", "B clamp lo", 166, 93, "GND_COMUN", "B_SENSE"),
+        diode("D5", "TVS A-B", 184, 76, "LINE_A", "LINE_B", vertical=True),
+        testpoint("TP1", "TP_LINE_A", 194, 44, "LINE_A"),
+        testpoint("TP2", "TP_LINE_B", 194, 54, "LINE_B"),
+        testpoint("TP3", "TP_GND", 194, 64, "GND_COMUN"),
+        testpoint("TP4", "TP_VTH", 148, 108, "VTH_COMP"),
     ])
 
     graphics = [
-        gr_line(5, 5, 118, 5),
-        gr_line(118, 5, 118, 76),
-        gr_line(118, 76, 5, 76),
-        gr_line(5, 76, 5, 5),
-        gr_text("PAMPA ARINC 429 - front-end electrico preliminar", 8, 72, 1.6),
-        gr_text("DIP8 para banco: U1 TL072/TL082, U2 LM393 o adaptador MCP6562", 8, 68, 1.05),
-        gr_text("J2 es linea/cable A-B-GND; no conectar a ARINC real de campo", 8, 64, 1.05),
-        gr_text("Zona TX bipolar", 28, 58, 1.2),
-        gr_text("Zona RX protegido", 76, 72, 1.2),
+        gr_line(20, 20, 205, 20),
+        gr_line(205, 20, 205, 125),
+        gr_line(205, 125, 20, 125),
+        gr_line(20, 125, 20, 20),
+        gr_line(42, 38, 118, 38, "F.SilkS", 0.12),
+        gr_line(118, 38, 118, 98, "F.SilkS", 0.12),
+        gr_line(118, 98, 42, 98, "F.SilkS", 0.12),
+        gr_line(42, 98, 42, 38, "F.SilkS", 0.12),
+        gr_line(120, 38, 198, 38, "F.SilkS", 0.12),
+        gr_line(198, 38, 198, 101, "F.SilkS", 0.12),
+        gr_line(198, 101, 120, 101, "F.SilkS", 0.12),
+        gr_line(120, 101, 120, 38, "F.SilkS", 0.12),
+        gr_text("PAMPA ARINC 429 - front-end electrico preliminar Rev B", 24, 116, 1.6),
+        gr_text("Placement limpio sin ruteo final: revisar footprints reales, DRC y routing manual.", 24, 121, 1.05),
+        gr_text("TX bipolar", 46, 43, 1.2),
+        gr_text("RX protegido / comparadores", 124, 43, 1.2),
+        gr_text("J2 = LINE_A / LINE_B / GND_REF", 166, 38, 1.0),
+        gr_text("No conectar a ARINC real de campo", 24, 112, 1.0),
     ]
 
-    tracks = [
-        # Logic header to TX/RX sections.
-        segment("TX_A_LOGIC", 12, 22, 22.2, 28, 0.30),
-        segment("TX_B_LOGIC", 12, 24.54, 22.2, 44, 0.30),
-        segment("RX_A_LOGIC", 12, 27.08, 60.2, 18, 0.30, "B.Cu"),
-        segment("RX_B_LOGIC", 12, 29.62, 60.2, 12, 0.30, "B.Cu"),
-        segment("+3V3_LOGIC", 12, 32.16, 42, 10, 0.55, "B.Cu"),
-        segment("GND_COMUN", 12, 34.70, 57.24, 10, 0.75, "B.Cu"),
-        # Power.
-        segment("+6V_TX", 47.08, 10, 45.81, 30.19, 0.65, "B.Cu"),
-        segment("-6V_TX", 52.16, 10, 38.19, 37.81, 0.65, "B.Cu"),
-        segment("+3V3_LOGIC", 42, 10, 83.81, 38.19, 0.55, "B.Cu"),
-        # TX analog.
-        segment("LINE_A", 38.19, 30.19, 38.19, 24, 0.45),
-        segment("LINE_A", 45.81, 30.19, 52.19, 34, 0.45),
-        segment("LINE_A", 45.81, 30.19, 100, 24, 0.60),
-        segment("LINE_B", 45.81, 32.73, 52.19, 42, 0.45),
-        segment("LINE_B", 45.81, 32.73, 105.08, 24, 0.60),
-        segment("U1A_NEG", 38.19, 32.73, 38.19, 24, 0.30),
-        segment("U1B_NEG", 45.81, 35.27, 59.81, 34, 0.30),
-        # RX sense and line.
-        segment("LINE_A", 100, 24, 76.19, 24, 0.45),
-        segment("A_SENSE", 83.81, 24, 76.19, 30, 0.30),
-        segment("A_SENSE", 76.19, 30, 76.19, 43.27, 0.30),
-        segment("LINE_B", 105.08, 24, 76.19, 60, 0.45),
-        segment("B_SENSE", 83.81, 60, 76.19, 54, 0.30),
-        segment("B_SENSE", 76.19, 54, 83.81, 45.81, 0.30),
-        segment("VTH_COMP", 92, 51.81, 83.81, 40.73, 0.30),
-        segment("VTH_COMP", 98, 44.19, 83.81, 43.27, 0.30),
-    ]
+    tracks: list[str] = []
 
     return f"""(kicad_pcb
 	(version 20240108)
@@ -394,15 +379,17 @@ def build_pcb() -> str:
 
 
 def build_svg() -> str:
-    width, height = 1200, 800
-    scale = 10
+    width, height = 1400, 900
+    scale = 6
     items = [
-        SvgItem("J1", 12, 22, 14, 22, "#dbeafe", "Pico I/O"),
-        SvgItem("J3", 42, 10, 22, 10, "#fee2e2", "Fuentes"),
-        SvgItem("U1", 42, 34, 22, 22, "#fff7ed", "U1 TX bipolar"),
-        SvgItem("J2", 100, 24, 20, 12, "#dcfce7", "Linea A/B"),
-        SvgItem("U2", 80, 42, 22, 22, "#eff6ff", "U2 RX comp."),
-        SvgItem("R/C/D", 64, 50, 60, 38, "#f8fafc", "Pasivos, clamps y testpoints"),
+        SvgItem("J1", 34, 73, 18, 44, "#dbeafe", "Pico I/O"),
+        SvgItem("J3", 76, 34, 36, 16, "#fee2e2", "Fuentes"),
+        SvgItem("Pasivos TX", 65, 82, 28, 42, "#f8fafc", "Redes R/C TX"),
+        SvgItem("U1", 100, 82, 34, 42, "#fff7ed", "U1 TX bipolar"),
+        SvgItem("U2", 142, 82, 34, 42, "#eff6ff", "U2 RX comp."),
+        SvgItem("Proteccion", 180, 82, 32, 42, "#f0fdf4", "Divisores y clamps"),
+        SvgItem("J2", 180, 36, 34, 16, "#dcfce7", "Linea A/B/GND"),
+        SvgItem("TP", 196, 116, 14, 14, "#fef9c3", "TP"),
     ]
 
     def sx(v: float) -> float:
@@ -423,12 +410,14 @@ def build_svg() -> str:
         )
 
     wires = [
-        (12, 22, 42, 34, "#16a34a", "TX_A/TX_B"),
-        (42, 34, 100, 24, "#16a34a", "LINE_A/B"),
-        (100, 24, 80, 42, "#16a34a", "sense"),
-        (80, 42, 12, 28, "#f97316", "RX_A/RX_B"),
-        (42, 10, 42, 34, "#dc2626", "+/-6V"),
-        (42, 10, 80, 42, "#dc2626", "+3V3/GND"),
+        (34, 73, 65, 82, "#16a34a", "TX_A/TX_B"),
+        (65, 82, 100, 82, "#16a34a", "red TX"),
+        (100, 82, 180, 36, "#16a34a", "LINE_A/B"),
+        (180, 36, 180, 82, "#16a34a", "sense"),
+        (180, 82, 142, 82, "#16a34a", "A/B sense"),
+        (142, 82, 34, 86, "#f97316", "RX_A/RX_B"),
+        (76, 34, 100, 82, "#dc2626", "+/-6V TX"),
+        (76, 34, 142, 82, "#dc2626", "+3V3/GND RX"),
     ]
     wire_svg = []
     for x1, y1, x2, y2, color, label in wires:
@@ -441,12 +430,12 @@ def build_svg() -> str:
     <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
   </marker>
 </defs>
-<rect x="50" y="50" width="1130" height="710" fill="#ffffff" stroke="#111827" stroke-width="4"/>
-<text x="80" y="90" font-family="Arial" font-size="26" font-weight="700" fill="#111827">PCB preliminar front-end electrico ARINC 429 de laboratorio</text>
-<text x="80" y="120" font-family="Arial" font-size="16" fill="#334155">Distribucion inicial: conectores en bordes, TX bipolar separado de RX protegido, testpoints cerca de J2.</text>
+<rect x="80" y="70" width="1240" height="760" fill="#ffffff" stroke="#111827" stroke-width="4"/>
+<text x="110" y="110" font-family="Arial" font-size="26" font-weight="700" fill="#111827">PCB preliminar front-end electrico ARINC 429 de laboratorio - Rev B</text>
+<text x="110" y="140" font-family="Arial" font-size="16" fill="#334155">Placement limpio y sin ruteo final: KiCad muestra airwires para ruteo manual despues de elegir encapsulados reales.</text>
 {"".join(wire_svg)}
 {"".join(rects)}
-<text x="80" y="720" font-family="Arial" font-size="15" fill="#475569">Nota: no es PCB final de campo. Usa DIP8/THT para banco, validacion y reemplazo facil de componentes.</text>
+<text x="110" y="800" font-family="Arial" font-size="15" fill="#475569">Nota: no es PCB final de campo. Usa DIP8/THT para banco, validacion y reemplazo facil de componentes.</text>
 </svg>
 """
 
