@@ -23,6 +23,11 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [resumen_spi_sniffer_pi3.md](resumen_spi_sniffer_pi3.md)
 - [preguntas_respuestas_tutor_arinc429.md](preguntas_respuestas_tutor_arinc429.md)
 
+## Operacion / DevOps liviano
+
+- [Operacion Raspberry Pi 3B+ con scripts](operacion_raspberry_3b_deploy.md)
+- [Comandos de arranque y rescate](pdf/comandos_servicios_3b_autoarranque.pdf)
+
 ## Front-end electrico de laboratorio
 
 - [Proyecto KiCad y explicacion tecnica/simple](../ELECTRICO/frontend_arinc429_lab/README.md)
