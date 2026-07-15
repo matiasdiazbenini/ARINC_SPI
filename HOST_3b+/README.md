@@ -150,6 +150,20 @@ curl http://127.0.0.1:5100/stats
 curl http://127.0.0.1:5000/stats
 ```
 
+## Deploy desde WSL
+
+El repo incluye una alternativa reproducible a la copia manual por WinSCP:
+
+- [../docs/operacion_raspberry_3b_deploy.md](../docs/operacion_raspberry_3b_deploy.md)
+
+Uso normal desde la raiz del repo en WSL:
+
+```bash
+./tools/raspi_deploy.sh
+./tools/raspi_healthcheck.sh
+./tools/raspi_services.sh status
+```
+
 ## Transporte SPI recomendado
 
 El modo recomendado post tutor para responder la objecion de "byte-a-byte" es:

@@ -73,6 +73,8 @@ Quedo validado:
   - capturas de osciloscopio organizadas por enlace y canal
 - [docs](docs/README.md)
   - indice de documentacion y memoria externa del proyecto
+- [tools](tools/)
+  - scripts WSL para deploy, healthcheck y control de servicios en la 3B+
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
   - archivo maestro de handoff para retomar rapido el trabajo
 - raiz del repo:
@@ -230,6 +232,21 @@ Por ejemplo:
 - `DASHBOARD_WEB/arinc_dashboard/`
 
 Tambien se pueden abrir varias ventanas de VS Code en paralelo, una por componente, sin problema.
+
+## Operacion Raspberry 3B+ desde WSL
+
+Ademas de WinSCP, el repo incluye scripts para actualizar y verificar la 3B+
+por SSH/rsync desde WSL:
+
+- [Operacion Raspberry Pi 3B+ con scripts](docs/operacion_raspberry_3b_deploy.md)
+
+Comandos principales:
+
+```bash
+./tools/raspi_deploy.sh
+./tools/raspi_healthcheck.sh
+./tools/raspi_services.sh status
+```
 
 ## Perfil operativo recomendado
 
