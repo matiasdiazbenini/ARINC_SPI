@@ -27,3 +27,4 @@ scrape_configs:
         labels:
           app: "arinc-dashboard"
           host: "rpi3bplus"
+          
