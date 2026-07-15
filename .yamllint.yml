@@ -6,4 +6,3 @@ rules:
   line-length: disable
   truthy:
     check-keys: false
-    

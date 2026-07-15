@@ -37,4 +37,3 @@ jobs:
 
       - name: Compilar Python
         run: python -m compileall HOST_3b+ DASHBOARD_WEB docs/scripts
-        
