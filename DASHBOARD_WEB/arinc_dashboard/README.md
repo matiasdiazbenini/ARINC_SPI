@@ -11,6 +11,14 @@ Dashboard web principal del sistema.
 
 ## Modo recomendado
 
+Instalacion del entorno Python:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 Se usa en modo `bridge`:
 
 ```bash
