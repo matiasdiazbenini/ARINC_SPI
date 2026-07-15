@@ -1,0 +1,34 @@
+---
+name: CodeQL
+
+"on":
+  push:
+    branches:
+      - ARINC
+  pull_request:
+    branches:
+      - ARINC
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze Python
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      packages: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - name: Ejecutar análisis CodeQL
+        uses: github/codeql-action/analyze@v3
