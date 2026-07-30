@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "filename": "frontend_arinc429_tl082_circuit.kicad_pro",
+    "version": 1
+  },
+  "project": {
+    "files": [],
+    "text_variables": {}
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": [],
+    "meta": {
+      "version": 1
+    },
+    "page_layout_descr_file": "",
+    "plot_directory": "exports"
+  },
+  "sheets": [
+    [
+      "f66afa8e-2395-5d88-8a44-1c3aa3f40fe8",
+      "frontend_arinc429_tl082_circuit"
+    ]
+  ]
+}

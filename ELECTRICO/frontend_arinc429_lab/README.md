@@ -10,6 +10,14 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
 - `exports/frontend_arinc429_lab.svg`: export del esquematico.
 - `exports/frontend_arinc429_lab_pcb.svg`: vista rapida de distribucion PCB.
 - `relevamiento_componentes_frontend_electrico.md`: componentes, precios, equivalencias y busqueda de disponibilidad.
+- `frontend_arinc429_tl082_rework.md`: revision nueva usando TL082CP como base de TX/RX analogico.
+- `exports/frontend_arinc429_tl082_rework.svg`: esquematico funcional de la revision TL082CP.
+- `frontend_arinc429_tl082_circuit.kicad_pro`: proyecto KiCad del circuito TL082CP completo.
+- `frontend_arinc429_tl082_circuit.kicad_sch`: esquematico de circuito con resistencias, capacitores, conectores, TL082CP y adaptacion logica.
+- `exports/frontend_arinc429_tl082_circuit.svg`: export del esquematico de circuito.
+- `exports/frontend_arinc429_tl082_circuit.pdf`: export PDF del esquematico de circuito.
+- `memoria_calculo_frontend_tl082.tex`: memoria de calculo editable en LaTeX.
+- `exports/memoria_calculo_frontend_tl082.pdf`: memoria de calculo compilada.
 
 ## Alcance
 
@@ -112,6 +120,40 @@ esta pensada para banco:
 La PCB no debe enviarse a fabricar sin revision manual en KiCad. Falta confirmar
 footprints exactos, dimensiones reales de borneras, corriente disponible de las
 fuentes, separaciones, DRC y comportamiento analogico con componentes reales.
+
+## Revision TL082CP
+
+La revision [frontend_arinc429_tl082_rework.md](frontend_arinc429_tl082_rework.md)
+documenta el rediseño pedido con TL082CP:
+
+- TX bipolar con dos amplificadores diferenciales retroalimentados;
+- `Zout` diferencial aproximada de `78 ohm` usando `39 ohm` por rama;
+- J2 como linea ARINC-like de banco;
+- RX analogico con TL082CP y alta impedancia;
+- restriccion explicita: el RX TL082-only no debe conectarse directo a GPIO sin
+  una etapa final de decision/proteccion.
+
+El esquematico de circuito [frontend_arinc429_tl082_circuit.kicad_sch](frontend_arinc429_tl082_circuit.kicad_sch)
+complementa esa revision con una implementacion electrica concreta:
+
+- `U1A/U1B TL082CP`: convierten `TX_A_LOGIC/TX_B_LOGIC` en `LINE_A/LINE_B`
+  de aproximadamente `+5/0/-5 V` por conductor.
+- `R9/R10 = 39 ohm`: aproximan `Zout` diferencial a `78 ohm`.
+- `U2A/U2B TL082CP`: leen `LINE_A/LINE_B` con alta impedancia y generan
+  senales analogicas sesgadas alrededor de `1,65 V`.
+- `U3 MCP6562`: convierte las senales analogicas a `RX_A_LOGIC/RX_B_LOGIC`
+  seguros para `GP4/GP5`.
+- `R21/R22`, `R23/R24`: generan `VREF_1V65` y `VTH_ACTIVE`.
+- `C1..C11`: desacople y filtrado local de referencias.
+
+Aunque se prioriza TL082CP, el esquematico incluye `U3` porque la salida de un
+TL082 alimentado en bipolar no debe entrar directamente a una Raspberry Pi Pico.
+Sin esa etapa, el circuito no queda cerrado de forma segura.
+
+La [memoria de calculo](exports/memoria_calculo_frontend_tl082.pdf) justifica
+ganancias, impedancias, referencias, desacople y respuesta temporal para
+`100 kbit/s` y `12,5 kbit/s`. Tambien deja documentada la correccion pendiente
+del divisor `VREF/VTH` antes de congelar una revision de PCB.
 
 ## Validacion minima
 

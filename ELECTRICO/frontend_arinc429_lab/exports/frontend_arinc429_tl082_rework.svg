@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<style>
+.title{font-family:Arial,sans-serif;font-size:21px;font-weight:700;fill:#102A43}
+.small{font-family:Arial,sans-serif;font-size:17px;fill:#1F2933}
+.tiny{font-family:Arial,sans-serif;font-size:14px;fill:#1F2933}
+.note{font-family:Arial,sans-serif;font-size:15px;font-weight:700;fill:#A43E3E}
+</style>
+<rect width="1500" height="900" fill="#FFFFFF"/>
+<text x="35" y="42" class="title">Front-end ARINC 429-like con TL082CP - revision electrica de banco</text>
+<text x="35" y="72" class="note">Advertencia: TX con TL082 es viable para banco; RX solo con TL082 no entrega GPIO seguro sin etapa final de decision/proteccion.</text>
+<rect x="35" y="110" width="170" height="245" rx="8" fill="#EAF2FB" stroke="#1D5F99" stroke-width="2"/>
+<text x="47" y="138" class="title">Pico TX</text>
+<text x="47" y="166" class="small">GP2 TX_A_LOGIC</text>
+<text x="47" y="188" class="small">GP3 TX_B_LOGIC</text>
+<text x="47" y="210" class="small">0..3,3 V</text>
+<text x="47" y="232" class="small">GND comun</text>
+<rect x="260" y="95" width="365" height="330" rx="8" fill="#FFF2E2" stroke="#B96B1B" stroke-width="2"/>
+<text x="272" y="123" class="title">TX bipolar - U1 TL082CP</text>
+<text x="272" y="151" class="small">U1A: diff amp</text>
+<text x="272" y="173" class="small">LINE_A_PRE=1,5*(A-B)</text>
+<text x="272" y="195" class="small">R1/R3=20k, R2/R4=30k</text>
+<text x="272" y="217" class="small">U1B: diff amp complementario</text>
+<text x="272" y="239" class="small">LINE_B_PRE=1,5*(B-A)</text>
+<text x="272" y="261" class="small">Alim: +12V/-12V</text>
+<text x="272" y="283" class="small">Sin capacitores de acople</text>
+<rect x="690" y="130" width="190" height="230" rx="8" fill="#EAF5EF" stroke="#2F7D5A" stroke-width="2"/>
+<text x="702" y="158" class="title">Salida TX</text>
+<text x="702" y="186" class="small">R9 39R serie A</text>
+<text x="702" y="208" class="small">R10 39R serie B</text>
+<text x="702" y="230" class="small">Zout diff ~=78R</text>
+<text x="702" y="252" class="small">C opcional slew: DNP</text>
+<rect x="940" y="130" width="210" height="230" rx="8" fill="#F5F7FA" stroke="#102A43" stroke-width="2"/>
+<text x="952" y="158" class="title">J2 linea</text>
+<text x="952" y="186" class="small">LINE_A</text>
+<text x="952" y="208" class="small">LINE_B</text>
+<text x="952" y="230" class="small">GND_REF/shield</text>
+<text x="952" y="252" class="small">Cable STP 78R</text>
+<text x="952" y="274" class="small">Sin terminacion RX</text>
+<rect x="1210" y="95" width="250" height="330" rx="8" fill="#FFF2E2" stroke="#B96B1B" stroke-width="2"/>
+<text x="1222" y="123" class="title">RX analogico - U2 TL082CP</text>
+<text x="1222" y="151" class="small">U2A=0,3*(A-B)</text>
+<text x="1222" y="173" class="small">U2B=0,3*(B-A)</text>
+<text x="1222" y="195" class="small">Rin=100k, Rf=30k</text>
+<text x="1222" y="217" class="small">Zin por linea ~=56k</text>
+<text x="1222" y="239" class="small">Alim: +12V/-12V</text>
+<text x="1222" y="261" class="small">Salida analogica NO GPIO</text>
+<rect x="1210" y="505" width="250" height="190" rx="8" fill="#FBEAEA" stroke="#A43E3E" stroke-width="2"/>
+<text x="1222" y="533" class="title">Etapa final obligatoria</text>
+<text x="1222" y="561" class="small">Schmitt/comparador/level-shift</text>
+<text x="1222" y="583" class="small">Salida 0..3,3 V</text>
+<text x="1222" y="605" class="small">Histeresis definida</text>
+<text x="1222" y="627" class="small">Proteccion GPIO</text>
+<rect x="940" y="530" width="210" height="155" rx="8" fill="#EAF2FB" stroke="#1D5F99" stroke-width="2"/>
+<text x="952" y="558" class="title">Pico RX</text>
+<text x="952" y="586" class="small">GP4 RX_A_LOGIC</text>
+<text x="952" y="608" class="small">GP5 RX_B_LOGIC</text>
+<text x="952" y="630" class="small">solo 0..3,3 V</text>
+<line x1="205" y1="185" x2="260" y2="185" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="205" y1="235" x2="260" y2="235" stroke="#2F7D5A" stroke-width="3"/>
+<text x="218" y="174" class="tiny">TX_A</text>
+<text x="218" y="225" class="tiny">TX_B</text>
+<line x1="625" y1="190" x2="690" y2="190" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="625" y1="280" x2="690" y2="280" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="880" y1="190" x2="940" y2="190" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="880" y1="280" x2="940" y2="280" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="1150" y1="190" x2="1210" y2="190" stroke="#2F7D5A" stroke-width="3"/>
+<line x1="1150" y1="280" x2="1210" y2="280" stroke="#2F7D5A" stroke-width="3"/>
+<text x="895" y="178" class="tiny">LINE_A</text>
+<text x="895" y="268" class="tiny">LINE_B</text>
+<line x1="1335" y1="425" x2="1335" y2="505" stroke="#A43E3E" stroke-width="3" stroke-dasharray="8 7"/>
+<text x="1165" y="466" class="note">No conectar salida U2 directa a Pico</text>
+<line x1="1210" y1="590" x2="1150" y2="590" stroke="#A43E3E" stroke-width="3" stroke-dasharray="8 7"/>
+<rect x="260" y="505" width="365" height="160" rx="8" fill="#F5F7FA" stroke="#5B6876" stroke-width="2"/>
+<text x="272" y="533" class="title">Alimentacion y desacople</text>
+<text x="272" y="561" class="small">U1/U2 TL082CP: +12V/-12V/GND</text>
+<text x="272" y="583" class="small">C1,C3,C5,C7: 100nF por rail</text>
+<text x="272" y="605" class="small">C2,C4,C6,C8: 10uF por rail</text>
+<text x="272" y="627" class="small">GND comun solo en banco</text>
+<rect x="690" y="505" width="190" height="160" rx="8" fill="#EAF5EF" stroke="#2F7D5A" stroke-width="2"/>
+<text x="702" y="533" class="title">Mediciones</text>
+<text x="702" y="561" class="small">CH1=LINE_A</text>
+<text x="702" y="583" class="small">CH2=LINE_B</text>
+<text x="702" y="605" class="small">MATH=A-B</text>
+<text x="702" y="627" class="small">+10/0/-10 V</text>
+<text x="702" y="649" class="small">gap &gt;=4 bits</text>
+</svg>

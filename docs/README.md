@@ -38,6 +38,14 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [Documento descriptivo del front-end](frontend_electrico_arinc429_lab.md)
 - [PDF del front-end electrico](pdf/frontend_electrico_arinc429_lab.pdf)
 - [PDF del esquematico KiCad](pdf/frontend_arinc429_lab_kicad.pdf)
+- [Revision TL082CP del front-end electrico](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_rework.md)
+- [PDF revision TL082CP](pdf/frontend_arinc429_tl082_rework.pdf)
+- [Esquematico de circuito TL082CP KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_circuit.kicad_sch)
+- [Proyecto de circuito TL082CP KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_circuit.kicad_pro)
+- [Export SVG del circuito TL082CP](../ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_tl082_circuit.svg)
+- [Export PDF del circuito TL082CP](../ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_tl082_circuit.pdf)
+- [Memoria de calculo TL082CP en PDF](../ELECTRICO/frontend_arinc429_lab/exports/memoria_calculo_frontend_tl082.pdf)
+- [Fuente LaTeX de la memoria de calculo](../ELECTRICO/frontend_arinc429_lab/memoria_calculo_frontend_tl082.tex)
 - [Relevamiento de componentes y correspondencia con bloques KiCad](../ELECTRICO/frontend_arinc429_lab/relevamiento_componentes_frontend_electrico.md)
 - [PDF del relevamiento de componentes](pdf/relevamiento_componentes_frontend_electrico.pdf)
 
@@ -87,6 +95,7 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 - [generar_frontend_electrico_arinc429_pdf.py](scripts/generar_frontend_electrico_arinc429_pdf.py)
 - [generar_kicad_frontend_electrico.py](scripts/generar_kicad_frontend_electrico.py)
 - [generar_kicad_frontend_electrico_pcb.py](scripts/generar_kicad_frontend_electrico_pcb.py)
+- [generar_kicad_frontend_tl082_circuito.py](scripts/generar_kicad_frontend_tl082_circuito.py)
 - [generate_relevamiento_componentes_pdf.py](scripts/generate_relevamiento_componentes_pdf.py)
 
 ## Evidencia
