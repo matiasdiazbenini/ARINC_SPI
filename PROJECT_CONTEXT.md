@@ -12,7 +12,8 @@ Recrear una arquitectura de comunicacion inspirada en ARINC 429 en un entorno de
 4. integracion host en Raspberry Pi 3B+
 5. visualizacion y observabilidad
 6. validacion instrumental por osciloscopio
-7. futura transicion a interfaz electrica ARINC 429 real
+7. front-end electrico de laboratorio ARINC 429-like
+8. transicion posterior hacia interfaz electrica ARINC 429 de campo
 
 ## 2. Arquitectura actual
 
@@ -56,8 +57,10 @@ La rama `ARINC` organiza el sistema completo en un solo repo con subcarpetas por
 - `HOST_3b+/`
 - `DASHBOARD_WEB/arinc_dashboard/`
 - `prometheus/`
+- `ELECTRICO/`
 - `imagenes/`
 - `docs/`
+- `tools/`
 
 ## 3. Estado funcional validado
 
@@ -450,17 +453,77 @@ Baseline final:
        - perfil operativo recomendado: `8 MHz`
    - evidencia: [evidencia_barrido_frecuencia_spi.md](docs/evidencia_barrido_frecuencia_spi.md)
 
-El proximo desarrollo tecnico es avanzar hacia producto sniffer ARINC real:
+## 11. Estado actual del frente electrico
 
-1. definir requisitos electricos y de conexion;
-2. seleccionar receptor ARINC 429 dedicado;
-3. disenar proteccion y entrada de alta impedancia;
-4. construir un adaptador de laboratorio;
-5. validar con una fuente ARINC real;
-6. migrar a PCB.
+La fase logica quedo cerrada como baseline validada. El trabajo actual paso al
+front-end electrico de laboratorio, con el objetivo de intercalar una etapa
+analogica entre dos Raspberry Pi Pico para convertir la senal logica `0..3.3 V`
+en una linea ARINC 429-like y luego recuperarla como logica segura para la Pico
+RX.
+
+La propuesta vigente no usa aun un transceptor ARINC 429 certificado. Es una
+etapa de banco para validar niveles, impedancias, forma de onda y recepcion con
+componentes conseguibles:
+
+- `U1 TL082CP`:
+  - dos op-amps para generar `LINE_A` y `LINE_B`
+  - alimentacion recomendada: `+12 V / -12 V / GND`
+  - salida esperada por conductor: aproximadamente `+5 V / 0 V / -5 V`
+  - salida diferencial esperada `LINE_A - LINE_B`: `+10 V / 0 V / -10 V`
+- `R9/R10 = 39 ohm`:
+  - resistencia serie por rama
+  - `Zout` diferencial aproximada: `78 ohm`
+- `J2`:
+  - representa la linea ARINC 429-like de banco
+  - pines: `LINE_A`, `LINE_B`, `GND_REF`
+- `U2 TL082CP`:
+  - front-end analogico RX de alta impedancia
+  - reduce y sesga la senal recibida antes de la decision digital
+- `U3 MCP6562-E/P`:
+  - comparador dual push-pull
+  - convierte la senal analogica RX a `RX_A_LOGIC` y `RX_B_LOGIC`
+  - alimentacion: `+3.3 V / GND`
+  - sus salidas son las unicas que deben entrar a los GPIO de la Pico RX
+- referencias corregidas de compra:
+  - `R21 = 1 kohm`
+  - `R22 = 1.02 kohm`
+  - `R23 = 6.8 kohm`
+  - `R24 = 10 kohm`
+
+Archivos principales de esta etapa:
+
+- [README electrico](ELECTRICO/frontend_arinc429_lab/README.md)
+- [revision TL082CP](ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_rework.md)
+- [esquematico KiCad TL082CP](ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_circuit.kicad_sch)
+- [PDF esquematico TL082CP](ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_tl082_circuit.pdf)
+- [memoria de calculo TL082CP](ELECTRICO/frontend_arinc429_lab/memoria_calculo_frontend_tl082.tex)
+- [PDF memoria de calculo TL082CP](ELECTRICO/frontend_arinc429_lab/exports/memoria_calculo_frontend_tl082.pdf)
+- [BOM completo](ELECTRICO/frontend_arinc429_lab/BOM_frontend_arinc429_tl082.txt)
+
+Restricciones tecnicas importantes:
+
+- La salida de un TL082CP alimentado en bipolar no debe conectarse directo a un
+  GPIO de Raspberry Pi Pico.
+- Los capacitores de desacople deben ir fisicamente cerca de los pines de
+  alimentacion de cada integrado.
+- No usar capacitores de acople en serie sobre la linea ARINC-like, porque se
+  perderia la componente DC necesaria para representar el estado NULL.
+- El esquematico actual es una base de laboratorio. Antes de fabricar PCB se
+  debe revisar DRC/ERC, footprints reales, ruteo, distancias, disponibilidad de
+  componentes y comportamiento con osciloscopio.
+
+Proximo paso tecnico real:
+
+1. comprar o reunir componentes del BOM;
+2. montar primero en protoboard o placa experimental;
+3. validar con osciloscopio `LINE_A`, `LINE_B` y `MATH = LINE_A - LINE_B`;
+4. confirmar que `RX_A_LOGIC` y `RX_B_LOGIC` nunca salgan de `0..3.3 V`;
+5. probar a `100 kbps` y `12.5 kbps`;
+6. ajustar valores solo con evidencia de medicion;
+7. recien despues cerrar PCB de laboratorio.
 
 
-## 11. Ramas que no deben tocarse
+## 12. Ramas que no deben tocarse
 
 No modificar:
 
