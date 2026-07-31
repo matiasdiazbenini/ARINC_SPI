@@ -1,0 +1,148 @@
+PAMPA / ARINC 429-LIKE - LISTA DE COMPONENTES
+Front-end electrico TL082CP + MCP6562
+============================================================
+
+Revision de compra recomendada
+------------------------------
+Esta lista adopta las correcciones indicadas en la memoria de calculo:
+
+- R21 = 1 kOhm
+- R22 = 1.02 kOhm
+- R23 = 6.8 kOhm
+- R24 = 10 kOhm
+
+No mezclar estos valores con la version preliminar del divisor
+(R21/R22 = 10 kOhm/10 kOhm y R23 = 5.6 kOhm).
+
+
+1. CIRCUITOS INTEGRADOS
+-----------------------
+
+Cantidad  Componente                         Referencias
+--------  ---------------------------------  --------------------------
+2         TL082CP, op-amp dual, PDIP-8       U1, U2
+1         MCP6562-E/P, comparador dual        U3
+          push-pull, PDIP-8
+
+Equivalencia funcional instalada:
+- 2 encapsulados TL082CP = 4 amplificadores operacionales internos.
+- 1 encapsulado MCP6562 = 2 comparadores internos.
+
+
+2. RESISTENCIAS
+---------------
+
+Usar resistencias de 1 % como minimo. Para las redes diferenciales
+apareadas es preferible 0.1 % si se consiguen.
+
+Cantidad  Valor        Referencias
+--------  -----------  -----------------------------------------------
+4         20 kOhm      R1, R3, R5, R7
+4         30 kOhm      R2, R4, R6, R8
+2         39 Ohm       R9, R10
+4         100 kOhm     R11, R13, R15, R17
+4         10 kOhm      R12, R14, R16, R18
+1         1 kOhm       R21
+1         1.02 kOhm    R22
+1         6.8 kOhm     R23
+1         10 kOhm      R24
+
+TOTAL RESISTENCIAS: 22
+
+Resumen para compra por valor:
+- 20 kOhm:   4 unidades
+- 30 kOhm:   4 unidades
+- 39 Ohm:    2 unidades
+- 100 kOhm:  4 unidades
+- 10 kOhm:   5 unidades
+- 1 kOhm:    1 unidad
+- 1.02 kOhm: 1 unidad
+- 6.8 kOhm:  1 unidad
+
+
+3. CAPACITORES
+--------------
+
+Cantidad  Valor       Tipo recomendado                  Referencias
+--------  ----------  --------------------------------  ------------------
+7         100 nF      Ceramico X7R, 25 V minimo         C1, C3, C5, C7,
+                      (50 V sirve para todos)            C9, C10, C11
+
+4         10 uF       Electrolitico, 25 V minimo        C2, C4, C6, C8
+                      (baja ESR recomendado)
+
+TOTAL CAPACITORES: 11
+
+Polaridad de los electroliticos:
+- Riel +12 V: terminal positivo a +12 V y negativo a GND.
+- Riel -12 V: terminal positivo a GND y negativo a -12 V.
+
+Los capacitores de 100 nF no tienen polaridad. C1/C3 y C5/C7 se
+colocan fisicamente cerca de los pines de alimentacion de los TL082CP.
+C9 se coloca cerca de U3. C10 y C11 filtran VREF y VTH.
+
+
+4. CONECTORES Y ZOCALOS
+-----------------------
+
+Cantidad  Componente                                  Referencia
+--------  ------------------------------------------  ----------
+1         Conector/header de 6 vias                   J1
+          (TX_A, TX_B, 3V3, GND, +12 V, -12 V)
+
+1         Bornera o conector de 3 vias                J2
+          (LINE_A, LINE_B, GND_REF)
+
+1         Conector/header de 4 vias                   J3
+          (RX_A, RX_B, 3V3, GND)
+
+3         Zocalo PDIP-8                               U1, U2, U3
+          (recomendado para facilitar reemplazos)
+
+
+5. MODULOS, ALIMENTACION Y MEDIO FISICO
+---------------------------------------
+
+Cantidad  Elemento
+--------  ------------------------------------------------------------
+2         Raspberry Pi Pico / Pico H: una TX y una RX
+1         Fuente bipolar regulada: +12 V, GND y -12 V
+1         Placa PCB o placa de prototipado para el front-end
+1 tramo   Par trenzado apantallado, impedancia aproximada 70-80 Ohm
+          para LINE_A y LINE_B
+1 juego   Cables para 3.3 V, GND, +12 V, -12 V y conexiones logicas
+
+La fuente de 3.3 V para U3 y las referencias puede provenir de la Pico,
+siempre manteniendo GND comun con la fuente bipolar durante esta prueba
+de banco.
+
+
+6. COMPONENTES OPCIONALES DE ENSAYO (NO MONTAR INICIALMENTE)
+------------------------------------------------------------
+
+Estos capacitores no forman parte de los 11 capacitores obligatorios.
+Solo se evaluan con osciloscopio si hace falta suavizar los flancos:
+
+Opcion A - configuracion de 100 kbps:
+- 4 capacitores C0G/NP0 de 22 pF, apareados.
+
+Opcion B - configuracion de 12.5 kbps:
+- 4 capacitores C0G/NP0 de 150 pF, apareados.
+
+Se colocarian en paralelo con R2, R4, R6 y R8. No deben montarse ambas
+opciones simultaneamente. Para operacion autorate, primero se debe validar
+una solucion comun o una red conmutada.
+
+
+7. RESUMEN GENERAL DEL CIRCUITO BASE
+------------------------------------
+
+- Circuitos integrados: 3 encapsulados
+- Resistencias:          22 unidades
+- Capacitores:           11 unidades
+- Conectores:            3 unidades
+- Zocalos recomendados:  3 unidades
+- Raspberry Pi Pico:     2 unidades
+- Fuente bipolar:        1 unidad
+- Placa de montaje:      1 unidad
+- Par trenzado:          1 tramo
