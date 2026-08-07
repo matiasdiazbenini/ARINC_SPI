@@ -292,6 +292,32 @@ def reference_divider_v(
     )
 
 
+def threshold_divider_v(prefix: str, x: float, y: float) -> str:
+    """Draw VTH with the purchased 6.7k and 38k resistors in parallel."""
+    node_y = y + 24
+    ground_y = y + 48
+    parallel_x = x + 11
+    cap_x = x + 28
+    return "".join(
+        [
+            label(f"{prefix}-3v3", "+3V3_LOGIC", x, y + 4, 0.68, "right bottom"),
+            wire(f"{prefix}-top-bus", x, y + 4, parallel_x, y + 4, 0.15, "solid", VIOLET),
+            resistor_v(f"{prefix}-rtop-a", "R23", "6k7", x, y + 4, node_y, VIOLET),
+            resistor_v(f"{prefix}-rtop-b", "R25", "38k", parallel_x, y + 4, node_y, VIOLET),
+            wire(f"{prefix}-node", x, node_y, cap_x, node_y, 0.15, "solid", VIOLET),
+            label(f"{prefix}-node-label", "VTH_RX", cap_x, node_y, 0.70),
+            resistor_v(f"{prefix}-rbot", "R24", "10k", x, node_y, ground_y, VIOLET),
+            capacitor_v(f"{prefix}-cap", "C11", "100nF", cap_x, node_y, ground_y, VIOLET),
+            junction(f"{prefix}-top-a", x, y + 4, VIOLET),
+            junction(f"{prefix}-top-b", parallel_x, y + 4, VIOLET),
+            junction(f"{prefix}-node-a", x, node_y, VIOLET),
+            junction(f"{prefix}-node-b", parallel_x, node_y, VIOLET),
+            wire(f"{prefix}-gnd-bus", x, ground_y, cap_x, ground_y, 0.15, "solid", BLUE),
+            gnd(f"{prefix}-gnd", (x + cap_x) / 2, ground_y),
+        ]
+    )
+
+
 def decoupling_quad(
     prefix: str,
     x: float,
@@ -432,15 +458,15 @@ def build_tx() -> str:
 
     p.append(opamp("u1a", "U1A TL082CP", 116, 50))
     p.append(label("txb-u1a", "TX_B_LOGIC", 72, 60, 0.72, "right bottom"))
-    p.append(resistor_h("r1", "R1", "20k", 72, 60, 98))
+    p.append(resistor_h("r1", "R1", "22k", 72, 60, 98))
     p.append(wire("u1a-minus-input", 98, 60, 116, 60))
     p.append(junction("u1a-minus", 98, 60))
     p.append(label("u1a-fb", "TXA_DRV", 98, 38, 0.70, "right bottom"))
-    p.append(resistor_v("r2", "R2", "30k", 98, 38, 60))
+    p.append(resistor_v("r2", "R2", "33k", 98, 38, 60))
     p.append(label("txa-u1a", "TX_A_LOGIC", 72, 80, 0.72, "right bottom"))
-    p.append(resistor_h("r3", "R3", "20k", 72, 80, 98))
+    p.append(resistor_h("r3", "R3", "22k", 72, 80, 98))
     p.append(wire("u1a-plus-input", 98, 80, 116, 80))
-    p.append(resistor_v("r4", "R4", "30k", 98, 80, 104))
+    p.append(resistor_v("r4", "R4", "33k", 98, 80, 104))
     p.append(junction("u1a-plus", 98, 80))
     p.append(gnd("gnd-r4", 98, 104))
     p.append(wire("u1a-output", 150, 70, 160, 70))
@@ -451,15 +477,15 @@ def build_tx() -> str:
 
     p.append(opamp("u1b", "U1B TL082CP", 116, 145))
     p.append(label("txa-u1b", "TX_A_LOGIC", 72, 155, 0.72, "right bottom"))
-    p.append(resistor_h("r5", "R5", "20k", 72, 155, 98))
+    p.append(resistor_h("r5", "R5", "22k", 72, 155, 98))
     p.append(wire("u1b-minus-input", 98, 155, 116, 155))
     p.append(junction("u1b-minus", 98, 155))
     p.append(label("u1b-fb", "TXB_DRV", 98, 133, 0.70, "right bottom"))
-    p.append(resistor_v("r6", "R6", "30k", 98, 133, 155))
+    p.append(resistor_v("r6", "R6", "33k", 98, 133, 155))
     p.append(label("txb-u1b", "TX_B_LOGIC", 72, 175, 0.72, "right bottom"))
-    p.append(resistor_h("r7", "R7", "20k", 72, 175, 98))
+    p.append(resistor_h("r7", "R7", "22k", 72, 175, 98))
     p.append(wire("u1b-plus-input", 98, 175, 116, 175))
-    p.append(resistor_v("r8", "R8", "30k", 98, 175, 199))
+    p.append(resistor_v("r8", "R8", "33k", 98, 175, 199))
     p.append(junction("u1b-plus", 98, 175))
     p.append(gnd("gnd-r8", 98, 199))
     p.append(wire("u1b-output", 150, 165, 160, 165))
@@ -489,8 +515,8 @@ def build_line() -> str:
 def build_vref_local() -> str:
     return "".join(
         [
-            reference_divider_v("vref", 405, 96, "VREF_1V65", "R21", "10k", "R22", "10k", "C10"),
-            reference_divider_v("vth", 438, 188, "VTH_ACTIVE", "R23", "5k6", "R24", "10k", "C11"),
+            reference_divider_v("vref", 405, 96, "VREF_RX", "R21", "1k", "R22", "1k", "C10"),
+            threshold_divider_v("vth", 438, 188),
         ]
     )
 
@@ -503,50 +529,50 @@ def build_rx() -> str:
 
     p.append(opamp("u2a", "U2A TL082CP", 315, 50))
     p.append(label("lineb-u2a", "LINE_B", 275, 60, 0.72, "right bottom"))
-    p.append(resistor_h("r11", "R11", "100k", 275, 60, 297))
+    p.append(resistor_h("r11", "R11", "99k", 275, 60, 297))
     p.append(wire("u2a-minus-input", 297, 60, 315, 60))
     p.append(junction("u2a-minus", 297, 60))
     p.append(label("u2a-fb", "RX_A_BIASED", 297, 38, 0.68, "right bottom"))
     p.append(resistor_v("r12", "R12", "10k", 297, 38, 60))
     p.append(label("linea-u2a", "LINE_A", 275, 80, 0.72, "right bottom"))
-    p.append(resistor_h("r13", "R13", "100k", 275, 80, 297))
+    p.append(resistor_h("r13", "R13", "99k", 275, 80, 297))
     p.append(wire("u2a-plus-input", 297, 80, 315, 80))
     p.append(resistor_v("r14", "R14", "10k", 297, 80, 104, VIOLET))
     p.append(junction("u2a-plus", 297, 80))
-    p.append(label("vref-u2a", "VREF_1V65", 297, 104, 0.70))
+    p.append(label("vref-u2a", "VREF_RX", 297, 104, 0.70))
     p.append(wire("u2a-output", 349, 70, 386, 70))
     p.append(label("rxa-biased", "RX_A_BIASED", 386, 70, 0.74))
     p.append(dual_supply_at_opamp("u2-supply", "U2", 315, 50, "C5", "C6", "C7", "C8"))
 
     p.append(opamp("u2b", "U2B TL082CP", 315, 145))
     p.append(label("linea-u2b", "LINE_A", 275, 155, 0.72, "right bottom"))
-    p.append(resistor_h("r15", "R15", "100k", 275, 155, 297))
+    p.append(resistor_h("r15", "R15", "99k", 275, 155, 297))
     p.append(wire("u2b-minus-input", 297, 155, 315, 155))
     p.append(junction("u2b-minus", 297, 155))
     p.append(label("u2b-fb", "RX_B_BIASED", 297, 133, 0.68, "right bottom"))
     p.append(resistor_v("r16", "R16", "10k", 297, 133, 155))
     p.append(label("lineb-u2b", "LINE_B", 275, 175, 0.72, "right bottom"))
-    p.append(resistor_h("r17", "R17", "100k", 275, 175, 297))
+    p.append(resistor_h("r17", "R17", "99k", 275, 175, 297))
     p.append(wire("u2b-plus-input", 297, 175, 315, 175))
     p.append(resistor_v("r18", "R18", "10k", 297, 175, 199, VIOLET))
     p.append(junction("u2b-plus", 297, 175))
-    p.append(label("vref-u2b", "VREF_1V65", 297, 199, 0.70))
+    p.append(label("vref-u2b", "VREF_RX", 297, 199, 0.70))
     p.append(wire("u2b-output", 349, 165, 386, 165))
     p.append(label("rxb-biased", "RX_B_BIASED", 386, 165, 0.74))
 
     p.append(opamp("u3a", "U3A MCP6562", 478, 50))
-    p.append(label("rxa-u3", "RX_A_BIASED", 466, 60, 0.70, "right bottom"))
-    p.append(label("vth-u3a", "VTH_ACTIVE", 466, 80, 0.70, "right bottom"))
-    p.append(wire("rxa-u3-in", 466, 60, 478, 60))
-    p.append(wire("vth-u3a-in", 466, 80, 478, 80))
+    p.append(label("vth-u3a", "VTH_RX", 466, 60, 0.70, "right bottom"))
+    p.append(label("rxa-u3", "RX_A_BIASED", 466, 80, 0.70, "right bottom"))
+    p.append(wire("vth-u3a-in", 466, 60, 478, 60))
+    p.append(wire("rxa-u3-in", 466, 80, 478, 80))
     p.append(wire("u3a-out", 512, 70, 552, 70))
     p.append(single_supply_at_opamp("u3-supply", "U3", 478, 50, "C9"))
 
     p.append(opamp("u3b", "U3B MCP6562", 478, 145))
-    p.append(label("rxb-u3", "RX_B_BIASED", 466, 155, 0.70, "right bottom"))
-    p.append(label("vth-u3b", "VTH_ACTIVE", 466, 175, 0.70, "right bottom"))
-    p.append(wire("rxb-u3-in", 466, 155, 478, 155))
-    p.append(wire("vth-u3b-in", 466, 175, 478, 175))
+    p.append(label("vth-u3b", "VTH_RX", 466, 155, 0.70, "right bottom"))
+    p.append(label("rxb-u3", "RX_B_BIASED", 466, 175, 0.70, "right bottom"))
+    p.append(wire("vth-u3b-in", 466, 155, 478, 155))
+    p.append(wire("rxb-u3-in", 466, 175, 478, 175))
     p.append(wire("u3b-out", 512, 165, 552, 165))
     p.append(
         connector_explicit(
@@ -574,8 +600,8 @@ def build_schematic() -> str:
 	(paper "A2")
 	(title_block
 		(title "Front-end TL082CP ARINC 429-like")
-		(date "2026-07-30")
-		(rev "D")
+		(date "2026-08-05")
+		(rev "E")
 		(company "Proyecto PAMPA")
 	)
 	(lib_symbols)

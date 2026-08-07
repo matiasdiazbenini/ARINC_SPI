@@ -1,277 +1,218 @@
-# Front-end ARINC 429-like con TL082CP
+# Front-end ARINC 429-like con TL082CP - revision E
 
-Documento de revision para usar TL082CP entre una Pico TX y una Pico RX.
+Este documento describe el circuito de banco vigente entre una Pico TX y una
+Pico RX. Los valores fueron recalculados con los componentes adquiridos y
+coinciden con `frontend_arinc429_tl082_circuit.kicad_sch`.
 
-## Decision tecnica principal
+## Arquitectura electrica
 
-El TL082CP es util para la etapa TX bipolar de banco. Permite construir dos
-amplificadores diferenciales retroalimentados que convierten la logica
-`0..3,3 V` de la Pico en una linea balanceada aproximadamente:
+- `U1 TL082CP`: genera `LINE_A` y `LINE_B` bipolares.
+- `R9/R10`: fijan la impedancia diferencial de fuente.
+- `J2`: expone `LINE_A`, `LINE_B` y `GND_REF`.
+- `U2 TL082CP`: atenúa y desplaza la diferencia A-B al dominio positivo.
+- `U3 MCP6562`: decide el estado y entrega logica segura de `0..3,3 V`.
 
-```text
-LINE_A / LINE_B = +5/-5 V, 0/0 V, -5/+5 V
-A-B             = +10 V,   0 V,   -10 V
-```
+El TL082 alimentado con fuente bipolar no debe conectarse directamente a los
+GPIO. La frontera segura hacia la Pico RX sigue siendo U3.
 
-La etapa RX no puede resolverse de forma segura usando solo TL082CP y conectando
-la salida directamente a GPIO. Si el TL082 se alimenta con fuente bipolar, su
-salida puede ir negativa o por encima de `3,3 V`. Si se alimenta con `0..3,3 V`,
-el TL082 no cumple sus condiciones de operacion. Por eso el documento separa:
+## Objetivos de linea
 
-- RX analogico con TL082CP: calcula/atenua la diferencia con alta impedancia.
-- Decision digital obligatoria: comparador, Schmitt trigger o proteccion activa
-  antes de entrar a la Pico.
+- `LINE_A/LINE_B`: aproximadamente `+5/-5 V`, `0/0 V` y `-5/+5 V`.
+- `LINE_A - LINE_B`: aproximadamente `+10 V`, `0 V` y `-10 V`.
+- impedancia de fuente diferencial: aproximadamente `78 ohm`.
+- receptor: alta impedancia, mayor que `8 kohm`.
+- alimentacion de U1/U2: `+12 V / GND / -12 V`.
+- alimentacion de U3: `+3,3 V / GND`.
 
-El esquematico KiCad complementario esta en
-[frontend_arinc429_tl082_circuit.kicad_sch](frontend_arinc429_tl082_circuit.kicad_sch).
-Ese archivo lleva esta idea a circuito: `U1` genera la linea bipolar, `U2`
-reduce y sesga la senal recibida, y `U3` convierte el resultado a logica segura
-para `GP4/GP5`.
+## TX bipolar con los valores adquiridos
 
-## Referencias de diseno
-
-Valores usados como objetivo de banco:
-
-- cable ARINC: `78 ohm` caracteristico;
-- transmisor ARINC: `75 ohm +/-5 ohm`, balanceado entre A y B;
-- receptor ARINC: alta impedancia, minimo `8 kohm`;
-- niveles diferenciales TX: `+10 V +/-1 V`, `0 V +/-0,5 V`, `-10 V +/-1 V`;
-- 100 kbps: bit `10 us`, media celda `5 us`, rise/fall aprox. `1,5 us`;
-- 12,5 kbps: bit `80 us`, media celda `40 us`, rise/fall aprox. `10 us`.
-
-Datos relevantes del TL082CP:
-
-- alimentacion recomendada: `+5..+15 V` y `-5..-15 V`;
-- entrada comun: `VCC- + 4 V` a `VCC+ - 4 V`;
-- slew rate tipico: `13 V/us`;
-- slew rate minimo de tabla: `8 V/us`;
-- rise time de ensayo: `0,05 us`;
-- resistencia de entrada intrinseca: `10^12 ohm`;
-- salida no rail-to-rail.
-
-## Etapa TX bipolar
-
-Se usan los dos amplificadores de un TL082CP:
+Las cuatro redes diferenciales usan:
 
 ```text
-U1A: LINE_A_PRE = 1,5 * (TX_A_LOGIC - TX_B_LOGIC)
-U1B: LINE_B_PRE = 1,5 * (TX_B_LOGIC - TX_A_LOGIC)
+R1, R3, R5, R7 = 22 kohm
+R2, R4, R6, R8 = 33 kohm
+k = 33/22 = 1,5
 ```
 
-Valores base:
+Por lo tanto:
 
 ```text
-R1/R3 = 20 k
-R2/R4 = 30 k
-Ganancia = 30 k / 20 k = 1,5
-Rserie LINE_A = 39 ohm
-Rserie LINE_B = 39 ohm
+TXA_DRV = 1,5 * (TX_A_LOGIC - TX_B_LOGIC)
+TXB_DRV = 1,5 * (TX_B_LOGIC - TX_A_LOGIC)
 ```
 
-La salida diferencial queda:
+Con `3,3 V` logicos, cada conductor alcanza `+/-4,95 V` y el diferencial
+alcanza `+/-9,9 V`. El cambio desde `20/30 kohm` a `22/33 kohm` no modifica la
+ganancia porque ambas relaciones valen exactamente `1,5`.
+
+Cada GPIO ve aproximadamente:
 
 ```text
-Zout diferencial ~= 39 + 39 = 78 ohm
+Z_GPIO = 22 kohm || (22 kohm + 33 kohm) = 15,71 kohm
+I_GPIO = 3,3 V / 15,71 kohm = 0,210 mA
 ```
 
-Ese valor reproduce el orden de impedancia del cable ARINC. El receptor no debe
-terminar la linea con `78 ohm`; debe mirar con alta impedancia.
-
-Alimentacion recomendada:
+R9 y R10 deben seguir siendo `39 ohm`, no `39 kohm`:
 
 ```text
-U1 TL082CP: +12 V / -12 V / GND
+Zout diferencial ~= 39 ohm + 39 ohm = 78 ohm
 ```
 
-`+/-9 V` puede servir. `+/-6 V` queda marginal porque el TL082 no es rail-to-rail
-y se necesita entregar aproximadamente `+/-5 V` por conductor.
+Las resistencias compradas de `38 kohm` no sirven para esta funcion.
 
-No se colocan capacitores de acople en serie con la senal: el formato ARINC
-necesita conservar el estado NULL en DC. Si se colocan capacitores, se deforma el
-nivel de reposo. Si se quiere controlar pendiente, se debe hacer con una red de
-slew/rise-time medida en osciloscopio, no con acople AC.
+## RX analogico recalculado
 
-Si se desea suavizar flancos:
+U2 usa:
 
 ```text
-Rserie 39 ohm + C diferencial 10 nF aprox. -> tau ~= 0,39 us
+R11, R13, R15, R17 = 99 kohm
+R12, R14, R16, R18 = 10 kohm
+a = 10/99 = 0,101010
 ```
 
-Ese valor es punto de partida. No se debe cerrar sin medir rise/fall real.
-
-## Impedancias del TX
-
-Por cada amplificador diferencial:
-
-- entrada inversora: aproximadamente `20 k`;
-- entrada no inversora: aproximadamente `20 k + 30 k = 50 k`;
-- la impedancia intrinseca JFET del TL082 es mucho mayor y no domina.
-
-Como cada GPIO alimenta ambos amplificadores, un camino inversor y uno no
-inversor:
+Las salidas son:
 
 ```text
-Zin vista por GPIO ~= 20 k || 50 k = 14,3 k
+RX_A_BIASED = VREF_RX + 0,101010 * (LINE_A - LINE_B)
+RX_B_BIASED = VREF_RX + 0,101010 * (LINE_B - LINE_A)
 ```
 
-Esto es aceptable para la Pico. La corriente por GPIO es del orden:
+La impedancia de entrada diferencial resulta aproximadamente igual a la
+resistencia de entrada:
 
 ```text
-3,3 V / 14,3 k ~= 0,23 mA
+Zin diferencial RX ~= 99 kohm
 ```
 
-## Etapa J2
+La carga supera por mas de doce veces el minimo de `8 kohm` y apenas reduce el
+diferencial TX nominal: `9,9 V` pasa a aproximadamente `9,892 V`.
 
-J2 representa la linea de transmision ARINC-like de banco:
+## VREF_RX cargada
+
+R21 y R22 son dos resistencias de `1 kohm`. Las dos redes no inversoras de U2
+cargan el divisor mediante dos caminos de `99 kohm + 10 kohm`. Su equivalente
+es:
 
 ```text
-J2-1 = LINE_A
-J2-2 = LINE_B
-J2-3 = GND_REF / shield de banco
+Rload = 109 kohm || 109 kohm = 54,5 kohm
+Rbottom_eq = 1 kohm || 54,5 kohm = 981,98 ohm
+VREF_RX = 3,3 * 981,98 / (1000 + 981,98) = 1,635 V
 ```
 
-En J2 se debe medir:
+El valor no es `1,65 V` exacto, pero queda controlado y se usa explicitamente
+en el calculo del umbral. Con C10 de `100 nF`:
 
 ```text
-CH1 = LINE_A contra GND
-CH2 = LINE_B contra GND
-MATH = CH1 - CH2
+Rth_REF = 1k || 1k || 54,5k = 495,45 ohm
+tau_REF = 49,55 us
+fc_REF = 3,21 kHz
 ```
 
-Resultado esperado:
+## VTH_RX recalculado
+
+El umbral no se eligio mirando solamente el NULL ideal de `0 V`. Se considero
+la ventana de recepcion completa:
+
+- maximo diferencial que todavia puede ser NULL: `+2,5 V`;
+- minimo diferencial que ya debe ser reconocido como activo: `+6,5 V`.
+
+La rama superior del divisor usa dos valores comprados en paralelo:
 
 ```text
-LINE_A/LINE_B: +5/-5 V, 0/0 V, -5/+5 V
-MATH A-B:      +10 V,   0 V,   -10 V
+R23 || R25 = 6,7 kohm || 38 kohm = 5,6957 kohm
+R24 = 10 kohm
+VTH_RX = 3,3 * 10 / (5,6957 + 10) = 2,1025 V
 ```
 
-## Etapa RX con TL082CP
-
-Usar solo TL082CP como si fuera comparador final no es seguro para la Pico.
-La forma defendible es usarlo como front-end analogico de alta impedancia:
+Con `VREF_RX = 1,635 V` y `a = 10/99`:
 
 ```text
-U2A: RX_A_ANALOG = 0,3 * (LINE_A - LINE_B)
-U2B: RX_B_ANALOG = 0,3 * (LINE_B - LINE_A)
+NULL maximo (+2,5 V): 1,635 + 0,101010*2,5 = 1,8875 V
+activo minimo (+6,5 V): 1,635 + 0,101010*6,5 = 2,2916 V
 ```
 
-Valores base:
+Los margenes nominales son:
 
 ```text
-Rin = 100 k
-Rf  = 30 k
-Ganancia = 0,3
+margen contra NULL = 2,1025 - 1,8875 = 0,2150 V
+margen activo       = 2,2916 - 2,1025 = 0,1891 V
 ```
 
-Con la linea valida:
+El umbral queda casi centrado en la zona indeterminada. C11 de `100 nF` ve:
 
 ```text
-A-B = +10 V -> RX_A_ANALOG ~= +3 V, RX_B_ANALOG ~= -3 V
-A-B =   0 V -> RX_A_ANALOG ~=  0 V, RX_B_ANALOG ~=  0 V
-A-B = -10 V -> RX_A_ANALOG ~= -3 V, RX_B_ANALOG ~= +3 V
+Rth_VTH = (6,7k || 38k) || 10k = 3,6288 kohm
+tau_VTH = 362,9 us
+fc_VTH = 438,6 Hz
 ```
 
-Esto demuestra por que falta una etapa de decision/proteccion: aparece una
-salida negativa en el canal opuesto. La Pico no acepta tension negativa.
+## Niveles esperados en U2
 
-## Impedancias del RX analogico
+| Diferencial A-B | RX_A_BIASED | RX_B_BIASED | Lectura |
+|---:|---:|---:|---|
+| `+13 V` | `2,948 V` | `0,322 V` | extremo activo positivo |
+| `+9,9 V` | `2,635 V` | `0,635 V` | activo nominal |
+| `+6,5 V` | `2,292 V` | `0,978 V` | activo minimo |
+| `+2,5 V` | `1,888 V` | `1,382 V` | limite NULL |
+| `0 V` | `1,635 V` | `1,635 V` | NULL ideal |
 
-Cada linea entra a dos redes de alta impedancia. Con `100 k / 30 k`:
+Todos estos valores nominales permanecen dentro de `0..3,3 V`, dominio de
+entrada del MCP6562. U3 entrega la salida digital final y trabaja activo en
+alto: `RX_x_BIASED` entra por la entrada no inversora y `VTH_RX` por la
+inversora. Por lo tanto, la salida correspondiente sube a `3,3 V` cuando el
+conductor supera el umbral.
+
+## Tolerancias
+
+Con resistencias independientes de `1 %`, el peor caso calculado conserva:
+
+- margen contra falso activo desde NULL: aproximadamente `176,6 mV`;
+- margen para detectar el activo minimo: aproximadamente `144,2 mV`.
+
+Con resistencias independientes de `5 %`, el peor caso teorico puede llevar el
+margen contra falso activo a apenas `19,8 mV` y el margen activo a
+aproximadamente `-31,9 mV`. Por eso el montaje requiere una de estas dos
+condiciones:
+
+1. resistencias de `1 %`; o
+2. medir las unidades compradas y seleccionar grupos apareados cercanos al
+   valor nominal.
+
+La segunda opcion es viable porque se compraron diez unidades de cada valor.
+
+## Respuesta temporal
+
+El cambio de valores no altera la ganancia de ruido de U1, que sigue siendo
+`1 + 33/22 = 2,5`. Con slew rate del TL082 de `13 V/us` tipico y `8 V/us`
+conservador, un cambio de `4,95 V` requiere aproximadamente:
 
 ```text
-Zin por camino inversor ~= 100 k
-Zin por camino no inversor ~= 130 k
-Zin equivalente aproximada por linea ~= 100 k || 130 k ~= 56,5 k
+t_slew tipico = 4,95/13 = 0,381 us
+t_slew conservador = 4,95/8 = 0,619 us
 ```
 
-La carga equivalente diferencial queda muy por encima del minimo de `8 k` de un
-receptor ARINC. Por lo tanto, como sniffer/receptor de banco, no carga
-apreciablemente la linea.
+Esto es suficientemente rapido para medias celdas de `5 us` a `100 kbps` y de
+`40 us` a `12,5 kbps`. El flanco bruto es mas rapido que el perfil ARINC, por
+lo que el conformado opcional debe comprobarse con osciloscopio.
 
-## Sobre masa, referencia e histeresis
+Con Rf de `33 kohm`, los valores orientativos en paralelo con R2/R4/R6/R8 son:
 
-Referenciar un detector a masa significa decidir alrededor de `0 V`. Eso sirve
-para detectar signo, pero deja al sistema sensible al ruido cerca del NULL. La
-histeresis se puede agregar con realimentacion positiva, pero en un TL082
-alimentado con `+/-12 V` el umbral depende del swing de salida, que no es rail
-to rail ni perfectamente repetible.
+- `22 pF`: rise time RC aproximado `1,60 us` para 100 kbps;
+- `150 pF`: rise time RC aproximado `10,89 us` para 12,5 kbps.
 
-Referenciar contra un valor interno, por ejemplo `VREF = 1,65 V`, permite crear
-umbrales mas claros en un dominio positivo. Pero para llegar ahi hay que
-desplazar y escalar la senal, y luego usar una etapa no lineal. Esa etapa puede
-ser:
+No se montan ambos valores simultaneamente en un sistema autorate.
 
-- comparador push-pull a `3,3 V`;
-- Schmitt trigger alimentado a `3,3 V`;
-- transistor/MOSFET de traduccion de nivel;
-- clamps externos mas resistencia serie.
+## Componentes disponibles y pendientes
 
-Sin esa etapa no hay una salida digital segura y limpia para `GP4/GP5`.
+Los `TL082CP`, redes de `22/33 kohm`, `99/10 kohm`, referencias, capacitores
+`104` de `100 nF`, capacitores de `10 uF`, bornera y cableado ya estan
+disponibles.
 
-## Tiempos
+Todavia son necesarios o deben confirmarse:
 
-El TL082CP tiene slew rate tipico `13 V/us`. Para un cambio de `5 V` por
-conductor:
+- `MCP6562-E/P` para U3;
+- dos resistencias de `39 ohm` para R9/R10;
+- fuente bipolar regulada `+12 V / GND / -12 V`;
+- tres zocalos PDIP-8 correctos y la placa de montaje.
 
-```text
-t_slew tipico ~= 5 V / 13 V/us = 0,38 us
-t_slew conservador ~= 5 V / 8 V/us = 0,63 us
-```
-
-A `100 kbps`:
-
-```text
-bit = 10 us
-media celda activa = 5 us
-subida+bajada tipica ~= 0,76 us
-zona no plana ~= 15,2 % de la media celda
-meseta util ~= 4,24 us
-```
-
-A `12,5 kbps`:
-
-```text
-bit = 80 us
-media celda activa = 40 us
-subida+bajada tipica ~= 0,76 us
-zona no plana ~= 1,9 % de la media celda
-meseta util ~= 39,24 us
-```
-
-El TL082CP es suficientemente rapido para el banco. De hecho, sus flancos son
-mas rapidos que los esperados en ARINC real, por lo que podria requerirse red RC
-para aproximar el rise/fall especificado.
-
-## Rango util de componentes
-
-TX:
-
-- `Rin` diferencial: `10 k` a `33 k`;
-- `Rf`: `1,5 * Rin`;
-- recomendacion inicial: `20 k / 30 k`;
-- `Rserie`: `37,4 ohm` a `39 ohm` por rama.
-
-RX analogico:
-
-- `Rin`: `68 k` a `150 k`;
-- `Rf`: `0,3 * Rin`;
-- recomendacion inicial: `100 k / 30 k`;
-- si se baja demasiado `Rin`, el RX carga mas la linea.
-
-Desacople:
-
-- `100 nF` ceramico por rail y por integrado;
-- `10 uF` por rail cerca de cada bloque;
-- fuente analogica recomendada: `+12 V / -12 V`.
-
-## Conclusiones
-
-La etapa TX con TL082CP queda definida y es viable para banco.
-
-La etapa RX con solo TL082CP no reemplaza correctamente a comparadores o a un
-receptor ARINC. Puede servir como acondicionador analogico de alta impedancia,
-pero falta una etapa final que entregue `0..3,3 V` seguro a la Pico.
-
-Si el objetivo es conservar el firmware actual `GP4/GP5`, la opcion tecnica mas
-limpia sigue siendo usar comparadores o Schmitt trigger despues del front-end
-analogico.
+El codigo `104` corresponde a `100 nF`; no corresponde a `1 uF`.
