@@ -1,0 +1,607 @@
+\documentclass[12pt,a4paper,oneside]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tocloft}
+\usepackage{tikz}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+
+\usetikzlibrary{arrows.meta,fit,positioning}
+
+\geometry{
+  left=2.7cm,
+  right=2.7cm,
+  top=2.8cm,
+  bottom=3.4cm
+}
+
+\definecolor{azulinstitucional}{HTML}{17365D}
+\definecolor{azulclaro}{HTML}{DCE6F1}
+\definecolor{grisclaro}{HTML}{F2F2F2}
+\definecolor{verdesuave}{HTML}{E2F0D9}
+
+\onehalfspacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setlength{\headheight}{15pt}
+\setcounter{tocdepth}{2}
+\setlist[itemize]{topsep=0.3em,itemsep=0.2em,leftmargin=1.6em}
+\setlist[enumerate]{topsep=0.3em,itemsep=0.2em,leftmargin=1.8em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Anteproyecto de Trabajo Final de Grado}
+\fancyhead[R]{ARINC 429}
+\fancyfoot[C]{\thepage}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=azulinstitucional,
+  urlcolor=azulinstitucional,
+  citecolor=azulinstitucional,
+  pdftitle={Anteproyecto de Trabajo Final de Grado - ARINC 429},
+  pdfauthor={Matías Agustín Diaz Benini},
+  pdfsubject={Dispositivo de laboratorio para adquisición y supervisión de comunicaciones ARINC 429},
+  pdfkeywords={ARINC 429, Raspberry Pi Pico, Raspberry Pi 3B+, sniffer, SPI, Flask, Prometheus, Grafana}
+}
+
+\renewcommand{\contentsname}{Índice}
+\renewcommand{\arraystretch}{1.18}
+\setlength{\cftsecnumwidth}{2.8em}
+\setlength{\cftsubsecnumwidth}{3.8em}
+\setlength{\cftbeforesecskip}{1.5pt}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+
+% ------------------------------------------------------------------
+% Datos editables para Overleaf
+% ------------------------------------------------------------------
+\newcommand{\Institucion}{Universidad de la Defensa Nacional}
+\newcommand{\UnidadAcademica}{Centro Regional Universitario Córdoba -- IUA\\Facultad de Ingeniería}
+\newcommand{\Carrera}{Ingeniería en Telecomunicaciones}
+\newcommand{\AutorTFG}{Matías Agustín Diaz Benini}
+\newcommand{\TutorTFG}{Claudio Aníbal Porchietto}
+\newcommand{\CiudadTFG}{Córdoba, Argentina}
+\newcommand{\FechaTFG}{Agosto de 2026}
+% El título contiene 125 caracteres, incluidos los espacios.
+\newcommand{\TituloProyecto}{Desarrollo de un dispositivo de laboratorio para adquisición, filtrado y supervisión de comunicaciones aeronáuticas ARINC 429}
+
+% Completar estos valores con cotizaciones fechadas antes de presentar.
+\newcommand{\FechaBasePresupuesto}{A completar}
+\newcommand{\MontoARelevar}{\textit{A relevar}}
+\newcommand{\AporteEnEspecie}{\textit{Aporte en especie}}
+
+\newcommand{\citeref}[1]{[\ref{#1}]}
+\newcommand{\marcaGantt}{\cellcolor{azulclaro}\textbf{X}}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  {\Large\bfseries \Institucion\par}
+  \vspace{0.25cm}
+  {\large \UnidadAcademica\par}
+  \vspace{0.9cm}
+  {\large \Carrera\par}
+
+  \vfill
+
+  {\Large\bfseries ANTEPROYECTO DE TRABAJO FINAL DE GRADO\par}
+  \vspace{1.1cm}
+  {\LARGE\bfseries\color{azulinstitucional} \TituloProyecto\par}
+
+  \vfill
+
+  \begin{tabular}{>{\bfseries}p{4.1cm}p{8.2cm}}
+    Alumno: & \AutorTFG \\
+    Carrera: & \Carrera \\
+    Tutor: & \TutorTFG \\
+    Lugar: & \CiudadTFG \\
+    Fecha: & \FechaTFG \\
+  \end{tabular}
+
+  \vfill
+\end{titlepage}
+
+\begingroup
+\small
+\tableofcontents
+\endgroup
+\clearpage
+
+\section{Título del proyecto}
+
+\textbf{\TituloProyecto.}
+
+El título identifica el producto a desarrollar, su carácter de herramienta de laboratorio y las funciones principales de adquisición, filtrado y supervisión sobre comunicaciones ARINC 429. Su extensión se encuentra dentro del intervalo de 100 a 150 caracteres indicado por la guía institucional.
+
+\section{Objetivo del proyecto}
+
+\subsection{Objetivo general}
+
+\textbf{Desarrollar} un dispositivo de laboratorio de bajo costo, compuesto por un módulo sniffer basado en Raspberry Pi Pico y una Raspberry Pi 3B+, capaz de conectarse de manera directa y no intrusiva a un bus ARINC 429, adquirir palabras de 32 bits, verificar su integridad, filtrar la información de interés y ponerla a disposición de operadores y herramientas de análisis.
+
+El desarrollo busca satisfacer la necesidad de contar con una plataforma abierta, reproducible y accesible para prácticas, investigación y diagnóstico en laboratorio. El prototipo se orienta a una experiencia de conexión y puesta en marcha tipo \textit{plug-and-play}, sin que ello implique certificación aeronáutica ni habilitación para instalación permanente o uso en vuelo.
+
+\subsection{Objetivos específicos}
+
+\begin{enumerate}
+  \item \textbf{Relevar} los requisitos lógicos, temporales y eléctricos aplicables a la recepción de comunicaciones ARINC 429, en particular las velocidades de 12,5 y 100 kbit/s, el formato de palabra de 32 bits, el retorno a cero y la paridad impar.
+  \item \textbf{Diseñar} una arquitectura modular que separe el banco generador/receptor de prueba del dispositivo final de adquisición.
+  \item \textbf{Implementar} un transmisor y un receptor de laboratorio con dos Raspberry Pi Pico independientes, destinados exclusivamente a recrear y verificar un enlace ARINC 429 representativo.
+  \item \textbf{Implementar} en una tercera Raspberry Pi Pico un sniffer pasivo capaz de detectar la velocidad del enlace, reconstruir palabras, validar paridad y aplicar filtros configurables sin transmitir sobre el bus observado.
+  \item \textbf{Desarrollar} la adaptación eléctrica necesaria para acoplar el módulo sniffer al par diferencial, respetando los niveles e impedancias de referencia y protegiendo las entradas lógicas del microcontrolador.
+  \item \textbf{Integrar} el sniffer con una Raspberry Pi 3B+ mediante SPI para transportar palabras aceptadas, contadores de diagnóstico y estado operativo.
+  \item \textbf{Implementar} servicios en la Raspberry Pi 3B+ para transformar la captura embebida en información legible y exportable.
+  \item \textbf{Incorporar} un tablero Flask para observación en tiempo real y una cadena de Prometheus y Grafana para registro y análisis histórico como herramientas auxiliares de depuración y validación.
+  \item \textbf{Validar} el sistema mediante ensayos funcionales, temporales, eléctricos y de estabilidad prolongada en un banco controlado.
+  \item \textbf{Documentar} la arquitectura, el procedimiento de conexión, los criterios de aceptación, las limitaciones y los resultados, de modo que el prototipo pueda ser reproducido y continuado por otros alumnos o grupos de investigación.
+\end{enumerate}
+
+\section{Destinatarios}
+
+El Trabajo Final surge de la participación del alumno en una línea institucional de investigación, desarrollo y extensión tecnológica dirigida por el profesor Claudio Aníbal Porchietto en la Facultad de Ingeniería del Centro Regional Universitario Córdoba -- IUA. Dicha línea se articula con la Fábrica Argentina de Aviones ``Brig. San Martín'' S.A. (FAdeA) y con el Centro de Ensayos en Vuelo (CEV) de la Fuerza Aérea Argentina en torno al desarrollo, ensayo y formación vinculados con sistemas de aviónica.
+
+Los destinatarios y potenciales usuarios son:
+
+\begin{itemize}
+  \item grupos de investigación y laboratorios del IUA que requieran generar, observar o registrar comunicaciones ARINC 429;
+  \item docentes y estudiantes de Ingeniería en Telecomunicaciones, Ingeniería Electrónica, Ingeniería Aeronáutica e Ingeniería en Computación;
+  \item personal técnico de FAdeA y del CEV que participe en actividades autorizadas de banco, mantenimiento, integración o ensayo de aviónica;
+  \item futuros trabajos finales y proyectos de extensión que necesiten una plataforma abierta para adquisición de datos aeronáuticos;
+  \item el proyecto HMD y otras iniciativas académicas que requieran disponer de parámetros de aviónica en una plataforma de procesamiento de propósito general.
+\end{itemize}
+
+El trabajo no presupone acceso irrestricto a una aeronave ni reemplaza instrumental certificado. Su producto inmediato es un demostrador de laboratorio y una base tecnológica para posteriores validaciones institucionales.
+
+\section{Beneficios esperados}
+
+\subsection{Beneficios técnicos}
+
+\begin{itemize}
+  \item Captura pasiva de palabras ARINC 429 sin agregar tráfico al bus observado.
+  \item Operación en las dos velocidades normalizadas de referencia, con detección automática o configuración explícita.
+  \item Filtrado local de etiquetas y estados antes de transferir datos a la computadora anfitriona.
+  \item Separación entre las funciones de tiempo crítico, ejecutadas en la Raspberry Pi Pico, y las funciones de almacenamiento, red y presentación, ejecutadas en la Raspberry Pi 3B+.
+  \item Disponibilidad de métricas de integridad, tasa de recepción, paridad, pérdidas y estado del enlace para facilitar el diagnóstico.
+  \item Arquitectura modular que permite sustituir la etapa eléctrica o la interfaz de usuario sin rediseñar todo el sistema.
+\end{itemize}
+
+\subsection{Beneficios académicos e institucionales}
+
+El prototipo reduce la barrera de acceso a una tecnología habitual en aviónica y permite que los estudiantes trabajen con requisitos de temporización, electrónica diferencial, firmware embebido, interfaces SPI, servicios Linux y observabilidad dentro de un mismo sistema. También deja documentación, firmware y procedimientos reutilizables para prácticas y desarrollos posteriores.
+
+Los beneficios principales son intangibles: formación de recursos humanos, fortalecimiento de capacidades locales, disponibilidad de una plataforma reproducible y mejora de la articulación entre universidad, industria y organismos de ensayo. La valorización monetaria se realizará por comparación entre el costo del prototipo y el costo de adquisición o alquiler de analizadores comerciales equivalentes, sin afirmar equivalencia en certificación, prestaciones o soporte.
+
+\section{Estudio técnico}
+
+\subsection{Requisitos de referencia}
+
+ARINC 429 define un enlace serie unidireccional sobre par diferencial, palabras de 32 bits, modulación bipolar con retorno a cero y velocidades nominales alta y baja. El diseño tomará como fuentes principales la especificación ARINC 429, en especial su Parte 1, y el tutorial técnico de AIM GmbH \citeref{bib:arinc1}\citeref{bib:aim}.
+
+Para el alcance del TFG se establecen los siguientes requisitos verificables:
+
+\begin{itemize}
+  \item recibir palabras a 12,5 y 100 kbit/s;
+  \item reconocer los tres estados de línea correspondientes a bit alto, nulo y bit bajo;
+  \item reconstruir palabras de 32 bits y comprobar paridad impar;
+  \item filtrar por etiqueta y conservar contadores de palabras aceptadas y rechazadas;
+  \item mantener el sniffer eléctricamente pasivo respecto del bus;
+  \item transferir información a la Raspberry Pi 3B+ mediante SPI con una tasa de error inferior al 1\,\% durante los ensayos de aceptación;
+  \item sostener una prueba continua mínima de ocho horas sin bloqueo funcional;
+  \item exponer estado y telemetría sin que la interfaz de usuario condicione la captura de tiempo crítico.
+\end{itemize}
+
+\subsection{Arquitectura propuesta}
+
+La \figurename~\ref{fig:arquitectura} separa tres conjuntos. El banco de validación contiene una Pico TX y una Pico RX; ambas son necesarias para recrear un bus controlado, pero no forman parte del dispositivo final. El dispositivo final está compuesto por el módulo sniffer ---adaptación eléctrica y Pico dedicada--- y la Raspberry Pi 3B+. La visualización se conecta a la 3B+ y se emplea como soporte de depuración, demostración y análisis.
+
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+    node distance=1.0cm and 1.0cm,
+    bloque/.style={draw, rounded corners=2pt, align=center, minimum width=2.6cm, minimum height=1.15cm, fill=grisclaro},
+    interfaz/.style={bloque, fill=azulclaro},
+    servicio/.style={bloque, fill=verdesuave},
+    flecha/.style={-{Latex[length=3mm]}, thick},
+    frontera/.style={draw=azulinstitucional, dashed, very thick, rounded corners=4pt, inner sep=7pt}
+  ]
+    \node[bloque] (tx) {Raspberry Pi Pico\\TX de laboratorio};
+    \node[interfaz, right=of tx] (txfe) {Etapa eléctrica\\de transmisión};
+    \node[bloque, right=of txfe, fill=white] (bus) {Bus ARINC 429\\de laboratorio};
+    \node[interfaz, right=of bus] (rxfe) {Etapa eléctrica\\de recepción};
+    \node[bloque, right=of rxfe] (rx) {Raspberry Pi Pico\\RX de laboratorio};
+
+    \node[interfaz, below=1.6cm of bus] (snfe) {Adaptación eléctrica\\pasiva y protección};
+    \node[bloque, right=of snfe] (sniffer) {Raspberry Pi Pico\\sniffer y filtro};
+    \node[bloque, right=of sniffer] (rpi) {Raspberry Pi 3B+\\bridge y servicios};
+    \node[servicio, above right=0.55cm and 1.0cm of rpi] (flask) {Flask\\tiempo real};
+    \node[servicio, below right=0.55cm and 1.0cm of rpi] (obs) {Prometheus + Grafana\\registro histórico};
+
+    \draw[flecha] (tx) -- (txfe);
+    \draw[flecha] (txfe) -- (bus);
+    \draw[flecha] (bus) -- (rxfe);
+    \draw[flecha] (rxfe) -- (rx);
+    \draw[flecha] (bus) -- (snfe);
+    \draw[flecha] (snfe) -- (sniffer);
+    \draw[flecha] (sniffer) -- node[above]{SPI} (rpi);
+    \draw[flecha] (rpi) -- (flask);
+    \draw[flecha] (rpi) -- (obs);
+
+    \node[frontera, fit=(snfe)(sniffer)(rpi), label={[text=azulinstitucional,font=\bfseries]below:Dispositivo final de laboratorio}] {};
+    \node[draw=black!50, dotted, rounded corners=4pt, fit=(tx)(txfe)(bus)(rxfe)(rx), inner sep=7pt,
+      label={[font=\bfseries]above:Banco de generación y validación}] {};
+  \end{tikzpicture}%
+  }
+  \caption{Arquitectura funcional y delimitación del dispositivo final.}
+  \label{fig:arquitectura}
+\end{figure}
+
+\subsection{Tecnologías seleccionadas}
+
+\begin{itemize}
+  \item \textbf{Raspberry Pi Pico / RP2040:} permite implementar máquinas de estado y temporización determinista mediante PIO, además de firmware en C/C++ \citeref{bib:rp2040}\citeref{bib:picosdk}.
+  \item \textbf{Raspberry Pi 3B+:} aporta SPI, sistema operativo Linux, almacenamiento, Ethernet y capacidad suficiente para servicios de red y supervisión \citeref{bib:rpi3}.
+  \item \textbf{Adaptación eléctrica discreta de laboratorio:} emplea amplificadores operacionales para generar o acondicionar la señal diferencial y comparadores rápidos para entregar niveles lógicos seguros a los GPIO. Se verificarán niveles, impedancia y ausencia de carga indebida antes de conectar el sniffer a un bus externo.
+  \item \textbf{SPI entre sniffer y 3B+:} desacopla la captura de la presentación y permite transferir palabras y métricas mediante un protocolo compacto con señal de dato disponible.
+  \item \textbf{Flask:} ofrece una interfaz web ligera para observación inmediata durante integración y demostración \citeref{bib:flask}.
+  \item \textbf{Prometheus y Grafana:} permiten registrar series temporales y analizar tendencias históricas sin modificar el firmware de captura \citeref{bib:prometheus}\citeref{bib:grafana}.
+\end{itemize}
+
+\subsection{Formulación y valoración de alternativas}
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{>{\bfseries}p{3.1cm}X X X}
+    \toprule
+    Decisión & Alternativa evaluada & Ventajas & Limitaciones / criterio de selección \\
+    \midrule
+    Analizador comercial & Interfaz ARINC 429 propietaria & Integración inmediata, soporte y prestaciones conocidas & Alto costo, menor apertura y bajo valor formativo. Se reserva como patrón de comparación si estuviera disponible. \\
+    Plataforma embebida abierta & Raspberry Pi Pico con PIO & Bajo costo, código reproducible y control fino del muestreo & Requiere desarrollar y validar firmware y adaptación eléctrica. Es la alternativa seleccionada. \\
+    Adaptación eléctrica dedicada & Receptor o transceptor ARINC 429 integrado & Mayor cercanía a una solución industrial y menor cantidad de componentes & Disponibilidad y costo variables. Se mantiene como alternativa de evolución del front-end. \\
+    Adaptación discreta & Operacionales, red resistiva, protección y comparador & Componentes accesibles y buena observabilidad didáctica & Exige caracterización cuidadosa; se limita al laboratorio y no otorga certificación. \\
+    Presentación local única & Pantalla o consola conectada al sniffer & Menor complejidad de software & Reduce almacenamiento, acceso remoto y capacidad de análisis. \\
+    3B+ con servicios web & Bridge SPI, Flask, Prometheus y Grafana & Separa tiempo crítico de visualización y habilita datos en vivo e históricos & Agrega un nodo Linux; se selecciona por disponibilidad y reutilización en otros proyectos. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Alternativas tecnológicas consideradas.}
+  \label{tab:alternativas}
+\end{table}
+
+La efectividad se medirá por cumplimiento de requisitos, estabilidad, reproducibilidad y costo directo. La comparación económica no considerará equivalentes a un prototipo académico y a un equipo certificado; se explicitarán las diferencias de alcance para evitar conclusiones engañosas.
+
+\section{Metodología}
+
+El trabajo adoptará una metodología aplicada, experimental, cuantitativa e iterativa. Cada subsistema se desarrollará y verificará por separado antes de integrarlo, conservando evidencia de configuración, mediciones y resultados.
+
+\begin{enumerate}
+  \item \textbf{Relevamiento:} estudio de la especificación, del tutorial disponible y de antecedentes; definición de requisitos y criterios de aceptación.
+  \item \textbf{Modelo lógico y temporal:} implementación de palabras de 32 bits, codificación bipolar con retorno a cero, paridad y velocidades de 12,5 y 100 kbit/s.
+  \item \textbf{Banco TX--RX:} construcción del transmisor y del receptor de referencia con dos Pico para disponer de estímulos repetibles.
+  \item \textbf{Sniffer:} captura pasiva, autodetección de velocidad, validación, filtrado y contadores de diagnóstico en la tercera Pico.
+  \item \textbf{Transporte y servicios:} integración SPI con la Raspberry Pi 3B+, bridge, supervisión de procesos y exportación de métricas.
+  \item \textbf{Observabilidad:} desarrollo del tablero Flask y de la cadena Prometheus--Grafana para depuración y evidencia. Esta fase es auxiliar y no redefine el producto principal.
+  \item \textbf{Etapa eléctrica:} diseño, simulación, montaje y medición de las interfaces de transmisión y recepción; verificación de niveles y protección de GPIO.
+  \item \textbf{Validación integral:} pruebas funcionales, mediciones con osciloscopio, inyección de errores, pruebas de reconexión y corridas prolongadas.
+  \item \textbf{Documentación:} consolidación de resultados, costos, limitaciones, manual de operación y memoria del Trabajo Final.
+\end{enumerate}
+
+Para cada ensayo se registrarán, como mínimo, versión de firmware, conexión, velocidad, duración, cantidad de palabras transmitidas, aceptadas y descartadas, errores de paridad, errores SPI y eventos de recuperación. La repetibilidad se apoyará en configuraciones versionadas y procedimientos escritos.
+
+\section{Resumen técnico}
+
+El producto del TFG será un dispositivo de laboratorio formado por dos nodos. El primero será un módulo sniffer que incluye una etapa de adaptación eléctrica pasiva y una Raspberry Pi Pico dedicada a la captura temporal, decodificación, validación y filtrado. El segundo será una Raspberry Pi 3B+ que consultará al sniffer por SPI, conservará el estado operativo y expondrá la información por interfaces de red.
+
+La Pico TX y la Pico RX no integrarán el dispositivo final. Se utilizarán como instrumental del desarrollo para recrear un enlace ARINC 429 controlado, generar patrones conocidos y disponer de una referencia de recepción independiente. Esta separación permitirá verificar el sistema aun cuando no se disponga de acceso a una aeronave o a un generador comercial.
+
+El flujo principal será:
+
+\begin{center}
+\textbf{bus ARINC 429 $\rightarrow$ adaptación pasiva $\rightarrow$ Pico sniffer $\rightarrow$ SPI $\rightarrow$ Raspberry Pi 3B+ $\rightarrow$ datos legibles}
+\end{center}
+
+La captura temporal y el filtrado permanecerán en el dominio embebido. Flask ofrecerá telemetría en tiempo real durante las pruebas; Prometheus almacenará métricas y Grafana permitirá observar tendencias históricas. Estas herramientas no son necesarias para que el sniffer reciba y filtre palabras, pero sí facilitan la depuración continua, la detección de degradaciones y la presentación verificable de resultados.
+
+El diseño se basará en la descripción funcional, eléctrica y de formato de palabra de ARINC 429 Parte 1 \citeref{bib:arinc1}, complementada por el tutorial de AIM GmbH \citeref{bib:aim}. La implementación con RP2040 y PIO se apoyará en la documentación oficial de Raspberry Pi \citeref{bib:rp2040}\citeref{bib:picosdk}.
+
+\section{Programación de actividades}
+
+Se propone una duración de doce meses, consistente con el proyecto institucional del cual surge el trabajo. Las actividades pueden solaparse cuando una versión mínima de un subsistema habilite la fase siguiente.
+
+\begin{table}[H]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{2.3pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{p{5.4cm}*{12}{c}}
+    \toprule
+    \textbf{Actividad / mes} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} & \textbf{6} & \textbf{7} & \textbf{8} & \textbf{9} & \textbf{10} & \textbf{11} & \textbf{12} \\
+    \midrule
+    Relevamiento normativo y requisitos & \marcaGantt & \marcaGantt & & & & & & & & & & \\
+    Diseño de arquitectura y plan de ensayos & \marcaGantt & \marcaGantt & \marcaGantt & & & & & & & & & \\
+    Firmware Pico TX y Pico RX & & \marcaGantt & \marcaGantt & \marcaGantt & & & & & & & & \\
+    Firmware Pico sniffer y filtrado & & & \marcaGantt & \marcaGantt & \marcaGantt & \marcaGantt & & & & & & \\
+    Enlace SPI y servicios en Raspberry Pi 3B+ & & & & & \marcaGantt & \marcaGantt & \marcaGantt & & & & & \\
+    Flask, Prometheus y Grafana & & & & & & \marcaGantt & \marcaGantt & \marcaGantt & & & & \\
+    Diseño y montaje de la etapa eléctrica & & & & & & \marcaGantt & \marcaGantt & \marcaGantt & \marcaGantt & & & \\
+    Ensayos integrales y corridas prolongadas & & & & & & & & \marcaGantt & \marcaGantt & \marcaGantt & \marcaGantt & \\
+    Análisis de resultados y documentación & & & & & & & & & \marcaGantt & \marcaGantt & \marcaGantt & \marcaGantt \\
+    Redacción y revisión del informe final & & & & & & & & & & \marcaGantt & \marcaGantt & \marcaGantt \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \caption{Diagrama de Gantt propuesto.}
+  \label{tab:gantt}
+\end{table}
+
+Los hitos previstos son: requisitos aprobados (mes 2), banco lógico TX--RX operativo (mes 4), sniffer integrado con la 3B+ (mes 7), interfaz eléctrica verificada (mes 9), ensayo prolongado cerrado (mes 11) e informe final disponible para revisión (mes 12).
+
+\section{Programación de recursos}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{6.2cm}>{\raggedright\arraybackslash}p{3.0cm}}
+  \caption{Asignación temporal de recursos.}\label{tab:recursos}\\
+  \toprule
+  \textbf{Recurso} & \textbf{Aplicación} & \textbf{Período previsto} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Recurso} & \textbf{Aplicación} & \textbf{Período previsto} \\
+  \midrule
+  \endhead
+  Bibliografía ARINC 429 y documentación técnica & Requisitos, diseño y criterios de ensayo & Meses 1--12 \\
+  Tres Raspberry Pi Pico & TX, RX y sniffer & Meses 2--12 \\
+  Raspberry Pi 3B+ y tarjeta microSD & Bridge SPI, servicios, almacenamiento y red & Meses 5--12 \\
+  Componentes analógicos, comparadores, protecciones y pasivos & Adaptación eléctrica de transmisión y recepción & Meses 6--10 \\
+  Protoboard, placa perforada o PCB, conectores y cableado & Montaje y conexión del banco & Meses 2--11 \\
+  Fuente de 5 V y fuente bipolar de laboratorio & Alimentación digital y analógica & Meses 2--11 \\
+  Osciloscopio, puntas, multímetro y herramientas de soldadura & Verificación temporal, eléctrica y de integridad & Meses 2--11 \\
+  Computadora con red y entorno de desarrollo & Programación, control de versiones y análisis & Meses 1--12 \\
+  Flask, Prometheus, Grafana y herramientas de compilación & Observabilidad y presentación & Meses 5--12 \\
+  \bottomrule
+\end{longtable}
+
+No se incluye personal en la programación de recursos, de acuerdo con la guía de anteproyecto.
+
+\section{Facilidades requeridas al IUA}
+
+\begin{itemize}
+  \item puesto de trabajo con acceso a red eléctrica e Internet;
+  \item acceso a laboratorio de electrónica y espacio seguro para montajes prolongados;
+  \item osciloscopio de al menos dos canales, puntas adecuadas y función matemática para medición diferencial;
+  \item multímetro, fuente de alimentación regulada, generador de señales si estuviera disponible y estación de soldadura;
+  \item acceso a bibliografía técnica y a las especificaciones ARINC 429 disponibles institucionalmente;
+  \item asesoramiento del tutor y, cuando corresponda, de docentes de electrónica y sistemas embebidos;
+  \item acceso condicionado y formalmente autorizado a un banco representativo de aviónica para una validación posterior. La finalización académica no dependerá de una prueba en vuelo.
+\end{itemize}
+
+\section{Presupuesto}
+
+La guía exige que el presupuesto refleje recursos reales, costos por actividad y distribución temporal. Por esa razón, antes de la presentación se incorporarán cotizaciones fechadas en pesos argentinos, con fecha base \textbf{\FechaBasePresupuesto}. No se inventan importes en esta versión: los valores pendientes se concentran en tablas para facilitar su actualización.
+
+\subsection{Recursos valorizables}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{5.0cm}c>{\raggedright\arraybackslash}p{3.2cm}>{\raggedleft\arraybackslash}p{2.8cm}}
+  \caption{Presupuesto preliminar de recursos.}\label{tab:presupuesto-recursos}\\
+  \toprule
+  \textbf{Recurso} & \textbf{Cantidad} & \textbf{Modalidad} & \textbf{Valor de referencia} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Recurso} & \textbf{Cantidad} & \textbf{Modalidad} & \textbf{Valor de referencia} \\
+  \midrule
+  \endhead
+  Raspberry Pi Pico / Pico 2 W & 3 & Compra o disponibilidad previa & \MontoARelevar \\
+  Raspberry Pi 3B+ & 1 & Compra o disponibilidad previa & \MontoARelevar \\
+  Tarjeta microSD y fuente de 5 V & 1 juego & Compra & \MontoARelevar \\
+  Componentes de la etapa analógica TX/RX & 1 juego & Compra & \MontoARelevar \\
+  Comparador, protecciones y pasivos del sniffer & 1 juego & Compra & \MontoARelevar \\
+  PCB, placa perforada o protoboard & 1--2 & Compra / fabricación & \MontoARelevar \\
+  Conectores, zócalos, cableado y par trenzado & 1 juego & Compra & \MontoARelevar \\
+  Fuente bipolar para ensayos & 1 & Compra o laboratorio & \MontoARelevar \\
+  Osciloscopio y puntas & 1 & Uso de laboratorio & \AporteEnEspecie \\
+  Multímetro y estación de soldadura & 1 juego & Uso de laboratorio & \AporteEnEspecie \\
+  Computadora de desarrollo & 1 & Recurso propio / institucional & \AporteEnEspecie \\
+  Software de desarrollo y observabilidad & -- & Licencias libres o gratuitas & ARS 0 \\
+  \midrule
+  \multicolumn{3}{r}{\textbf{Total de erogaciones directas}} & \MontoARelevar \\
+  \bottomrule
+\end{longtable}
+
+El osciloscopio, el multímetro, la estación de soldadura y la computadora deben figurar porque son medios necesarios. Si ya están disponibles, no corresponde imputar su precio total de compra como erogación del TFG; se registrarán como aporte en especie y, si la Facultad lo requiere, se estimará un costo de uso o amortización.
+
+\subsection{Distribución por actividad}
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{X p{3.0cm} p{3.3cm} p{2.6cm}}
+    \toprule
+    \textbf{Actividad} & \textbf{Meses} & \textbf{Costos asociados} & \textbf{Importe} \\
+    \midrule
+    Relevamiento y diseño & 1--3 & Bibliografía, impresiones, insumos menores & \MontoARelevar \\
+    Banco lógico TX--RX & 2--4 & Dos Pico, cableado y alimentación & \MontoARelevar \\
+    Sniffer y enlace SPI & 3--7 & Una Pico, 3B+, microSD y conexiones & \MontoARelevar \\
+    Etapa eléctrica & 6--9 & Semiconductores, pasivos, placa y conectores & \MontoARelevar \\
+    Integración y ensayos & 8--11 & Instrumental en especie e insumos de reposición & \MontoARelevar \\
+    Documentación y presentación & 10--12 & Impresión, encuadernación y almacenamiento & \MontoARelevar \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Distribución preliminar del presupuesto por actividad.}
+  \label{tab:presupuesto-actividad}
+\end{table}
+
+\section{Fuentes de financiamiento}
+
+Se prevén las siguientes fuentes, sujetas a confirmación:
+
+\begin{itemize}
+  \item aporte personal del alumno para placas, componentes e insumos menores;
+  \item uso de equipamiento, infraestructura y servicios disponibles en el IUA como aporte en especie;
+  \item reutilización de placas y materiales ya adquiridos por el alumno o disponibles en el laboratorio;
+  \item eventual asignación de insumos del proyecto institucional del cual surge el TFG, únicamente cuando exista autorización expresa.
+\end{itemize}
+
+No se presume financiamiento de FAdeA, del CEV ni de otra organización externa mientras no exista un compromiso documentado.
+
+\section{Riesgos esperados y supuestos asumidos}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{4.3cm}>{\raggedright\arraybackslash}p{5.0cm}}
+  \caption{Riesgos, efectos y contingencias.}\label{tab:riesgos}\\
+  \toprule
+  \textbf{Riesgo / supuesto} & \textbf{Efecto posible} & \textbf{Mitigación o contingencia} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Riesgo / supuesto} & \textbf{Efecto posible} & \textbf{Mitigación o contingencia} \\
+  \midrule
+  \endhead
+  Diferencias entre el frente eléctrico de laboratorio y un bus real & Saturación, errores o carga indebida del bus & Simular, medir impedancia y niveles, limitar la primera validación a un banco controlado y sustituir el front-end por un receptor dedicado si fuera necesario. \\
+  Ruido, rebotes o transitorios & Palabras inválidas y daño potencial a GPIO & Incorporar protección, histéresis, desacoplo, masas controladas y verificación con osciloscopio antes de conectar la Pico. \\
+  Pérdida de sincronismo temporal & Descarte de palabras o detección errónea de velocidad & Usar PIO, estados de resincronización, detección automática y pruebas con patrones conocidos. \\
+  Desalineación o errores en SPI & Datos incompletos en la 3B+ & Enmarcado, señal de dato disponible, contadores, reintentos y supervisor de servicios. \\
+  Falta de componentes & Retraso de la etapa eléctrica & Definir equivalentes, comprar componentes críticos con anticipación y mantener una variante de protoboard. \\
+  Falta de acceso a un bus externo & Imposibilidad de prueba institucional adicional & Cerrar los criterios académicos con el banco TX--RX propio y documentar la prueba externa como extensión condicionada. \\
+  Crecimiento del alcance de visualización & Retraso del producto principal & Tratar Flask, Prometheus y Grafana como soporte auxiliar y congelar funciones una vez cubiertas las métricas de validación. \\
+  Variación de precios & Presupuesto desactualizado & Usar fecha base, conservar cotizaciones y actualizar importes antes de cada presentación. \\
+  \bottomrule
+\end{longtable}
+
+Se asume disponibilidad de las cuatro placas, acceso periódico al instrumental y continuidad del acompañamiento técnico del tutor. Cualquier conexión a equipamiento aeronáutico externo se realizará únicamente bajo autorización y procedimientos institucionales.
+
+\section{Inversión requerida}
+
+La inversión por única vez se desglosa de la siguiente forma:
+
+\begin{itemize}
+  \item \textbf{Recursos humanos:} no se incorpora el tiempo del alumno como erogación del TFG. Si se requiriera valorar una réplica comercial, debería estimarse por separado el trabajo de ingeniería, montaje, ensayo y documentación.
+  \item \textbf{Infraestructura edilicia:} no se prevén obras. Se utilizará un puesto existente de laboratorio.
+  \item \textbf{Equipamiento e instrumental:} placas Raspberry Pi, tarjeta microSD, fuentes y eventual fabricación de PCB. El instrumental existente se registra como aporte en especie.
+  \item \textbf{Insumos:} semiconductores, resistencias, capacitores, conectores, cableado, zócalos, placas de montaje, estaño y elementos de terminación.
+\end{itemize}
+
+La inversión total será la suma de las erogaciones directas de la Tabla~\ref{tab:presupuesto-recursos}. Los valores de reposición del instrumental institucional se informarán en forma separada para no distorsionar el costo incremental del prototipo.
+
+\section{Proyección de costos de operación y mantenimiento}
+
+Los costos de operación serán reducidos y estarán asociados al consumo eléctrico de las cuatro placas durante el desarrollo, la Raspberry Pi 3B+ durante el uso, el almacenamiento de métricas y la conectividad de red. El software seleccionado no requiere licencias pagas.
+
+Los costos de mantenimiento previstos son:
+
+\begin{itemize}
+  \item reposición eventual de tarjeta microSD, cables, conectores o módulos dañados;
+  \item actualización y respaldo del sistema operativo, firmware y dependencias;
+  \item verificación eléctrica después de reparaciones o cambios de front-end;
+  \item conservación de imágenes de instalación y procedimientos de recuperación;
+  \item calibración del instrumental, a cargo del laboratorio propietario y no del prototipo.
+\end{itemize}
+
+Antes de la entrega se agregará una estimación anual en pesos argentinos basada en consumo, vida útil esperada de la microSD y una reserva de repuestos. No se proyectan contratos de soporte ni costos de licencias.
+
+\section{Análisis de viabilidad comercial}
+
+El TFG no tiene como objetivo inmediato comercializar un equipo ni competir con analizadores ARINC 429 certificados. Existe una necesidad identificable de herramientas accesibles para docencia, prototipado y mantenimiento en banco, pero cualquier producto comercial requeriría rediseño industrial, trazabilidad de componentes, ensayos de compatibilidad electromagnética, documentación de fabricación, soporte y evaluación de las normas aplicables.
+
+La viabilidad inicial se analizará mediante comparación de oferta y prestaciones: costo del prototipo, cantidad de canales, velocidades soportadas, capacidad de filtrado, almacenamiento, interfaces y restricciones de uso. Los segmentos potenciales serían universidades, centros de formación, laboratorios de integración y equipos de desarrollo que no requieran un instrumento certificado.
+
+No se elaborará una proyección de ventas sin un estudio de mercado específico. La contribución evaluable del TFG es demostrar factibilidad técnica y costo de réplica de una plataforma de laboratorio abierta.
+
+\section{Análisis financiero}
+
+El proyecto se financiará principalmente con aportes propios y recursos institucionales existentes; no se esperan ingresos monetarios durante el TFG. El análisis financiero se limitará a:
+
+\begin{itemize}
+  \item consolidar la inversión directa y los aportes en especie;
+  \item proyectar costos de operación y mantenimiento;
+  \item comparar el costo de construcción con alternativas de compra o alquiler para uso de laboratorio;
+  \item identificar el financiamiento faltante y el momento en que se requiere.
+\end{itemize}
+
+Al no existir un flujo de ventas ni una inversión productiva definida, no corresponde calcular VAN o TIR como si el prototipo fuera un negocio. Si una institución decidiera fabricar unidades, deberá elaborarse un escenario separado con costos de ingeniería no recurrente, fabricación, ensayo, soporte, precio y demanda.
+
+\section{Estudio ambiental}
+
+El proyecto presenta un impacto ambiental directo bajo por su escala, consumo eléctrico reducido y ausencia de procesos industriales. Los principales aspectos son el uso de placas electrónicas, soldadura, recortes de conductores, empaques y eventual descarte de componentes o baterías auxiliares.
+
+Las medidas previstas son:
+
+\begin{itemize}
+  \item reutilizar placas, fuentes, protoboards y cableado siempre que su estado sea verificable;
+  \item comprar componentes en cantidades acordes al prototipo;
+  \item separar residuos electrónicos y entregarlos a circuitos autorizados de gestión;
+  \item evitar dejar el banco energizado fuera de ensayos programados;
+  \item documentar polaridades y conexiones para disminuir daños por errores de montaje;
+  \item diseñar el sistema por módulos para reparar o sustituir partes sin descartar el conjunto completo.
+\end{itemize}
+
+No se prevén emisiones, efluentes ni modificaciones edilicias. Una eventual fabricación seriada requeriría un estudio ambiental específico.
+
+\section{Estudio social}
+
+El impacto social esperado es positivo y principalmente educativo. La plataforma facilita el acceso práctico a tecnologías de aviónica, fortalece la formación en sistemas embebidos y comunicaciones digitales, y contribuye a generar capacidades locales aplicables a la industria aeroespacial y a organismos públicos.
+
+El proyecto favorece la articulación entre el IUA, FAdeA y el CEV de la Fuerza Aérea Argentina, manteniendo una delimitación clara: la universidad desarrolla conocimiento y formación; las organizaciones externas aportan el contexto de aplicación y, cuando exista acuerdo, ámbitos autorizados de validación. La documentación y los resultados podrán utilizarse en clases, jornadas técnicas y futuros trabajos académicos.
+
+Como posibles efectos adversos se consideran el uso indebido del prototipo fuera de su alcance y la interpretación de una demostración académica como instrumento certificado. Para mitigarlos, el equipo y la documentación indicarán expresamente sus condiciones de uso, limitaciones y necesidad de autorización para cualquier conexión a sistemas aeronáuticos.
+
+\section{Evaluación económica}
+
+La conveniencia económica se evaluará por efectividad/costo y valor de sustitución para el laboratorio, no por rentabilidad comercial. Se comparará la inversión incremental del prototipo con la posibilidad de adquirir, alquilar o no disponer de una herramienta equivalente para actividades educativas.
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{>{\bfseries}p{3.2cm}X}
+    \toprule
+    Criterio & Aplicación al anteproyecto \\
+    \midrule
+    VAN & No aplicable mientras no existan ingresos o ahorros monetarios periódicos verificables. \\
+    TIR & No aplicable por ausencia de flujo comercial definido. \\
+    ROI & Podrá estimarse sólo si se valoriza el ahorro frente a compra o alquiler y se fija un período de uso institucional. \\
+    Beneficio/costo & Indicador principal: valor monetario de recursos evitados y beneficios formativos documentados respecto de la inversión directa. \\
+    Período de recupero & Podrá expresarse como cantidad de prácticas, ensayos o alquileres evitados necesarios para igualar el costo del prototipo. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Criterios de evaluación económica.}
+  \label{tab:evaluacion-economica}
+\end{table}
+
+La decisión de ejecutar el TFG se justifica aun sin retorno financiero directo, porque integra objetivos académicos, disponibilidad de recursos y una necesidad tecnológica concreta. La conclusión económica final quedará condicionada a completar las cotizaciones del presupuesto.
+
+\section{Bibliografía}
+
+\begin{enumerate}[label={[\arabic*]},ref=\arabic*,leftmargin=2.1em]
+  \item \label{bib:arinc1} Aeronautical Radio, Inc. (ARINC). \textit{ARINC Specification 429, Part 1-15: Functional Description, Electrical Interfaces, Label Assignments and Word Formats. Mark 33 Digital Information Transfer System (DITS)}. Annapolis, Maryland.
+  \item \label{bib:arinc2} Aeronautical Radio, Inc. (ARINC). \textit{ARINC Specification 429, Part 2-15: Discrete Word Data Standards. Mark 33 Digital Information Transfer System (DITS)}. Annapolis, Maryland.
+  \item \label{bib:arinc3} Aeronautical Radio, Inc. (ARINC). \textit{ARINC Specification 429, Part 3-15: File Data Transfer Techniques. Mark 33 Digital Information Transfer System (DITS)}. Annapolis, Maryland.
+  \item \label{bib:aim} AIM GmbH. \textit{ARINC 429 Tutorial}. Versión revisada, 2019.
+  \item \label{bib:rp2040} Raspberry Pi Ltd. \textit{RP2040 Datasheet}. Documentación técnica del microcontrolador RP2040.
+  \item \label{bib:picosdk} Raspberry Pi Ltd. \textit{Raspberry Pi Pico C/C++ SDK}. Guía de programación y bibliotecas.
+  \item \label{bib:rpi3} Raspberry Pi Foundation. \textit{Raspberry Pi 3 Model B+ Product Brief}.
+  \item \label{bib:flask} Pallets Projects. \textit{Flask Documentation}.
+  \item \label{bib:prometheus} Prometheus Authors. \textit{Prometheus Documentation}.
+  \item \label{bib:grafana} Grafana Labs. \textit{Grafana Documentation}.
+\end{enumerate}
+
+\vfill
+\begin{center}
+  \small
+  \textit{Documento preparado conforme a la ``Guía básica para diseñar el proyecto de TF'' del Centro Regional Universitario Córdoba -- IUA, Facultad de Ingeniería.}
+\end{center}
+
+\end{document}
