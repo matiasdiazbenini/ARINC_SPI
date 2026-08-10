@@ -1,0 +1,91 @@
+.program mil1553_tx
+
+; ============================================================
+; Transmisor físico experimental MIL-STD-1553
+; ============================================================
+;
+; Cada símbolo de entrada ocupa 2 bits:
+;
+;   01 = P=1, N=0 = H
+;   10 = P=0, N=1 = L
+;
+; Cada símbolo representa MEDIO BIT.
+;
+; Palabra MIL-STD-1553:
+;
+;   SYNC   =  6 medios bits
+;   DATA   = 32 medios bits
+;   PARITY =  2 medios bits
+;
+; Total:
+;
+;   40 medios bits = 20 tiempos de bit
+;
+; Los 40 símbolos se reciben como:
+;
+;   FIFO word 0 -> símbolos  0..15
+;   FIFO word 1 -> símbolos 16..31
+;   FIFO word 2 -> símbolos 32..39
+;
+; La tercera palabra contiene solamente 8 símbolos útiles.
+;
+; ============================================================
+
+.wrap_target
+
+    ; Cargar primera palabra de la FIFO.
+    pull block
+
+    ; --------------------------------------------------------
+    ; Primeros 32 símbolos
+    ; --------------------------------------------------------
+    ;
+    ; set solamente permite valores 0..31.
+    ;
+    ; y=31 con jmp y-- produce 32 iteraciones.
+    ;
+
+    set y, 31
+
+first_32:
+
+    ; Cada símbolo representa medio bit.
+    ;
+    ; OUT + delay:
+    ;   1 + 6 = 7 ciclos
+    ;
+    ; JMP:
+    ;   1 ciclo
+    ;
+    ; Total:
+    ;   8 ciclos PIO por medio bit.
+
+    out pins, 2 [6]
+
+    jmp y-- first_32
+
+
+    ; --------------------------------------------------------
+    ; Últimos 8 símbolos
+    ; --------------------------------------------------------
+
+    set y, 7
+
+last_8:
+
+    out pins, 2 [6]
+
+    jmp y-- last_8
+
+
+    ; --------------------------------------------------------
+    ; Estado neutro experimental
+    ; --------------------------------------------------------
+    ;
+    ; P = 0
+    ; N = 0
+    ;
+
+    set pins, 0
+
+.wrap

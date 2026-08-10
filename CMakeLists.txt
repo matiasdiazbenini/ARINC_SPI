@@ -27,7 +27,13 @@ pico_sdk_init()
 add_executable(master_spi
     master_spi.c
     bus/bus.c
+    bus/mil1553_tx.c
     mil1553_words.c
+)
+
+pico_generate_pio_header(
+    master_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/mil1553_tx.pio
 )
 
 pico_generate_pio_header(master_spi ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio)
