@@ -78,6 +78,7 @@ static void capture_samples(uint8_t *buffer, uint32_t count);
 static uint8_t majority_range(const uint8_t *buffer, int start, int count);
 static bool decode_bit_at_phase(const uint8_t *buffer, int start, bool *bit);
 static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte);
+static bool decode_1553_sync_at(const uint8_t *buffer, int start, bus_1553_sync_t sync_type);
 
 static bool find_any_word16_parity_near(const uint8_t *samples,
                                         int center,
@@ -193,7 +194,43 @@ static bool decode_byte_at_phase(const uint8_t *buffer, int start, uint8_t *byte
     *byte = value;
     return true;
 }
+static bool decode_1553_sync_at(const uint8_t *buffer,
+                                int start,
+                                bus_1553_sync_t sync_type)
+{
+    /*
+     * Un SYNC 1553 ocupa 3 tiempos de bit:
+     *
+     * CMD/STATUS:
+     *   H durante 1.5 T
+     *   L durante 1.5 T
+     *
+     * DATA:
+     *   L durante 1.5 T
+     *   H durante 1.5 T
+     */
 
+    const int sync_half_samples =
+        (3 * SAMPLES_PER_BIT) / 2;
+
+    uint8_t first =
+        majority_range(buffer,
+                       start,
+                       sync_half_samples);
+
+    uint8_t second =
+        majority_range(buffer,
+                       start + sync_half_samples,
+                       sync_half_samples);
+
+    if (sync_type == BUS_1553_SYNC_CMD_STATUS) {
+        return first == PN_HIGH &&
+               second == PN_LOW;
+    }
+
+    return first == PN_LOW &&
+           second == PN_HIGH;
+}
 static bool find_any_word16_parity_near(const uint8_t *samples,
                                         int center,
                                         int radius,
@@ -206,7 +243,7 @@ static bool find_any_word16_parity_near(const uint8_t *samples,
      *
      * La paridad real se toma en el primer bit después de los 16 bits.
      */
-    const int word_bits = 24;
+    const int word_bits = 17;
     const int word_samples = word_bits * SAMPLES_PER_BIT;
 
     for (int abs_delta = 0; abs_delta <= radius; abs_delta++) {
@@ -727,60 +764,79 @@ bool bus_read_packet_parity_pio(uint16_t *cmd,
  * ============================================================
  */
 
-bool bus_read_command_word_parity_pio(uint16_t *cmd) {
+bool bus_read_command_word_parity_pio(uint16_t *cmd)
+{
     rx_sampler_init(RX_PIO, RX_SM, BUS_PIN_P);
     rx_sampler_take_pins(RX_PIO, RX_SM, BUS_PIN_P);
 
     pio_sm_clear_fifos(RX_PIO, RX_SM);
     pio_sm_restart(RX_PIO, RX_SM);
     sample_index = 16;
+
     uint8_t samples[CAPTURE_SAMPLES];
     capture_samples(samples, CAPTURE_SAMPLES);
 
-    const int byte_samples = 8 * SAMPLES_PER_BIT;
-    const int search_radius = 24;
+    /*
+     * SYNC = 3 bit times.
+     */
+    const int sync_samples =
+        3 * SAMPLES_PER_BIT;
 
     /*
-     * Formato:
+     * Después del SYNC:
      *
-     * F0
-     * CMD + PARITY
+     * 16 bits + 1 parity = 17 bits.
      */
-    const int total_bytes = 1 + 3;
+    const int word_samples =
+        17 * SAMPLES_PER_BIT;
+
+    const int search_radius = 12;
 
     for (int offset = 0;
-         offset + (total_bytes * byte_samples) < CAPTURE_SAMPLES;
+         offset + sync_samples + word_samples < CAPTURE_SAMPLES;
          offset++) {
 
-        uint8_t sync = 0;
-
-        if (!decode_byte_at_phase(samples, offset, &sync)) {
-            continue;
-        }
-
-        if (sync != SYNC_CMD_STATUS) {
+        /*
+         * Buscar físicamente el Command/Status SYNC.
+         */
+        if (!decode_1553_sync_at(
+                samples,
+                offset,
+                BUS_1553_SYNC_CMD_STATUS)) {
             continue;
         }
 
         uint16_t rx_cmd = 0;
         int off_cmd = -1;
 
-        if (!find_any_word16_parity_near(samples,
-                                         offset + byte_samples,
-                                         search_radius,
-                                         &rx_cmd,
-                                         &off_cmd)) {
+        /*
+         * La palabra comienza inmediatamente
+         * después de los 3 tiempos de SYNC.
+         */
+        if (!find_any_word16_parity_near(
+                samples,
+                offset + sync_samples,
+                search_radius,
+                &rx_cmd,
+                &off_cmd)) {
             continue;
         }
 
-        uint8_t rt = BUS_1553_CMD_RT(rx_cmd);
-        uint8_t wc = BUS_1553_CMD_WC(rx_cmd);
+        uint8_t rt =
+            BUS_1553_CMD_RT(rx_cmd);
 
+        uint8_t wc =
+            BUS_1553_CMD_WC(rx_cmd);
+
+        /*
+         * Validaciones mínimas actuales.
+         */
         if (rt == 0u || rt > 31u) {
             continue;
         }
 
-        if (wc == 0u || wc > BUS_1553_MAX_DATA_WORDS) {
+        if (wc == 0u ||
+            wc > BUS_1553_MAX_DATA_WORDS) {
             continue;
         }
 

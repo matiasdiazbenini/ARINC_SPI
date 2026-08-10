@@ -6,17 +6,30 @@
 
 #define MY_RT_ADDR 3u
 
-int main(void) {
+int main(void)
+{
     stdio_init_all();
     sleep_ms(1200);
 
     bus_init();
     bus_set_rx_mode();
 
-    printf("RT SLAVE HIGH LEVEL API TEST\n");
+    printf("MIL1553 REAL RX TEST\n");
 
     while (true) {
-        rt_process_once(MY_RT_ADDR);
-        sleep_ms(20);
+
+        uint16_t cmd = 0;
+
+        if (bus_read_command_word_parity_pio(&cmd)) {
+
+            printf(
+                "CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u\n",
+                cmd,
+                BUS_1553_CMD_RT(cmd),
+                BUS_1553_CMD_TR(cmd),
+                BUS_1553_CMD_SUB(cmd),
+                BUS_1553_CMD_WC(cmd)
+            );
+        }
     }
 }
