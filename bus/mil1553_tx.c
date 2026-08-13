@@ -11,9 +11,8 @@
 #include "mil1553_tx.pio.h"
 
 
-/*
- * ============================================================
- * Configuración
+/* ============================================================
+ * Configuración del PIO TX
  * ============================================================
  */
 
@@ -25,81 +24,29 @@ static bool tx_initialized = false;
 
 
 /*
- * Símbolos diferenciales.
+ * Frecuencia interna de ejecución del PIO.
  *
- * bit 0 -> GP2 = P
- * bit 1 -> GP3 = N
+ * Bus MIL-STD-1553:
  *
- * 01 -> P=1 N=0 -> H
- * 10 -> P=0 N=1 -> L
+ *      bitrate = 1 Mbit/s
+ *      Tbit    = 1 us
+ *      Thalf   = 500 ns
+ *
+ * PIO:
+ *
+ *      8 MHz
+ *      1 ciclo = 125 ns
+ *
+ * Entonces:
+ *
+ *      medio bit = 4 ciclos PIO
+ *      bit        = 8 ciclos PIO
  */
 
-#define MIL1553_SYMBOL_H 0x01u
-#define MIL1553_SYMBOL_L 0x02u
-
-#define MIL1553_SYMBOL_COUNT 40u
-#define MIL1553_TX_WORDS      3u
+#define MIL1553_PIO_CLOCK_HZ 8000000.0f
 
 
-/*
- * ============================================================
- * Construcción de la secuencia física
- * ============================================================
- */
-
-static void append_symbol(uint32_t frame[MIL1553_TX_WORDS],
-                          uint8_t *symbol_index,
-                          uint8_t symbol)
-{
-    uint8_t index = *symbol_index;
-
-    uint8_t fifo_word = index / 16u;
-    uint8_t position  = index % 16u;
-
-    uint32_t shift = (uint32_t)position * 2u;
-
-    frame[fifo_word] |=
-        ((uint32_t)(symbol & 0x03u) << shift);
-
-    (*symbol_index)++;
-}
-
-
-static void append_manchester_bit(
-    uint32_t frame[MIL1553_TX_WORDS],
-    uint8_t *symbol_index,
-    bool bit)
-{
-    /*
-     * Manchester II utilizado:
-     *
-     * 1 -> H L
-     * 0 -> L H
-     */
-
-    if (bit) {
-        append_symbol(frame,
-                      symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame,
-                      symbol_index,
-                      MIL1553_SYMBOL_L);
-    }
-    else {
-        append_symbol(frame,
-                      symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame,
-                      symbol_index,
-                      MIL1553_SYMBOL_H);
-    }
-}
-
-
-/*
- * ============================================================
+/* ============================================================
  * Inicialización
  * ============================================================
  */
@@ -110,89 +57,142 @@ void mil1553_tx_init(void)
         return;
     }
 
+
+    /* --------------------------------------------------------
+     * Cargar programa PIO
+     * --------------------------------------------------------
+     */
+
     tx_offset =
-        pio_add_program(tx_pio,
-                        &mil1553_tx_program);
+        pio_add_program(
+            tx_pio,
+            &mil1553_tx_program);
+
 
     pio_sm_config c =
-        mil1553_tx_program_get_default_config(tx_offset);
+        mil1553_tx_program_get_default_config(
+            tx_offset);
 
-    /*
-     * OUT controla GP2 y GP3.
-     */
-    sm_config_set_out_pins(&c,
-                           BUS_PIN_P,
-                           2u);
 
-    /*
-     * SET también controla GP2 y GP3,
-     * para llevar ambas líneas a cero al finalizar.
-     */
-    sm_config_set_set_pins(&c,
-                           BUS_PIN_P,
-                           2u);
-
-    /*
-     * Shift hacia la derecha:
-     * los símbolos se consumen desde los bits menos
-     * significativos.
+    /* --------------------------------------------------------
+     * SIDE-SET
      *
-     * Autopull cada 32 bits = 16 símbolos.
-     */
-    sm_config_set_out_shift(&c,
-                            true,
-                            true,
-                            32u);
-
-    /*
-     * Toda la FIFO dedicada a TX.
-     */
-    sm_config_set_fifo_join(&c,
-                            PIO_FIFO_JOIN_TX);
-
-
-    /*
-     * Cada medio bit ocupa 8 ciclos PIO.
+     * Dos GPIO consecutivos:
      *
-     * Tbit actual = 500 us
-     * Thalf       = 250 us
+     * GP2 = P
+     * GP3 = N
+     *
+     * side 0 -> P=0 N=0
+     * side 1 -> P=1 N=0
+     * side 2 -> P=0 N=1
+     * --------------------------------------------------------
      */
 
-    const float half_bit_us =
-        ((float)BIT_PERIOD_US) / 2.0f;
+    sm_config_set_sideset_pins(
+        &c,
+        BUS_PIN_P);
 
-    const float pio_cycles_per_half_bit =
-        8.0f;
+    /*
+    * SET PINDIRS actuará sobre:
+    *
+    * bit 0 -> GP2 = P
+    * bit 1 -> GP3 = N
+    */
+    sm_config_set_set_pins(
+        &c,
+        BUS_PIN_P,
+        2u);
+    /* --------------------------------------------------------
+     * OSR
+     *
+     * Shift hacia la IZQUIERDA.
+     *
+     * Esto nos permite colocar el primer bit a transmitir
+     * en el bit 31 del uint32_t.
+     *
+     * No usamos autopull:
+     *
+     * cada palabra MIL-STD-1553 corresponde exactamente
+     * a un único pull explícito en el programa PIO.
+     * --------------------------------------------------------
+     */
+
+    sm_config_set_out_shift(
+        &c,
+        false,      /* shift_right = false */
+        false,      /* autopull    = false */
+        32u);
+
+
+    /* --------------------------------------------------------
+     * FIFO dedicada a transmisión.
+     * --------------------------------------------------------
+     */
+
+    sm_config_set_fifo_join(
+        &c,
+        PIO_FIFO_JOIN_TX);
+
+
+    /* --------------------------------------------------------
+     * Clock PIO = 8 MHz
+     * --------------------------------------------------------
+     */
 
     const float clkdiv =
-        ((float)clock_get_hz(clk_sys) *
-         (half_bit_us / 1000000.0f))
-        /
-        pio_cycles_per_half_bit;
+        (float)clock_get_hz(clk_sys) /
+        MIL1553_PIO_CLOCK_HZ;
 
-    sm_config_set_clkdiv(&c, clkdiv);
+    sm_config_set_clkdiv(
+        &c,
+        clkdiv);
+
+
+    /* --------------------------------------------------------
+     * GPIO
+     * --------------------------------------------------------
+     */
+
+    pio_gpio_init(
+        tx_pio,
+        BUS_PIN_P);
+
+    pio_gpio_init(
+        tx_pio,
+        BUS_PIN_N);
 
 
     /*
-     * Inicializar pines.
+     * P y N son salidas.
      */
-    pio_gpio_init(tx_pio, BUS_PIN_P);
-    pio_gpio_init(tx_pio, BUS_PIN_N);
 
-    pio_sm_set_consecutive_pindirs(tx_pio,
-                                   tx_sm,
-                                   BUS_PIN_P,
-                                   2u,
-                                   true);
+    pio_sm_set_consecutive_pindirs(
+        tx_pio,
+        tx_sm,
+        BUS_PIN_P,
+        2u,
+        false);
 
-    pio_sm_init(tx_pio,
-                tx_sm,
-                tx_offset,
-                &c);
+
+    /* --------------------------------------------------------
+     * Inicializar State Machine
+     * --------------------------------------------------------
+     */
+
+    pio_sm_init(
+        tx_pio,
+        tx_sm,
+        tx_offset,
+        &c);
+
 
     /*
-     * Arranque en estado neutro.
+     * Estado inicial:
+     *
+     * P = 0
+     * N = 0
      */
+
     pio_sm_set_pins_with_mask(
         tx_pio,
         tx_sm,
@@ -200,121 +200,98 @@ void mil1553_tx_init(void)
         (1u << BUS_PIN_P) |
         (1u << BUS_PIN_N));
 
-    pio_sm_set_enabled(tx_pio,
-                       tx_sm,
-                       true);
+
+    /* --------------------------------------------------------
+     * Habilitar State Machine
+     * --------------------------------------------------------
+     */
+
+    pio_sm_set_enabled(
+        tx_pio,
+        tx_sm,
+        true);
+
 
     tx_initialized = true;
 }
 
 
-/*
- * ============================================================
- * Transmisión de palabra MIL-STD-1553
+/* ============================================================
+ * Transmitir una palabra MIL-STD-1553
  * ============================================================
  */
 
-void mil1553_tx_send_word(bus_1553_sync_t sync_type,
-                          uint16_t word)
+void mil1553_tx_send_word(
+    bus_1553_sync_t sync_type,
+    uint16_t word)
 {
-    pio_sm_set_consecutive_pindirs(
-    tx_pio,
-    tx_sm,
-    BUS_PIN_P,
-    2u,
-    true);
     mil1553_tx_init();
 
-    uint32_t frame[MIL1553_TX_WORDS] = {
-        0u,
-        0u,
-        0u
-    };
 
-    uint8_t symbol_index = 0u;
-
-
-    /*
+    /* --------------------------------------------------------
+     * La CPU entrega UNA sola palabra de 32 bits al PIO.
+     *
+     * Layout:
+     *
+     * bit 31:
+     *
+     *      selector de SYNC
+     *
+     *      1 = Command / Status
+     *      0 = Data
+     *
+     *
+     * bits 30..15:
+     *
+     *      16 bits de información
+     *      MSB primero
+     *
+     *
+     * bit 14:
+     *
+     *      paridad impar
+     *
+     *
+     * bits 13..0:
+     *
+     *      no utilizados
+     *
+     *
+     *  31     30                 15 14       0
+     *
+     * +----+-----------------------+--+-------+
+     * |SYNC|      DATA[15:0]       |P | unused|
+     * +----+-----------------------+--+-------+
+     *
      * --------------------------------------------------------
-     * SYNC
-     * --------------------------------------------------------
-     *
-     * Command / Status:
-     *
-     * H H H L L L
-     *
-     * = H durante 1.5 T
-     *   L durante 1.5 T
-     *
-     *
-     * Data:
-     *
-     * L L L H H H
      */
 
-    if (sync_type == BUS_1553_SYNC_CMD_STATUS) {
 
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-    }
-    else {
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_L);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-
-        append_symbol(frame, &symbol_index,
-                      MIL1553_SYMBOL_H);
-    }
+    uint32_t frame = 0u;
 
 
-    /*
+    /* --------------------------------------------------------
+     * Selector de SYNC
      * --------------------------------------------------------
-     * 16 bits de información
-     * --------------------------------------------------------
-     *
-     * MSB primero.
      */
 
-    for (int bit = 15; bit >= 0; bit--) {
+    if (sync_type ==
+        BUS_1553_SYNC_CMD_STATUS) {
 
-        bool value =
-            ((word >> bit) & 0x01u) != 0u;
-
-        append_manchester_bit(frame,
-                              &symbol_index,
-                              value);
+        frame |= (1u << 31);
     }
 
 
-    /*
+    /* --------------------------------------------------------
+     * Los 16 bits se colocan en posiciones 30..15.
      * --------------------------------------------------------
+     */
+
+    frame |=
+        ((uint32_t)word << 15);
+
+
+    /* --------------------------------------------------------
      * Paridad impar
      * --------------------------------------------------------
      */
@@ -322,54 +299,26 @@ void mil1553_tx_send_word(bus_1553_sync_t sync_type,
     uint8_t parity =
         bus_compute_odd_parity(word);
 
-    append_manchester_bit(frame,
-                          &symbol_index,
-                          parity != 0u);
+    frame |=
+        ((uint32_t)(parity & 0x01u) << 14);
 
 
-    /*
-     * Tenemos exactamente:
+    /* --------------------------------------------------------
+     * ENTREGAR UNA SOLA PALABRA AL HARDWARE PIO.
      *
-     * 6  símbolos SYNC
-     * 32 símbolos DATA
-     * 2  símbolos PARITY
+     * A partir de este punto la CPU no genera:
      *
-     * = 40 símbolos.
-     */
-
-
-    /*
-     * --------------------------------------------------------
-     * Enviar al PIO
+     * - Manchester
+     * - medios bits
+     * - P/N
+     * - SYNC temporal
+     *
+     * Eso lo hace la State Machine.
      * --------------------------------------------------------
      */
 
-    for (uint8_t i = 0;
-         i < MIL1553_TX_WORDS;
-         i++) {
-
-        pio_sm_put_blocking(tx_pio,
-                            tx_sm,
-                            frame[i]);
-    }
-}
-void mil1553_tx_release_bus(void)
-{
-    /*
-     * La palabra ocupa exactamente 20 tiempos de bit.
-     * Dejamos un pequeño margen antes de liberar P/N.
-     */
-    sleep_us((20u * BIT_PERIOD_US) +
-             (BIT_PERIOD_US / 2u));
-
-    /*
-     * Alta impedancia lógica:
-     * dejamos de conducir P y N.
-     */
-    pio_sm_set_consecutive_pindirs(
+    pio_sm_put_blocking(
         tx_pio,
         tx_sm,
-        BUS_PIN_P,
-        2u,
-        false);
+        frame);
 }

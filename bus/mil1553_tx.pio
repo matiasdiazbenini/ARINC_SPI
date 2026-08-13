@@ -1,91 +1,292 @@
 .program mil1553_tx
 
-; ============================================================
-; Transmisor físico experimental MIL-STD-1553
-; ============================================================
+; ============================================================================
+; MIL-STD-1553 TX - Raspberry Pi Pico 2 / RP2350
+; ============================================================================
 ;
-; Cada símbolo de entrada ocupa 2 bits:
+; PIO clock previsto: 8 MHz
 ;
-;   01 = P=1, N=0 = H
-;   10 = P=0, N=1 = L
+;   1 ciclo PIO = 125 ns
+;   medio bit   = 4 ciclos = 500 ns
+;   bit         = 8 ciclos = 1 us
 ;
-; Cada símbolo representa MEDIO BIT.
+; Salidas diferenciales mediante side-set:
 ;
-; Palabra MIL-STD-1553:
+;   side 0 -> P=0 N=0  IDLE
+;   side 1 -> P=1 N=0  HIGH
+;   side 2 -> P=0 N=1  LOW
 ;
-;   SYNC   =  6 medios bits
-;   DATA   = 32 medios bits
-;   PARITY =  2 medios bits
+; La CPU NO entrega los niveles físicos.
 ;
-; Total:
+; El OSR contendrá:
 ;
-;   40 medios bits = 20 tiempos de bit
+;   selector de SYNC
+;   16 bits de datos
+;   1 bit de paridad
 ;
-; Los 40 símbolos se reciben como:
+; El PIO genera:
 ;
-;   FIFO word 0 -> símbolos  0..15
-;   FIFO word 1 -> símbolos 16..31
-;   FIFO word 2 -> símbolos 32..39
+;   SYNC
+;   Manchester II
+;   timing
+;   salida diferencial
+;   IDLE
 ;
-; La tercera palabra contiene solamente 8 símbolos útiles.
-;
-; ============================================================
+; ============================================================================
+
+.side_set 2 opt
+
 
 .wrap_target
 
-    ; Cargar primera palabra de la FIFO.
-    pull block
+entry:
 
-    ; --------------------------------------------------------
-    ; Primeros 32 símbolos
-    ; --------------------------------------------------------
+    ; ------------------------------------------------------------
+    ; Esperar una nueva palabra desde CPU.
     ;
-    ; set solamente permite valores 0..31.
-    ;
-    ; y=31 con jmp y-- produce 32 iteraciones.
-    ;
-
-    set y, 31
-
-first_32:
-
-    ; Cada símbolo representa medio bit.
-    ;
-    ; OUT + delay:
-    ;   1 + 6 = 7 ciclos
-    ;
-    ; JMP:
-    ;   1 ciclo
-    ;
-    ; Total:
-    ;   8 ciclos PIO por medio bit.
-
-    out pins, 2 [6]
-
-    jmp y-- first_32
-
-
-    ; --------------------------------------------------------
-    ; Últimos 8 símbolos
-    ; --------------------------------------------------------
-
-    set y, 7
-
-last_8:
-
-    out pins, 2 [6]
-
-    jmp y-- last_8
-
-
-    ; --------------------------------------------------------
-    ; Estado neutro experimental
-    ; --------------------------------------------------------
+    ; Mientras esperamos:
     ;
     ; P = 0
     ; N = 0
-    ;
+    ; ------------------------------------------------------------
 
-    set pins, 0
+    pull block              side 0
+
+
+    ; ------------------------------------------------------------
+    ; Primer bit del OSR:
+    ;
+    ;   1 = Command / Status Sync
+    ;   0 = Data Sync
+    ; ------------------------------------------------------------
+
+    out x, 1                side 0
+
+
+    ; ------------------------------------------------------------
+    ; Vamos a transmitir:
+    ;
+    ;   16 bits de información
+    ;   1 bit de paridad
+    ;
+    ; El primer bit se precarga antes del SYNC.
+    ;
+    ; Y=16 permite transmitir un total de 17 bits.
+    ; ------------------------------------------------------------
+
+    set y, 16               side 0
+
+
+    ; Elegir tipo de SYNC.
+
+    jmp !x data_prepare     side 0
+
+
+; ============================================================================
+; COMMAND / STATUS
+; ============================================================================
+
+cmd_prepare:
+
+    ; Precargar primer bit de información.
+
+    out x, 1                side 0
+
+    ; Habilitar físicamente P y N como Salidas
+
+    set pindirs, 3          side 0
+
+    ; ------------------------------------------------------------
+    ; Command / Status Sync
+    ;
+    ; HIGH durante 1.5 us
+    ;
+    ; 3 instrucciones
+    ; 4 ciclos cada una
+    ;
+    ; total = 12 ciclos = 1.5 us
+    ; ------------------------------------------------------------
+
+    nop                     side 1 [3]
+    nop                     side 1 [3]
+    nop                     side 1 [3]
+
+
+    ; ------------------------------------------------------------
+    ; LOW durante 1.5 us
+    ;
+    ; Primeros 8 ciclos.
+    ; ------------------------------------------------------------
+
+    nop                     side 2 [3]
+    nop                     side 2 [3]
+
+
+    ; Los últimos 4 ciclos se utilizan para
+    ; decidir cuál es el primer bit Manchester.
+    ;
+    ; Este JMP consume 2 ciclos.
+
+    jmp sync_decide         side 2 [1]
+
+
+; ============================================================================
+; DATA
+; ============================================================================
+
+data_prepare:
+
+    ; Precargar primer bit de información.
+
+    out x, 1                side 0
+
+    ; Habilitar físicamente P y N como Salidas
+    
+    set pindirs, 3          side 0
+
+    ; ------------------------------------------------------------
+    ; Data Sync
+    ;
+    ; LOW durante 1.5 us
+    ; ------------------------------------------------------------
+
+    nop                     side 2 [3]
+    nop                     side 2 [3]
+    nop                     side 2 [3]
+
+
+    ; ------------------------------------------------------------
+    ; HIGH durante 1.5 us
+    ; ------------------------------------------------------------
+
+    nop                     side 1 [3]
+    nop                     side 1 [3]
+
+    jmp sync_decide         side 1 [1]
+
+
+; ============================================================================
+; Final del SYNC
+; ============================================================================
+;
+; Al entrar aquí ya consumimos:
+;
+;   8 ciclos de la segunda mitad
+;   +
+;   2 ciclos del JMP anterior
+;
+; Faltan 2 ciclos.
+;
+; Estas instrucciones seleccionan el primer bit
+; manteniendo el último nivel del SYNC.
+;
+; ============================================================================
+
+sync_decide:
+
+    jmp !x sync_zero
+
+    jmp one_bit
+
+sync_zero:
+
+    jmp zero_bit
+
+
+; ============================================================================
+; Cargar siguiente bit
+; ============================================================================
+;
+; Esta sección se ejecuta durante la segunda mitad
+; del bit anterior.
+;
+; Como no indicamos "side", los pines conservan
+; el estado que ya tenían.
+;
+; ============================================================================
+
+more_bits:
+
+    out x, 1
+
+    jmp !x zero_bit [1]
+
+
+; ============================================================================
+; Manchester bit = 1
+;
+; 1 -> HIGH / LOW
+; ============================================================================
+
+one_bit:
+
+    ; Primera mitad:
+    ;
+    ; 4 ciclos = 500 ns.
+
+    nop                     side 1 [3]
+
+
+    ; Segunda mitad.
+    ;
+    ; El primer ciclo cambia inmediatamente a LOW.
+    ;
+    ; Si quedan bits:
+    ;   JMP      = 1 ciclo
+    ;   OUT      = 1 ciclo
+    ;   JMP [1]  = 2 ciclos
+    ;
+    ; total = 4 ciclos.
+    ;
+    ; Si era el último:
+    ;   JMP      = 1 ciclo
+    ;   JMP [2]  = 3 ciclos
+    ;
+    ; total = 4 ciclos.
+
+    jmp y-- more_bits       side 2
+
+    jmp end_word                   [2]
+
+
+; ============================================================================
+; Manchester bit = 0
+;
+; 0 -> LOW / HIGH
+; ============================================================================
+
+zero_bit:
+
+    ; Primera mitad.
+
+    nop                     side 2 [3]
+
+
+    ; Segunda mitad.
+
+    jmp y-- more_bits       side 1
+
+    jmp end_word                   [2]
+
+
+; ============================================================================
+; Fin de palabra
+; ============================================================================
+
+end_word:
+
+    ; Finalizó exactamente la última mitad del bit de paridad.
+    ;
+    ; side 0:
+    ;     P=0
+    ;     N=0
+    ;
+    ; PINDIRS=00:
+    ;     GP2=input
+    ;     GP3=input
+    ;
+    ; Por lo tanto el transmisor deja de conducir el bus.
+    set pindirs, 0          side 0
+
 
 .wrap
