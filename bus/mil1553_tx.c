@@ -217,6 +217,12 @@ void mil1553_tx_init(void)
 void mil1553_tx_send_word(bus_1553_sync_t sync_type,
                           uint16_t word)
 {
+    pio_sm_set_consecutive_pindirs(
+    tx_pio,
+    tx_sm,
+    BUS_PIN_P,
+    2u,
+    true);
     mil1553_tx_init();
 
     uint32_t frame[MIL1553_TX_WORDS] = {
@@ -346,4 +352,24 @@ void mil1553_tx_send_word(bus_1553_sync_t sync_type,
                             tx_sm,
                             frame[i]);
     }
+}
+void mil1553_tx_release_bus(void)
+{
+    /*
+     * La palabra ocupa exactamente 20 tiempos de bit.
+     * Dejamos un pequeño margen antes de liberar P/N.
+     */
+    sleep_us((20u * BIT_PERIOD_US) +
+             (BIT_PERIOD_US / 2u));
+
+    /*
+     * Alta impedancia lógica:
+     * dejamos de conducir P y N.
+     */
+    pio_sm_set_consecutive_pindirs(
+        tx_pio,
+        tx_sm,
+        BUS_PIN_P,
+        2u,
+        false);
 }

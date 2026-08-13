@@ -25,6 +25,7 @@ void mil1553_tx_init(void);
  */
 void mil1553_tx_send_word(bus_1553_sync_t sync_type,
                           uint16_t word);
+void mil1553_tx_release_bus(void);
 
 #ifdef __cplusplus
 }

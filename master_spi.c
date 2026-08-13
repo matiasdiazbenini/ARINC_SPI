@@ -48,6 +48,9 @@ int main(void)
             BUS_1553_SYNC_CMD_STATUS,
             cmd);
 
+        mil1553_tx_release_bus();
+
+        printf("TX CMD=0x%04X\n", cmd);
         /*
          * Muchísimo espacio entre palabras
          * solamente para poder medir cómodamente.
