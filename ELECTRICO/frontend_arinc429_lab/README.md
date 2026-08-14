@@ -18,6 +18,8 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
 - `exports/frontend_arinc429_tl082_circuit.pdf`: export PDF del esquematico de circuito.
 - `memoria_calculo_frontend_tl082.tex`: memoria de calculo editable en LaTeX.
 - `exports/memoria_calculo_frontend_tl082.pdf`: memoria de calculo compilada.
+- `proteus/frontend_arinc429_proteus.pdsprj`: simulacion Proteus 8.15 del
+  front-end TX/RX con TL082 y comparadores LM393.
 
 ## Alcance
 

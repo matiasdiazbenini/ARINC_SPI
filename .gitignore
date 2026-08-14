@@ -18,3 +18,8 @@ output/
 *.kicad_sch.lck
 *.kicad_pcb.lck
 **/.history/
+
+# Proteus local state and automatic backups
+*.pdsprj.*.workspace
+**/Project Backups/
+**/*Autosaved*.pdsprj
