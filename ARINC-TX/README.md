@@ -44,6 +44,11 @@ como referencia de esta etapa del proyecto.
 - `arinc_tx_arinc429_logic_stream_12k5`
   - mismo modo stream, forzado a `12.5 kbps`
   - util para validar la velocidad baja sin depender del azar del autorate
+- `arinc_tx_arinc429_logic_stream_gp2_gp0`
+  - variante de laboratorio a `100 kbps` con `GP2=FWD_A` y `GP0=FWD_B`
+  - deja `GP1` sin manejar y conserva intactos los targets con `GP2/GP3`
+- `arinc_tx_arinc429_logic_stream_12k5_gp2_gp0`
+  - misma variante de pines, forzada a `12.5 kbps`
 - `arinc_tx_arinc429_logic_stream_autorate`
   - igual al modo stream validado, pero elige al arrancar entre `100 kbps`
     y `12.5 kbps`

@@ -18,6 +18,10 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
 - `exports/frontend_arinc429_tl082_circuit.pdf`: export PDF del esquematico de circuito.
 - `memoria_calculo_frontend_tl082.tex`: memoria de calculo editable en LaTeX.
 - `exports/memoria_calculo_frontend_tl082.pdf`: memoria de calculo compilada.
+- `proteus/frontend_arinc429_proteus.pdsprj`: simulacion Proteus 8.15 del
+  front-end TX/RX con TL082 y comparadores LM393.
+- `evidencia/20260814_banco_tl082/README.md`: resultado y capturas de la
+  validacion fisica del prototipo a `12,5 kbps` y `100 kbps`.
 
 ## Alcance
 
@@ -137,13 +141,22 @@ El esquematico de circuito [frontend_arinc429_tl082_circuit.kicad_sch](frontend_
 complementa esa revision con una implementacion electrica concreta:
 
 - `U1A/U1B TL082CP`: convierten `TX_A_LOGIC/TX_B_LOGIC` en `LINE_A/LINE_B`
-  de aproximadamente `+5/0/-5 V` por conductor.
+  de aproximadamente `+5/0/-5 V` por conductor, con redes
+  `22 kohm / 33 kohm` y ganancia `1,5`.
 - `R9/R10 = 39 ohm`: aproximan `Zout` diferencial a `78 ohm`.
 - `U2A/U2B TL082CP`: leen `LINE_A/LINE_B` con alta impedancia y generan
-  senales analogicas sesgadas alrededor de `1,65 V`.
+  senales analogicas con `99 kohm / 10 kohm`, ganancia `10/99` y
+  `Zin` diferencial aproximada de `99 kohm`.
 - `U3 MCP6562`: convierte las senales analogicas a `RX_A_LOGIC/RX_B_LOGIC`
-  seguros para `GP4/GP5`.
-- `R21/R22`, `R23/R24`: generan `VREF_1V65` y `VTH_ACTIVE`.
+  seguros y activos en alto para `GP4/GP5`; la senal sesgada entra por la
+  entrada no inversora y `VTH_RX` por la inversora.
+- `R21/R22 = 1 kohm / 1 kohm`: generan `VREF_RX = 1,635 V` al incluir
+  la carga real.
+- `R23 || R25 = 6,7 kohm || 38 kohm` y `R24 = 10 kohm`: generan
+  `VTH_RX = 2,102 V`.
+- Con resistencias independientes de `1 %`, el peor caso conserva unos
+  `176,6 mV` contra falso activo y `144,2 mV` para el activo minimo. Con `5 %`,
+  el segundo margen puede hacerse negativo, por lo que hay que medir y aparear.
 - `C1..C11`: desacople y filtrado local de referencias.
 
 Aunque se prioriza TL082CP, el esquematico incluye `U3` porque la salida de un
@@ -151,9 +164,38 @@ TL082 alimentado en bipolar no debe entrar directamente a una Raspberry Pi Pico.
 Sin esa etapa, el circuito no queda cerrado de forma segura.
 
 La [memoria de calculo](exports/memoria_calculo_frontend_tl082.pdf) justifica
-ganancias, impedancias, referencias, desacople y respuesta temporal para
-`100 kbit/s` y `12,5 kbit/s`. Tambien deja documentada la correccion pendiente
-del divisor `VREF/VTH` antes de congelar una revision de PCB.
+ganancias, impedancias, referencias, tolerancias, desacople y respuesta temporal
+para `100 kbit/s` y `12,5 kbit/s`. La revision E ya incorpora el recalculo de
+`VREF_RX` y `VTH_RX` con los valores adquiridos.
+
+## Estado de componentes para la revision E
+
+Ya disponibles: dos TL082CP, resistencias de `22 kohm`, `33 kohm`, `99 kohm`,
+`10 kohm`, `1 kohm`, `6,7 kohm` y `38 kohm`, siete capacitores codigo `104`
+de `100 nF`, cuatro capacitores de `10 uF`, bornera y cableado.
+
+Pendientes o por confirmar:
+
+- un `MCP6562-E/P`;
+- dos resistencias de `39 ohm` para R9/R10;
+- fuente bipolar regulada `+12 V / GND / -12 V`;
+- confirmar tres zocalos PDIP-8 y definir la placa de montaje.
+
+Las resistencias de `38 kohm` se usan como R25 en paralelo con R23 para ajustar
+el umbral; no reemplazan las resistencias de salida de `39 ohm`.
+
+## Checkpoint de validacion en banco
+
+La evidencia del 14 de agosto de 2026 confirma el funcionamiento de la cadena
+completa a `12,5 kbps`, desde la Pico TX y el front-end electrico hasta la
+recuperacion logica, el sniffer y la visualizacion. En la corrida observada no
+se registraron errores.
+
+El mismo montaje no resulto confiable a `100 kbps`: los TL082CP ensayados
+presentaron rampas de aproximadamente `8..12 us`, un tiempo comparable con el
+periodo de bit de `10 us`. A `12,5 kbps`, cuyo periodo es `80 us`, queda una
+meseta util suficiente. El detalle y las capturas originales se conservan en
+[evidencia/20260814_banco_tl082](evidencia/20260814_banco_tl082/README.md).
 
 ## Validacion minima
 

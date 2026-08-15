@@ -2,17 +2,21 @@ PAMPA / ARINC 429-LIKE - LISTA DE COMPONENTES
 Front-end electrico TL082CP + MCP6562
 ============================================================
 
-Revision de compra recomendada
-------------------------------
-Esta lista adopta las correcciones indicadas en la memoria de calculo:
+Revision E - valores recalculados con los componentes adquiridos
+---------------------------------------------------------------
+Esta lista corresponde al esquematico y a la memoria de calculo vigentes.
+Los reemplazos 22/33 kOhm conservan exactamente la ganancia TX 1,5. En RX se
+adoptan 99/10 kOhm y se recalculan VREF y VTH considerando la carga real.
 
-- R21 = 1 kOhm
-- R22 = 1.02 kOhm
-- R23 = 6.8 kOhm
-- R24 = 10 kOhm
+Valores nominales resultantes:
 
-No mezclar estos valores con la version preliminar del divisor
-(R21/R22 = 10 kOhm/10 kOhm y R23 = 5.6 kOhm).
+- VREF_RX = 1,635 V cargado
+- VTH_RX = 2,102 V
+- ganancia RX = 10/99 = 0,10101
+- Zin diferencial RX = 99 kOhm
+
+R23 y R25 van en paralelo. La combinacion 6,7 kOhm || 38 kOhm produce
+5,696 kOhm para la rama superior del divisor de VTH.
 
 
 1. CIRCUITOS INTEGRADOS
@@ -27,6 +31,8 @@ Cantidad  Componente                         Referencias
 Equivalencia funcional instalada:
 - 2 encapsulados TL082CP = 4 amplificadores operacionales internos.
 - 1 encapsulado MCP6562 = 2 comparadores internos.
+- En U3, RX_A_BIASED/RX_B_BIASED van a las entradas no inversoras y VTH_RX a
+  las inversoras; RX_A_LOGIC/RX_B_LOGIC quedan activas en alto.
 
 
 2. RESISTENCIAS
@@ -37,27 +43,37 @@ apareadas es preferible 0.1 % si se consiguen.
 
 Cantidad  Valor        Referencias
 --------  -----------  -----------------------------------------------
-4         20 kOhm      R1, R3, R5, R7
-4         30 kOhm      R2, R4, R6, R8
+4         22 kOhm      R1, R3, R5, R7
+4         33 kOhm      R2, R4, R6, R8
 2         39 Ohm       R9, R10
-4         100 kOhm     R11, R13, R15, R17
+4         99 kOhm      R11, R13, R15, R17
 4         10 kOhm      R12, R14, R16, R18
 1         1 kOhm       R21
-1         1.02 kOhm    R22
-1         6.8 kOhm     R23
+1         1 kOhm       R22
+1         6.7 kOhm     R23
 1         10 kOhm      R24
+1         38 kOhm      R25, en paralelo con R23
 
-TOTAL RESISTENCIAS: 22
+TOTAL RESISTENCIAS: 23
 
 Resumen para compra por valor:
-- 20 kOhm:   4 unidades
-- 30 kOhm:   4 unidades
+- 22 kOhm:   4 unidades
+- 33 kOhm:   4 unidades
 - 39 Ohm:    2 unidades
-- 100 kOhm:  4 unidades
+- 99 kOhm:   4 unidades
 - 10 kOhm:   5 unidades
-- 1 kOhm:    1 unidad
-- 1.02 kOhm: 1 unidad
-- 6.8 kOhm:  1 unidad
+- 1 kOhm:    2 unidades
+- 6.7 kOhm:  1 unidad
+- 38 kOhm:   1 unidad
+
+Tolerancia:
+- usar 1 % como minimo; para las redes diferenciales conviene seleccionar
+  resistencias apareadas con multimetro;
+- con tolerancias independientes de 1 %, el peor caso calculado conserva
+  176,6 mV contra falso activo y 144,2 mV para el activo minimo;
+- con tolerancias independientes de 5 %, el margen peor caso del RX puede
+  quedar en 19,8 mV / -31,9 mV, por lo que no debe montarse al azar sin medir
+  los valores.
 
 
 3. CAPACITORES
@@ -80,6 +96,9 @@ Polaridad de los electroliticos:
 Los capacitores de 100 nF no tienen polaridad. C1/C3 y C5/C7 se
 colocan fisicamente cerca de los pines de alimentacion de los TL082CP.
 C9 se coloca cerca de U3. C10 y C11 filtran VREF y VTH.
+
+El codigo impreso `104` identifica 100 nF, no 1 uF. Los siete capacitores
+comprados como `104` cubren C1, C3, C5, C7, C9, C10 y C11.
 
 
 4. CONECTORES Y ZOCALOS
@@ -133,12 +152,15 @@ Se colocarian en paralelo con R2, R4, R6 y R8. No deben montarse ambas
 opciones simultaneamente. Para operacion autorate, primero se debe validar
 una solucion comun o una red conmutada.
 
+Con Rf = 33 kOhm, 22 pF produce un rise time RC aproximado de 1,60 us y
+150 pF produce aproximadamente 10,89 us.
+
 
 7. RESUMEN GENERAL DEL CIRCUITO BASE
 ------------------------------------
 
 - Circuitos integrados: 3 encapsulados
-- Resistencias:          22 unidades
+- Resistencias:          23 unidades
 - Capacitores:           11 unidades
 - Conectores:            3 unidades
 - Zocalos recomendados:  3 unidades
@@ -146,3 +168,31 @@ una solucion comun o una red conmutada.
 - Fuente bipolar:        1 unidad
 - Placa de montaje:      1 unidad
 - Par trenzado:          1 tramo
+
+
+8. ESTADO DE LA COMPRA INFORMADA
+--------------------------------
+
+Disponible y util para esta revision:
+- TL082CP: 2 unidades (U1 y U2)
+- 22 kOhm: 10 unidades; se usan 4
+- 33 kOhm: 10 unidades; se usan 4
+- 99 kOhm: 10 unidades; se usan 4
+- 10 kOhm: 10 unidades; se usan 5
+- 1 kOhm: 10 unidades; se usan 2
+- 6.7 kOhm: 10 unidades; se usa 1
+- 38 kOhm: 10 unidades; se usa 1 en paralelo con R23
+- 100 nF codigo 104: 7 unidades; se usan 7
+- 10 uF: 4 unidades; se usan 4
+- bornera de 3 vias: 1 unidad (J2)
+- cables macho-macho y tiras de pines: disponibles
+
+Pendiente o por confirmar:
+- MCP6562-E/P: 1 unidad (U3)
+- 39 Ohm, no 39 kOhm: 2 unidades (R9 y R10)
+- fuente bipolar regulada +12 V / GND / -12 V
+- confirmar que los tres zocalos comprados sean PDIP-8
+- conectores J1/J3 y placa de montaje segun el armado elegido
+
+La resistencia de 38 kOhm no reemplaza a R9/R10. Su uso valido en esta
+revision es como R25, en paralelo con R23, para ajustar VTH_RX.

@@ -6,8 +6,8 @@
 .note{font-family:Arial,sans-serif;font-size:15px;font-weight:700;fill:#A43E3E}
 </style>
 <rect width="1500" height="900" fill="#FFFFFF"/>
-<text x="35" y="42" class="title">Front-end ARINC 429-like con TL082CP - revision electrica de banco</text>
-<text x="35" y="72" class="note">Advertencia: TX con TL082 es viable para banco; RX solo con TL082 no entrega GPIO seguro sin etapa final de decision/proteccion.</text>
+<text x="35" y="42" class="title">Front-end ARINC 429-like con TL082CP - revision E</text>
+<text x="35" y="72" class="note">Valores recalculados con la compra: VREF_RX=1,635 V y VTH_RX=2,102 V.</text>
 <rect x="35" y="110" width="170" height="245" rx="8" fill="#EAF2FB" stroke="#1D5F99" stroke-width="2"/>
 <text x="47" y="138" class="title">Pico TX</text>
 <text x="47" y="166" class="small">GP2 TX_A_LOGIC</text>
@@ -18,7 +18,7 @@
 <text x="272" y="123" class="title">TX bipolar - U1 TL082CP</text>
 <text x="272" y="151" class="small">U1A: diff amp</text>
 <text x="272" y="173" class="small">LINE_A_PRE=1,5*(A-B)</text>
-<text x="272" y="195" class="small">R1/R3=20k, R2/R4=30k</text>
+<text x="272" y="195" class="small">Rin=22k, Rf=33k</text>
 <text x="272" y="217" class="small">U1B: diff amp complementario</text>
 <text x="272" y="239" class="small">LINE_B_PRE=1,5*(B-A)</text>
 <text x="272" y="261" class="small">Alim: +12V/-12V</text>
@@ -38,18 +38,18 @@
 <text x="952" y="274" class="small">Sin terminacion RX</text>
 <rect x="1210" y="95" width="250" height="330" rx="8" fill="#FFF2E2" stroke="#B96B1B" stroke-width="2"/>
 <text x="1222" y="123" class="title">RX analogico - U2 TL082CP</text>
-<text x="1222" y="151" class="small">U2A=0,3*(A-B)</text>
-<text x="1222" y="173" class="small">U2B=0,3*(B-A)</text>
-<text x="1222" y="195" class="small">Rin=100k, Rf=30k</text>
-<text x="1222" y="217" class="small">Zin por linea ~=56k</text>
-<text x="1222" y="239" class="small">Alim: +12V/-12V</text>
-<text x="1222" y="261" class="small">Salida analogica NO GPIO</text>
+<text x="1222" y="151" class="small">U2A=VREF+0,101*(A-B)</text>
+<text x="1222" y="173" class="small">U2B=VREF+0,101*(B-A)</text>
+<text x="1222" y="195" class="small">Rin=99k, Rf=10k</text>
+<text x="1222" y="217" class="small">Zin diferencial ~=99k</text>
+<text x="1222" y="239" class="small">VREF_RX=1,635 V</text>
+<text x="1222" y="261" class="small">Alim: +12V/-12V</text>
 <rect x="1210" y="505" width="250" height="190" rx="8" fill="#FBEAEA" stroke="#A43E3E" stroke-width="2"/>
-<text x="1222" y="533" class="title">Etapa final obligatoria</text>
-<text x="1222" y="561" class="small">Schmitt/comparador/level-shift</text>
-<text x="1222" y="583" class="small">Salida 0..3,3 V</text>
-<text x="1222" y="605" class="small">Histeresis definida</text>
-<text x="1222" y="627" class="small">Proteccion GPIO</text>
+<text x="1222" y="533" class="title">U3 MCP6562</text>
+<text x="1222" y="561" class="small">VTH_RX=2,102 V</text>
+<text x="1222" y="583" class="small">R23 6,7k || R25 38k</text>
+<text x="1222" y="605" class="small">R24 10k</text>
+<text x="1222" y="627" class="small">Salida activa-alta 0..3,3 V</text>
 <rect x="940" y="530" width="210" height="155" rx="8" fill="#EAF2FB" stroke="#1D5F99" stroke-width="2"/>
 <text x="952" y="558" class="title">Pico RX</text>
 <text x="952" y="586" class="small">GP4 RX_A_LOGIC</text>

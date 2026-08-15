@@ -234,15 +234,15 @@ class Schematic:
             ".note{font-family:Arial,sans-serif;font-size:15px;font-weight:700;fill:#A43E3E}",
             "</style>",
             '<rect width="1500" height="900" fill="#FFFFFF"/>',
-            '<text x="35" y="42" class="title">Front-end ARINC 429-like con TL082CP - revision electrica de banco</text>',
-            '<text x="35" y="72" class="note">Advertencia: TX con TL082 es viable para banco; RX solo con TL082 no entrega GPIO seguro sin etapa final de decision/proteccion.</text>',
+            '<text x="35" y="42" class="title">Front-end ARINC 429-like con TL082CP - revision E</text>',
+            '<text x="35" y="72" class="note">Valores recalculados con la compra: VREF_RX=1,635 V y VTH_RX=2,102 V.</text>',
         ]
         s.append(self.svg_box(35, 110, 170, 245, "Pico TX", ["GP2 TX_A_LOGIC", "GP3 TX_B_LOGIC", "0..3,3 V", "GND comun"], "#EAF2FB", "#1D5F99"))
-        s.append(self.svg_box(260, 95, 365, 330, "TX bipolar - U1 TL082CP", ["U1A: diff amp", "LINE_A_PRE=1,5*(A-B)", "R1/R3=20k, R2/R4=30k", "U1B: diff amp complementario", "LINE_B_PRE=1,5*(B-A)", "Alim: +12V/-12V", "Sin capacitores de acople"], "#FFF2E2", "#B96B1B"))
+        s.append(self.svg_box(260, 95, 365, 330, "TX bipolar - U1 TL082CP", ["U1A: diff amp", "LINE_A_PRE=1,5*(A-B)", "Rin=22k, Rf=33k", "U1B: diff amp complementario", "LINE_B_PRE=1,5*(B-A)", "Alim: +12V/-12V", "Sin capacitores de acople"], "#FFF2E2", "#B96B1B"))
         s.append(self.svg_box(690, 130, 190, 230, "Salida TX", ["R9 39R serie A", "R10 39R serie B", "Zout diff ~=78R", "C opcional slew: DNP"], "#EAF5EF", "#2F7D5A"))
         s.append(self.svg_box(940, 130, 210, 230, "J2 linea", ["LINE_A", "LINE_B", "GND_REF/shield", "Cable STP 78R", "Sin terminacion RX"], "#F5F7FA", "#102A43"))
-        s.append(self.svg_box(1210, 95, 250, 330, "RX analogico - U2 TL082CP", ["U2A=0,3*(A-B)", "U2B=0,3*(B-A)", "Rin=100k, Rf=30k", "Zin por linea ~=56k", "Alim: +12V/-12V", "Salida analogica NO GPIO"], "#FFF2E2", "#B96B1B"))
-        s.append(self.svg_box(1210, 505, 250, 190, "Etapa final obligatoria", ["Schmitt/comparador/level-shift", "Salida 0..3,3 V", "Histeresis definida", "Proteccion GPIO"], "#FBEAEA", "#A43E3E"))
+        s.append(self.svg_box(1210, 95, 250, 330, "RX analogico - U2 TL082CP", ["U2A=VREF+0,101*(A-B)", "U2B=VREF+0,101*(B-A)", "Rin=99k, Rf=10k", "Zin diferencial ~=99k", "VREF_RX=1,635 V", "Alim: +12V/-12V"], "#FFF2E2", "#B96B1B"))
+        s.append(self.svg_box(1210, 505, 250, 190, "U3 MCP6562", ["VTH_RX=2,102 V", "R23 6,7k || R25 38k", "R24 10k", "Salida activa-alta 0..3,3 V"], "#FBEAEA", "#A43E3E"))
         s.append(self.svg_box(940, 530, 210, 155, "Pico RX", ["GP4 RX_A_LOGIC", "GP5 RX_B_LOGIC", "solo 0..3,3 V"], "#EAF2FB", "#1D5F99"))
 
         # Signal path
@@ -297,13 +297,13 @@ class Schematic:
         c.drawString(x, y - 6, "Esquematico funcional TL082CP")
         c.setFont(BODY_FONT, 7)
         c.setFillColor(RED)
-        c.drawString(x, y - 18, "TX completo; RX TL082 analogico requiere etapa final antes de GPIO.")
+        c.drawString(x, y - 18, "Revision E: valores adquiridos y umbrales RX recalculados.")
         box(35, 110, 170, 245, "Pico TX", ["GP2 TX_A_LOGIC", "GP3 TX_B_LOGIC", "0..3,3 V", "GND comun"], PALE_BLUE, BLUE)
-        box(260, 95, 365, 330, "TX bipolar - U1 TL082CP", ["U1A: diff amp", "LINE_A_PRE=1,5*(A-B)", "R1/R3=20k, R2/R4=30k", "U1B: diff amp complementario", "LINE_B_PRE=1,5*(B-A)", "Alim: +12V/-12V", "Sin capacitores de acople"], PALE_ORANGE, ORANGE)
+        box(260, 95, 365, 330, "TX bipolar - U1 TL082CP", ["U1A: diff amp", "LINE_A_PRE=1,5*(A-B)", "Rin=22k, Rf=33k", "U1B: diff amp complementario", "LINE_B_PRE=1,5*(B-A)", "Alim: +12V/-12V", "Sin capacitores de acople"], PALE_ORANGE, ORANGE)
         box(690, 130, 190, 230, "Salida TX", ["R9 39R serie A", "R10 39R serie B", "Zout diff ~=78R", "C slew opcional DNP"], PALE_GREEN, GREEN)
         box(940, 130, 210, 230, "J2 linea", ["LINE_A", "LINE_B", "GND_REF/shield", "Cable STP 78R", "Sin terminacion RX"], LIGHT, NAVY)
-        box(1210, 95, 250, 330, "RX analogico - U2 TL082CP", ["U2A=0,3*(A-B)", "U2B=0,3*(B-A)", "Rin=100k, Rf=30k", "Zin por linea ~=56k", "Alim: +12V/-12V", "Salida analogica NO GPIO"], PALE_ORANGE, ORANGE)
-        box(1210, 505, 250, 190, "Etapa final obligatoria", ["Schmitt/comparador/level-shift", "Salida 0..3,3 V", "Histeresis definida", "Proteccion GPIO"], PALE_RED, RED)
+        box(1210, 95, 250, 330, "RX analogico - U2 TL082CP", ["U2A=VREF+0,101*(A-B)", "U2B=VREF+0,101*(B-A)", "Rin=99k, Rf=10k", "Zin diferencial ~=99k", "VREF_RX=1,635 V", "Alim: +12V/-12V"], PALE_ORANGE, ORANGE)
+        box(1210, 505, 250, 190, "U3 MCP6562", ["VTH_RX=2,102 V", "R23 6,7k || R25 38k", "R24 10k", "Salida activa-alta 0..3,3 V"], PALE_RED, RED)
         box(940, 530, 210, 155, "Pico RX", ["GP4 RX_A_LOGIC", "GP5 RX_B_LOGIC", "solo 0..3,3 V"], PALE_BLUE, BLUE)
         box(260, 505, 365, 160, "Alimentacion y desacople", ["U1/U2: +12V/-12V/GND", "100nF por rail cerca de cada CI", "10uF por rail por bloque", "GND comun solo en banco"], LIGHT, MUTED)
         box(690, 505, 190, 160, "Mediciones", ["CH1=LINE_A", "CH2=LINE_B", "MATH=A-B", "+10/0/-10 V", "gap >=4 bits"], PALE_GREEN, GREEN)
@@ -350,19 +350,19 @@ def build_story() -> list:
     ]
     tx = [
         ["Bloque", "Valores", "Impedancia / nota"],
-        ["U1A", "R1=R3=20k, R2=R4=30k, G=1,5", "Zin inversora 20k; no inversora 50k"],
-        ["U1B", "R1=R3=20k, R2=R4=30k, G=1,5", "Complementa LINE_B = 1,5*(B-A)"],
+        ["U1A", "R1=R3=22k, R2=R4=33k, G=1,5", "Zin inversora 22k; no inversora 55k"],
+        ["U1B", "R5=R7=22k, R6=R8=33k, G=1,5", "Complementa LINE_B = 1,5*(B-A)"],
         ["Salida", "R9=39R, R10=39R", "Zout diferencial ~=78R"],
         ["Alimentacion", "+12V/-12V recomendado", "+/-9V minimo razonable; +/-6V marginal"],
         ["Capacitores", "100nF por rail + 10uF por bloque", "Desacople, no acople de senal"],
     ]
     rx = [
         ["Bloque", "Valores", "Impedancia / resultado"],
-        ["U2A", "Rin=100k, Rf=30k, G=0,3", "RX_A_ANALOG=0,3*(A-B)"],
-        ["U2B", "Rin=100k, Rf=30k, G=0,3", "RX_B_ANALOG=0,3*(B-A)"],
-        ["Entrada RX", "cada linea ve aprox. 100k || 130k", "Zin por linea ~=56,5k, mayor que 8k"],
-        ["Salida U2", "+3V / 0 / -3V segun polaridad", "No es GPIO seguro sin etapa final"],
-        ["Etapa final", "Schmitt/comparador/level-shift", "Obligatoria para 0..3,3V e histeresis"],
+        ["U2A", "Rin=99k, Rf=10k, G=0,10101", "RX_A=VREF+0,10101*(A-B)"],
+        ["U2B", "Rin=99k, Rf=10k, G=0,10101", "RX_B=VREF+0,10101*(B-A)"],
+        ["Entrada RX", "redes apareadas de 99k/10k", "Zin diferencial ~=99k, mayor que 8k"],
+        ["Referencias", "VREF=1,635V; VTH=2,102V", "Umbral centrado entre NULL max y activo min"],
+        ["Etapa final", "MCP6562 push-pull a 3,3V", "Salida activa-alta segura para GP4/GP5"],
     ]
     timing = [
         ["Caso", "Valor"],
@@ -377,21 +377,22 @@ def build_story() -> list:
         ["Ref", "Componente", "Cantidad", "Valor / tipo"],
         ["U1", "TL082CP", "1", "TX bipolar, doble op-amp"],
         ["U2", "TL082CP", "1", "RX analogico diferencial, doble op-amp"],
-        ["R1-R8", "Resistencias 1%", "8", "20k y 30k para U1A/U1B"],
+        ["R1-R8", "Resistencias 1%", "8", "22k y 33k para U1A/U1B"],
         ["R9-R10", "Resistencias serie", "2", "39R 1%"],
-        ["R11-R18", "Resistencias 1%", "8", "100k y 30k para U2A/U2B"],
+        ["R11-R18", "Resistencias 1%", "8", "99k y 10k para U2A/U2B"],
+        ["R21-R25", "Referencias RX", "5", "1k, 1k, 6,7k, 10k y 38k"],
         ["C1-C4", "Ceramicos", "4", "100nF, un capacitor por rail y por TL082"],
         ["C5-C8", "Electroliticos/ceramicos", "4", "10uF por rail y por bloque"],
         ["J1", "Header Pico TX/RX", "2", "GPIO y GND"],
         ["J2", "Bornera linea", "1", "LINE_A, LINE_B, GND_REF"],
         ["Cable", "Par trenzado blindado", "1", "78R caracteristico si se consigue"],
-        ["Etapa final RX", "Schmitt/comparador/level-shift", "2 canales", "Obligatoria si se conecta a GP4/GP5"],
+        ["U3", "MCP6562-E/P", "1", "Comparador dual push-pull a 3,3V"],
     ]
 
     story: list = [
         p("Front-end ARINC 429-like con TL082CP", "title"),
-        p("Revision electrica para usar TL082CP entre una Pico TX y una Pico RX, manteniendo el proyecto KiCad actual como referencia de base.", "subtitle"),
-        callout("Decision critica", "El TX con TL082CP es viable para banco. El RX con solo TL082CP no puede entregar una salida GPIO 0..3,3 V segura sin una etapa final no lineal: comparador, Schmitt trigger, level-shift o proteccion activa.", PALE_RED, RED),
+        p("Revision E con valores recalculados a partir de los componentes adquiridos y sincronizados con el esquematico KiCad.", "subtitle"),
+        callout("Decision RX", "El TL082 acondiciona la senal y el MCP6562 constituye la frontera segura hacia la Pico. VREF_RX nominal cargada es 1,635 V y VTH_RX es 2,102 V.", PALE_RED, RED),
         Spacer(1, 4 * mm),
         p("1. Objetivo ARINC-like", "h1"),
         simple_table(levels, [45 * mm, 45 * mm, 45 * mm, 45 * mm]),
@@ -417,7 +418,7 @@ Zout diferencial = 39R + 39R ~= 78R
             simple_table(tx, [38 * mm, 95 * mm, 115 * mm]),
             Spacer(1, 3 * mm),
             p("4. Etapa RX con TL082CP", "h1"),
-            p("La configuracion TL082-only se documenta como front-end analogico. No se marca como salida final directa a la Pico porque una de las dos salidas puede ser negativa segun la polaridad de la linea.", "body"),
+            p("U2 atenúa y desplaza A-B al dominio positivo. U3 compara cada canal con VTH_RX y entrega 0..3,3 V activa en alto. El umbral considera NULL hasta 2,5 V y activo desde 6,5 V.", "body"),
             simple_table(rx, [38 * mm, 95 * mm, 115 * mm]),
         ]
     )
@@ -425,12 +426,12 @@ Zout diferencial = 39R + 39R ~= 78R
     story.extend(
         [
             p("5. Masa, referencia e histeresis", "h1"),
-            p("Referenciar el detector a masa permite detectar signo alrededor de 0 V, pero deja al sistema sensible al ruido en NULL. Se puede agregar histeresis con realimentacion positiva, pero en TL082 alimentado a +/-12 V el umbral depende del swing de salida, que no es rail-to-rail. La solucion limpia es mover la decision digital a un comparador o Schmitt trigger alimentado a 3,3 V.", "body"),
+            p("R21/R22 de 1k generan VREF_RX=1,635 V cargada. R23=6,7k en paralelo con R25=38k, junto con R24=10k, generan VTH_RX=2,102 V. Con resistencias de 1 %, los margenes de esquina son 176,6 mV y 144,2 mV. El MCP6562 aporta la decision digital activa-alta y la salida push-pull a 3,3 V.", "body"),
             p("6. Slew rate y pulso util", "h1"),
             simple_table(timing, [70 * mm, 178 * mm]),
             Spacer(1, 3 * mm),
             p("7. Impedancias relevantes", "h1"),
-            p("La impedancia del cable objetivo es 78R. El transmisor se aproxima con 39R en cada rama. El receptor no se termina con 78R: su entrada queda en alta impedancia, aproximadamente 56,5k por linea en la etapa TL082 analogica. La Pico tiene entrada CMOS de alta impedancia, pero no debe usarse como proteccion electrica.", "body"),
+            p("La impedancia del cable objetivo es 78R. El transmisor se aproxima con 39R en cada rama. El receptor no se termina con 78R: su entrada diferencial queda cerca de 99k. La Pico recibe unicamente las salidas 0..3,3 V del MCP6562.", "body"),
             p("8. Lista de componentes", "h1"),
             simple_table(bom, [28 * mm, 78 * mm, 32 * mm, 110 * mm]),
         ]

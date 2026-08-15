@@ -479,16 +479,40 @@ componentes conseguibles:
 - `U2 TL082CP`:
   - front-end analogico RX de alta impedancia
   - reduce y sesga la senal recibida antes de la decision digital
+  - redes vigentes: `99 kohm / 10 kohm`
+  - ganancia: `10/99 = 0.101010`
+  - `Zin` diferencial aproximada: `99 kohm`
 - `U3 MCP6562-E/P`:
   - comparador dual push-pull
   - convierte la senal analogica RX a `RX_A_LOGIC` y `RX_B_LOGIC`
   - alimentacion: `+3.3 V / GND`
   - sus salidas son las unicas que deben entrar a los GPIO de la Pico RX
-- referencias corregidas de compra:
+- redes recalculadas con los componentes adquiridos:
+  - TX: `22 kohm / 33 kohm`, ganancia exacta `1.5`
   - `R21 = 1 kohm`
-  - `R22 = 1.02 kohm`
-  - `R23 = 6.8 kohm`
+  - `R22 = 1 kohm`
+  - `VREF_RX = 1.635 V` incluyendo la carga real
+  - `R23 = 6.7 kohm` en paralelo con `R25 = 38 kohm`
   - `R24 = 10 kohm`
+  - `VTH_RX = 2.102 V`
+  - margen nominal contra NULL maximo: `215 mV`
+  - margen nominal frente al activo minimo: `189 mV`
+  - peor caso con resistencias independientes de `1 %`: `176.6 mV` contra
+    falso activo y `144.2 mV` para activo minimo
+  - con `5 %`: apenas `19.8 mV` contra falso activo y `-31.9 mV` frente al
+    activo minimo; por eso se exige `1 %` o seleccion por medicion
+  - U3 queda orientado con senal sesgada en la entrada no inversora y
+    `VTH_RX` en la inversora, de modo que `RX_A_LOGIC/RX_B_LOGIC` son activas
+    en alto y conservan la polaridad esperada por la Pico
+- componentes ya disponibles:
+  - `TL082CP x2`
+  - resistencias y capacitores principales de las redes TX/RX/referencias
+  - bornera, pines y cableado
+- pendientes de compra o confirmacion:
+  - `MCP6562-E/P x1`
+  - `39 ohm x2` para R9/R10; `38 kohm` no es sustituto
+  - fuente bipolar regulada `+12 V / GND / -12 V`
+  - confirmar zocalos PDIP-8 y placa de montaje
 
 Archivos principales de esta etapa:
 
@@ -514,13 +538,15 @@ Restricciones tecnicas importantes:
 
 Proximo paso tecnico real:
 
-1. comprar o reunir componentes del BOM;
-2. montar primero en protoboard o placa experimental;
-3. validar con osciloscopio `LINE_A`, `LINE_B` y `MATH = LINE_A - LINE_B`;
-4. confirmar que `RX_A_LOGIC` y `RX_B_LOGIC` nunca salgan de `0..3.3 V`;
-5. probar a `100 kbps` y `12.5 kbps`;
-6. ajustar valores solo con evidencia de medicion;
-7. recien despues cerrar PCB de laboratorio.
+1. completar los componentes pendientes y medir las resistencias adquiridas;
+2. seleccionar redes apareadas equivalentes a tolerancia de `1 %` o mejor;
+3. montar primero en protoboard o placa experimental;
+4. verificar sin conectar la Pico RX: `VREF_RX`, `VTH_RX` y salidas de U2;
+5. validar con osciloscopio `LINE_A`, `LINE_B` y `MATH = LINE_A - LINE_B`;
+6. confirmar que `RX_A_LOGIC` y `RX_B_LOGIC` nunca salgan de `0..3.3 V`;
+7. probar a `100 kbps` y `12.5 kbps`;
+8. ajustar valores solo con evidencia de medicion;
+9. recien despues cerrar PCB de laboratorio.
 
 
 ## 12. Ramas que no deben tocarse

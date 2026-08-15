@@ -132,7 +132,7 @@ Magnitud & Objetivo & Uso en el cálculo \\
 \midrule
 Cable & Par trenzado blindado, $Z_0\approx\SI{78}{\ohm}$ & Adaptación de fuente \\
 Impedancia TX & $\SI{75}{\ohm}\pm\SI{5}{\ohm}$, repartida entre A y B & $R_9+R_{10}$ \\
-Impedancia RX & $Z_{in}\geq\SI{8}{\kilo\ohm}$ & Redes de \SI{100}{\kilo\ohm} \\
+Impedancia RX & $Z_{in}\geq\SI{8}{\kilo\ohm}$ & Redes de \SI{99}{\kilo\ohm} \\
 Niveles TX & $+\SI{10}{V}$, $0$ y $-\SI{10}{V}$ diferenciales & Ganancia TX $1{,}5$ \\
 100 kbps & $T_b=\SI{10}{\micro\second}$, media celda \SI{5}{\micro\second} & Verificación rápida \\
 12,5 kbps & $T_b=\SI{80}{\micro\second}$, media celda \SI{40}{\micro\second} & Verificación lenta \\
@@ -162,12 +162,12 @@ $\pm\SI{6}{V}$ quedaría demasiado cerca de los rieles. Por ello se adopta:
 
 \subsection{Ganancia diferencial: R1--R8}
 
-En U1A se usan $R_1=R_3=\SI{20}{\kilo\ohm}$ y
-$R_2=R_4=\SI{30}{\kilo\ohm}$. La razón de resistencias es
+En U1A se usan $R_1=R_3=\SI{22}{\kilo\ohm}$ y
+$R_2=R_4=\SI{33}{\kilo\ohm}$. La razón de resistencias es
 
 \[
   k=\frac{R_2}{R_1}=\frac{R_4}{R_3}
-   =\frac{\SI{30}{\kilo\ohm}}{\SI{20}{\kilo\ohm}}=1{,}5.
+   =\frac{\SI{33}{\kilo\ohm}}{\SI{22}{\kilo\ohm}}=1{,}5.
 \]
 
 Para un amplificador diferencial con razones apareadas:
@@ -192,7 +192,7 @@ Con lógica de \SI{3.3}{V}:
 
 Al invertir las entradas se obtiene $V_{AB}\approx-\SI{9.9}{V}$; cuando ambas
 entradas son iguales se obtiene el estado NULL, aproximadamente \SI{0}{V}
-diferencial. Así, la relación $30/20$ convierte los \SI{3.3}{V} lógicos en los
+diferencial. Así, la relación $33/22$ convierte los \SI{3.3}{V} lógicos en los
 tres estados buscados sin exigir que un GPIO entregue tensión negativa.
 
 Los cuatro pares $R_1/R_2$, $R_3/R_4$, $R_5/R_6$ y $R_7/R_8$ deben conservar
@@ -212,20 +212,20 @@ recomiendan resistencias de \SI{1}{\percent} como mínimo; una red apareada de
 
 \subsection{Carga vista por los GPIO}
 
-Cada GPIO alimenta un camino inversor de \SI{20}{\kilo\ohm} y un camino no
-inversor de aproximadamente $\SI{20}{\kilo\ohm}+\SI{30}{\kilo\ohm}$.
+Cada GPIO alimenta un camino inversor de \SI{22}{\kilo\ohm} y un camino no
+inversor de aproximadamente $\SI{22}{\kilo\ohm}+\SI{33}{\kilo\ohm}$.
 Una estimación conservadora es
 
 \[
- Z_{GPIO}\approx \SI{20}{\kilo\ohm}\parallel\SI{50}{\kilo\ohm}
- =\SI{14.29}{\kilo\ohm}.
+ Z_{GPIO}\approx \SI{22}{\kilo\ohm}\parallel\SI{55}{\kilo\ohm}
+ =\SI{15.71}{\kilo\ohm}.
 \]
 
 La corriente máxima aproximada suministrada por un GPIO alto es
 
 \[
- I_{GPIO}\approx\frac{\SI{3.3}{V}}{\SI{14.29}{\kilo\ohm}}
- =\SI{0.231}{\milli\ampere}.
+ I_{GPIO}\approx\frac{\SI{3.3}{V}}{\SI{15.71}{\kilo\ohm}}
+ =\SI{0.210}{\milli\ampere}.
 \]
 
 Esta corriente es pequeña y explica por qué se eligieron decenas de
@@ -265,11 +265,11 @@ $\Gamma_S=-0{,}0196$, es decir, cerca de \SI{2}{\percent} en magnitud.
 
 \subsection{Carga de uno y varios receptores}
 
-Con el RX diseñado, $Z_{in,diff}\approx\SI{100}{\kilo\ohm}$, de modo que
+Con el RX diseñado, $Z_{in,diff}\approx\SI{99}{\kilo\ohm}$, de modo que
 
 \[
  V_{RX}\approx\SI{9.9}{V}
- \frac{\SI{100}{\kilo\ohm}}{\SI{100}{\kilo\ohm}+\SI{78}{\ohm}}
+ \frac{\SI{99}{\kilo\ohm}}{\SI{99}{\kilo\ohm}+\SI{78}{\ohm}}
  =\SI{9.892}{V}.
 \]
 
@@ -290,11 +290,11 @@ banco. El medio objetivo es un par trenzado blindado de
 $Z_0\approx\SI{78}{\ohm}$.
 
 El receptor ARINC no termina la línea con \SI{78}{\ohm}; debe presentar al
-menos \SI{8}{\kilo\ohm}. Por eso, para el RX de \SI{100}{\kilo\ohm}:
+menos \SI{8}{\kilo\ohm}. Por eso, para el RX de \SI{99}{\kilo\ohm}:
 
 \[
  \Gamma_L=\frac{Z_L-Z_0}{Z_L+Z_0}
- =\frac{100000-78}{100000+78}=0{,}9984.
+ =\frac{99000-78}{99000+78}=0{,}9984.
 \]
 
 Esta reflexión positiva en el extremo de alta impedancia es esperable. La
@@ -312,41 +312,41 @@ campo la impedancia característica y el trazado del par pasan a ser críticos.
 
 \subsection{Atenuación y desplazamiento: R11--R18}
 
-El circuito vigente usa $R_{in}=\SI{100}{\kilo\ohm}$ y
+El circuito revisado usa $R_{in}=\SI{99}{\kilo\ohm}$ y
 $R_f=\SI{10}{\kilo\ohm}$, por lo que
 
 \[
- a=\frac{R_f}{R_{in}}=0{,}1.
+ a=\frac{R_f}{R_{in}}=\frac{10}{99}=0{,}101010.
 \]
 
 Con razones apareadas y referencia $V_{REF}$, las dos salidas son
 
 \begin{align*}
- V_{RXA\_BIASED} &= V_{REF}+0{,}1(V_A-V_B),\\
- V_{RXB\_BIASED} &= V_{REF}+0{,}1(V_B-V_A).
+ V_{RXA\_BIASED} &= V_{REF}+0{,}101010(V_A-V_B),\\
+ V_{RXB\_BIASED} &= V_{REF}+0{,}101010(V_B-V_A).
 \end{align*}
 
-La Sección~5.1 demuestra que el divisor vigente queda cargado por las dos redes
-de entrada y entrega $V_{REF}\approx\SI{1.5125}{V}$, no
-\SI{1.65}{V}. Con ese valor real y $V_{AB}=\pm\SI{9.9}{V}$:
+La Sección~5.1 demuestra que el divisor de \SI{1}{\kilo\ohm}/
+\SI{1}{\kilo\ohm}, cargado por las dos redes de entrada, entrega
+$V_{REF}=\SI{1.635}{V}$. Con ese valor y $V_{AB}=\pm\SI{9.9}{V}$:
 
 \begin{center}
 \begin{tabular}{@{}lcc@{}}
 \toprule
 Estado de línea & $V_{RXA\_BIASED}$ & $V_{RXB\_BIASED}$ \\
 \midrule
-$V_{AB}=+\SI{9.9}{V}$ & \SI{2.5025}{V} & \SI{0.5225}{V} \\
-$V_{AB}=\SI{0}{V}$ & \SI{1.5125}{V} & \SI{1.5125}{V} \\
-$V_{AB}=-\SI{9.9}{V}$ & \SI{0.5225}{V} & \SI{2.5025}{V} \\
+$V_{AB}=+\SI{9.9}{V}$ & \SI{2.635}{V} & \SI{0.635}{V} \\
+$V_{AB}=\SI{0}{V}$ & \SI{1.635}{V} & \SI{1.635}{V} \\
+$V_{AB}=-\SI{9.9}{V}$ & \SI{0.635}{V} & \SI{2.635}{V} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-La atenuación $0{,}1$ mantiene incluso $\pm\SI{13}{V}$ diferenciales dentro del
+La atenuación mantiene incluso $\pm\SI{13}{V}$ diferenciales dentro del
 dominio del comparador alimentado a \SI{3.3}{V}. En ese extremo:
 
 \[
- \SI{0.2125}{V}\leq V_{RX\_BIASED}\leq\SI{2.8125}{V}.
+ \SI{0.322}{V}\leq V_{RX\_BIASED}\leq\SI{2.948}{V}.
 \]
 
 \subsection{Impedancia de entrada del receptor}
@@ -355,26 +355,24 @@ La resistencia intrínseca de entrada del TL082 es del orden de
 $10^{12}\,\Omega$, por lo que la impedancia la fijan R11--R18. Para excitación
 diferencial balanceada, $V_A=+V_d/2$, $V_B=-V_d/2$ y la referencia es masa en
 pequeña señal. Sumando las corrientes de las dos ramas asociadas a un conductor
-se obtiene, para la red apareada $\SI{100}{\kilo\ohm}/\SI{10}{\kilo\ohm}$,
+se obtiene, para la red apareada $\SI{99}{\kilo\ohm}/\SI{10}{\kilo\ohm}$,
 
 \[
- I_A=\frac{V_d}{\SI{220}{\kilo\ohm}}
-     +\frac{V_d}{\SI{183.33}{\kilo\ohm}}
-     =\frac{V_d}{\SI{100}{\kilo\ohm}}.
+ I_A=\frac{V_d}{R_{in}},
 \]
 
-Por lo tanto:
+por lo que:
 
 \[
- Z_{in,diff}=\frac{V_d}{I_A}\approx\SI{100}{\kilo\ohm}.
+ Z_{in,diff}=\frac{V_d}{I_A}\approx\SI{99}{\kilo\ohm}.
 \]
 
-El valor supera por un factor de $12{,}5$ el mínimo de
+El valor supera por un factor de $12{,}375$ el mínimo de
 \SI{8}{\kilo\ohm}. En modo común, cada conductor encuentra dos caminos de
-aproximadamente \SI{110}{\kilo\ohm}, por lo que
-$Z_{in,CM}\approx\SI{110}{\kilo\ohm}\parallel\SI{110}{\kilo\ohm}
-=\SI{55}{\kilo\ohm}$.
-La elección de \SI{100}{\kilo\ohm} reduce la carga sobre la línea sin recurrir
+aproximadamente \SI{109}{\kilo\ohm}, por lo que
+$Z_{in,CM}\approx\SI{109}{\kilo\ohm}\parallel\SI{109}{\kilo\ohm}
+=\SI{54.5}{\kilo\ohm}$.
+La elección de \SI{99}{\kilo\ohm} reduce la carga sobre la línea sin recurrir
 a valores tan grandes que vuelvan dominantes las fugas y capacidades parásitas.
 
 \subsection{Impedancia de salida de U2}
@@ -386,108 +384,122 @@ una pista local corta, no se necesita adaptación a \SI{78}{\ohm} después de U2
 El requisito de línea se aplica en J2, no entre U2 y U3.
 
 U2 también se alimenta con $\pm\SI{12}{V}$. Aunque su salida útil está entre
-aproximadamente \SI{0.35}{V} y \SI{2.95}{V}, la fuente bipolar mantiene al
+aproximadamente \SI{0.322}{V} y \SI{2.948}{V}, la fuente bipolar mantiene al
 TL082 dentro de su rango de modo común y evita usarlo fuera de especificación.
 
 \section{Referencias y decisión digital}
 
-\subsection{VREF: R21, R22 y C10}
+\subsection{VREF\_RX: R21, R22 y C10}
 
-R21 y R22 valen \SI{10}{\kilo\ohm}. Si el divisor estuviera descargado,
-entregaría
+R21 y R22 valen \SI{1}{\kilo\ohm}. El divisor descargado entregaría
+\SI{1.65}{V}, pero R14 y R18 conectan VREF\_RX a LINE\_A y LINE\_B mediante
+dos caminos de $\SI{10}{\kilo\ohm}+\SI{99}{\kilo\ohm}$. Con modo común de
+línea aproximadamente nulo:
+
+\[
+ R_L=\SI{109}{\kilo\ohm}\parallel\SI{109}{\kilo\ohm}
+ =\SI{54.5}{\kilo\ohm}.
+\]
+
+La rama inferior efectiva y la referencia cargada son:
+
+\[
+ R_{B,eq}=\SI{1}{\kilo\ohm}\parallel\SI{54.5}{\kilo\ohm}
+ =\SI{981.98}{\ohm},
+\]
 
 \[
  V_{REF}=\SI{3.3}{V}
- \frac{\SI{10}{\kilo\ohm}}
- {\SI{10}{\kilo\ohm}+\SI{10}{\kilo\ohm}}
- =\SI{1.65}{V}.
+ \frac{\SI{981.98}{\ohm}}
+ {\SI{1}{\kilo\ohm}+\SI{981.98}{\ohm}}
+ =\SI{1.635}{V}.
 \]
 
-Sin embargo, R14 y R18 conectan VREF a LINE\_A y LINE\_B mediante un camino de
-$\SI{10}{\kilo\ohm}+\SI{100}{\kilo\ohm}$ cada uno. Con modo común de línea
-aproximadamente nulo, ambos caminos equivalen a una carga de
-$\SI{110}{\kilo\ohm}\parallel\SI{110}{\kilo\ohm}=\SI{55}{\kilo\ohm}$ hacia
-masa. El valor real se obtiene de
+El valor cargado se adopta explícitamente; no se continúa suponiendo una
+referencia ideal de \SI{1.65}{V}. La resistencia de Thévenin vista por C10 es
 
 \[
- R_{B,eq}=\SI{10}{\kilo\ohm}\parallel\SI{55}{\kilo\ohm}
- =\SI{8.462}{\kilo\ohm},
+ R_{TH,REF}=\SI{1}{\kilo\ohm}\parallel\SI{1}{\kilo\ohm}
+ \parallel\SI{54.5}{\kilo\ohm}=\SI{495.45}{\ohm}.
 \]
-
-\[
- V_{REF,cargado}=\SI{3.3}{V}
- \frac{\SI{8.462}{\kilo\ohm}}
- {\SI{10}{\kilo\ohm}+\SI{8.462}{\kilo\ohm}}
- =\SI{1.5125}{V}.
-\]
-
-La corriente de polarización del TL082 es despreciable frente a la corriente
-del divisor, pero la carga resistiva de R14/R18 no lo es. Ésta es una corrección
-necesaria respecto del cálculo ideal.
 
 Con C10=\SI{100}{\nano\farad}:
 
 \[
- R_{TH,cargado}=\SI{10}{\kilo\ohm}\parallel\SI{10}{\kilo\ohm}
- \parallel\SI{55}{\kilo\ohm}=\SI{4.583}{\kilo\ohm},
+ \tau_{REF}=\SI{49.55}{\micro\second},\qquad
+ f_{c,REF}=\frac{1}{2\pi R_{TH,REF}C}=\SI{3.21}{\kilo Hz}.
 \]
 
-\[
- \tau_{REF}=R_{TH,cargado}C=\SI{458}{\micro\second},\qquad
- f_c=\frac{1}{2\pi R_{TH,cargado}C}=\SI{347}{Hz}.
-\]
+El capacitor estabiliza la referencia y no está en serie con la señal ARINC.
 
-Este capacitor filtra la referencia; no está en serie con la señal ARINC y no
-deforma los bits.
+\subsection{VTH\_RX: R23, R25, R24 y C11}
 
-El par \SI{10}{\kilo\ohm}/\SI{10}{\kilo\ohm} funciona para los niveles
-nominales del banco, pero no queda justificado como referencia exacta de
-\SI{1.65}{V}. Antes del PCB se recomienda una de estas correcciones:
+El umbral debe separar dos ventanas de recepción, no sólo el NULL ideal:
 
 \begin{itemize}
-  \item referencia bufferizada de \SI{1.65}{V}; o
-  \item R21=\SI{1}{\kilo\ohm} y R22=\SI{1.02}{\kilo\ohm}, que con la carga de
-  \SI{55}{\kilo\ohm} entregan aproximadamente \SI{1.651}{V}; o
-  \item como cambio mínimo, mantener R21=\SI{10}{\kilo\ohm} y usar
-  R22=\SI{12.2}{\kilo\ohm}, que compensa la carga nominal y entrega
-  aproximadamente \SI{1.649}{V}.
+  \item hasta $+\SI{2.5}{V}$ diferenciales todavía puede existir NULL;
+  \item desde $+\SI{6.5}{V}$ diferenciales debe reconocerse un estado activo.
 \end{itemize}
 
-\subsection{VTH: R23, R24 y C11}
+Con $V_{REF}=\SI{1.635}{V}$ y $a=10/99$:
 
-Con R23=\SI{5.6}{\kilo\ohm} y R24=\SI{10}{\kilo\ohm}:
+\begin{align*}
+ V_{NULL,max}&=1{,}635+\frac{10}{99}(2{,}5)=\SI{1.8875}{V},\\
+ V_{activo,min}&=1{,}635+\frac{10}{99}(6{,}5)=\SI{2.2916}{V}.
+\end{align*}
+
+El punto medio ideal es aproximadamente \SI{2.0895}{V}. Con los valores
+adquiridos se usa R23=\SI{6.7}{\kilo\ohm} en paralelo con
+R25=\SI{38}{\kilo\ohm}:
+
+\[
+ R_T=R_{23}\parallel R_{25}=\SI{5.6957}{\kilo\ohm}.
+\]
+
+Con R24=\SI{10}{\kilo\ohm}:
 
 \[
  V_{TH}=\SI{3.3}{V}
  \frac{\SI{10}{\kilo\ohm}}
- {\SI{5.6}{\kilo\ohm}+\SI{10}{\kilo\ohm}}
- =\SI{2.115}{V}.
+ {\SI{5.6957}{\kilo\ohm}+\SI{10}{\kilo\ohm}}
+ =\SI{2.1025}{V}.
 \]
 
-Con el divisor vigente cargado, el nivel activo nominal es \SI{2.5025}{V} y
-NULL es \SI{1.5125}{V}. Los márgenes reales son:
+Los márgenes nominales frente a las ventanas completas son:
 
 \[
- M_{activo}=2{,}5025-2{,}1154=\SI{0.387}{V},\qquad
- M_{NULL}=2{,}1154-1{,}5125=\SI{0.603}{V}.
+ M_{NULL}=2{,}1025-1{,}8875=\SI{0.2150}{V},
+\qquad
+ M_{activo}=2{,}2916-2{,}1025=\SI{0.1891}{V}.
 \]
 
-El umbral queda desplazado hacia el nivel activo. Su resistencia de Thévenin es
-\SI{3.59}{\kilo\ohm}. Con C11=\SI{100}{\nano\farad} se obtiene
-$\tau=\SI{359}{\micro\second}$ y $f_c=\SI{443}{Hz}$.
+La resistencia de Thévenin y el filtro de C11 quedan:
 
-Para el mínimo nivel válido de recepción, $V_{AB}=\SI{6.5}{V}$, U2 sólo entrega
-\SI{2.1625}{V} en el canal activo y el margen actual baja a apenas
-\SI{47}{\milli\volt}. El valor de \SI{5.6}{\kilo\ohm} queda justificado sólo
-para el banco nominal de $\pm\SI{10}{V}$.
+\[
+ R_{TH,VTH}=\SI{5.6957}{\kilo\ohm}\parallel\SI{10}{\kilo\ohm}
+ =\SI{3.6288}{\kilo\ohm},
+\]
 
-Si primero se corrige VREF a \SI{1.65}{V}, un valor alternativo
-R23=\SI{6.8}{\kilo\ohm} produce $V_{TH}=\SI{1.964}{V}$, con unos
-\SI{314}{\milli\volt} respecto de NULL y \SI{336}{\milli\volt} respecto del
-activo mínimo. Si se conserva VREF cargado en \SI{1.5125}{V}, el umbral
-equilibrado sería aproximadamente \SI{1.838}{V}, que requiere
-R23$\approx\SI{7.96}{\kilo\ohm}$ con R24=\SI{10}{\kilo\ohm}. La solución más
-coherente es corregir VREF y luego adoptar R23=\SI{6.8}{\kilo\ohm}.
+\[
+ \tau_{VTH}=\SI{362.9}{\micro\second},\qquad
+ f_{c,VTH}=\SI{438.6}{Hz}.
+\]
+
+\subsection{Tolerancias y selección de resistencias}
+
+Con todas las resistencias independientes dentro de \SI{1}{\percent}, el
+análisis de extremos de la red completa conserva aproximadamente
+\SI{176.6}{\milli\volt} contra un falso activo desde NULL y
+\SI{144.2}{\milli\volt} para detectar el activo mínimo. Este cálculo incluye la
+variación de la referencia cargada, de las dos ramas de U2 y del divisor de
+umbral; no supone fuentes ideales independientes.
+
+Con tolerancias independientes de \SI{5}{\percent}, el peor caso teórico puede
+dejar sólo \SI{19.8}{\milli\volt} contra el falso activo y reducir el margen
+activo hasta aproximadamente $-\SI{31.9}{\milli\volt}$. Por eso deben usarse
+componentes de \SI{1}{\percent} o medirse las unidades compradas y
+seleccionarse grupos apareados. La disponibilidad de diez unidades por valor
+permite realizar esa selección antes del montaje.
 
 \subsection{U3 MCP6562 y C9}
 
@@ -497,10 +509,11 @@ interna y retardo máximo especificado de aproximadamente \SI{80}{ns} en las
 condiciones de ensayo. La salida nunca adopta los rieles $\pm\SI{12}{V}$ del
 TL082, por lo que constituye la frontera segura hacia los GPIO de la Pico RX.
 
-En el esquemático vigente, la señal sesgada entra en la entrada inversora y
-$V_{TH}$ en la no inversora. En consecuencia, la salida lógica es
-\textbf{activa en bajo}. Si el firmware necesitara lógica activa en alto, deben
-intercambiarse las entradas del comparador o invertir la interpretación por
+En el esquemático vigente, la señal sesgada entra en la entrada no inversora y
+$V_{TH}$ en la inversora. En consecuencia, la salida lógica es
+\textbf{activa en alto}: el MCP6562 entrega aproximadamente \SI{3.3}{V} cuando
+el conductor correspondiente supera el umbral. Esta orientación conserva la
+polaridad que ya espera la lógica A/B de la Pico RX y evita una inversión por
 software.
 
 C9=\SI{100}{\nano\farad} es el desacople local de U3. Debe ubicarse físicamente
@@ -565,11 +578,12 @@ El valor dominante es entonces el slew rate, y se espera un rise time sin
 conformado del orden de \SIrange{0.38}{0.62}{\micro\second}, sujeto a carga,
 capacitancias y dispersión real.
 
-Para U2, la ganancia de ruido es aproximadamente $1+0{,}1=1{,}1$:
+Para U2, la ganancia de ruido es aproximadamente
+$1+10/99=1{,}10101$:
 
 \[
- f_{CL,RX}\approx\SI{2.73}{MHz},\qquad
- t_{r,BW,RX}\approx\SI{0.128}{\micro\second}.
+ f_{CL,RX}\approx\SI{2.72}{MHz},\qquad
+ t_{r,BW,RX}\approx\SI{0.129}{\micro\second}.
 \]
 
 El comparador suma como máximo unos \SI{80}{ns} de propagación bajo las
@@ -616,7 +630,7 @@ salida con un capacitor grande sobre el cable, puede evaluarse una compensación
 apareada en la realimentación de U1.
 
 Si se coloca un capacitor C0G/NP0 en paralelo con cada resistencia de
-\SI{30}{\kilo\ohm} de la etapa TX (R2, R4, R6 y R8), manteniendo los cuatro
+\SI{33}{\kilo\ohm} de la etapa TX (R2, R4, R6 y R8), manteniendo los cuatro
 valores apareados, la constante dominante aproximada es
 
 \[
@@ -628,21 +642,21 @@ Para alta velocidad:
 \[
  C_{f,100k}\approx
  \frac{\SI{1.5}{\micro\second}}
- {2{,}2\cdot\SI{30}{\kilo\ohm}}
- =\SI{22.7}{pF}.
+ {2{,}2\cdot\SI{33}{\kilo\ohm}}
+ =\SI{20.7}{pF}.
 \]
 
-Se puede iniciar con \SI{22}{pF}, que da $t_r\approx\SI{1.45}{\micro\second}$.
+Se puede iniciar con \SI{22}{pF}, que da $t_r\approx\SI{1.60}{\micro\second}$.
 Para baja velocidad:
 
 \[
  C_{f,12k5}\approx
  \frac{\SI{10}{\micro\second}}
- {2{,}2\cdot\SI{30}{\kilo\ohm}}
- =\SI{151.5}{pF}.
+ {2{,}2\cdot\SI{33}{\kilo\ohm}}
+ =\SI{137.7}{pF}.
 \]
 
-Un valor de \SI{150}{pF} da $t_r\approx\SI{9.9}{\micro\second}$.
+Un valor de \SI{150}{pF} da $t_r\approx\SI{10.89}{\micro\second}$.
 
 No debe usarse un único valor para ambos modos si se pretende cumplir las dos
 ventanas de rise/fall. La solución práctica es una red conmutable
@@ -666,20 +680,20 @@ Referencia & Valor / dispositivo & Motivo principal \\
 \midrule
 \endhead
 U1 & TL082CP & Dos canales, entrada JFET, alimentación bipolar y slew suficiente para generar A/B. \\
-R1, R3, R5, R7 & \SI{20}{\kilo\ohm}, \SI{1}{\percent} & Fijan la entrada de la etapa TX y mantienen baja la corriente de GPIO. \\
-R2, R4, R6, R8 & \SI{30}{\kilo\ohm}, \SI{1}{\percent} & Con los anteriores fijan ganancia $1{,}5$ y simetría diferencial. \\
+R1, R3, R5, R7 & \SI{22}{\kilo\ohm}, \SI{1}{\percent} & Fijan la entrada de la etapa TX y mantienen baja la corriente de GPIO. \\
+R2, R4, R6, R8 & \SI{33}{\kilo\ohm}, \SI{1}{\percent} & Con los anteriores fijan ganancia $1{,}5$ y simetría diferencial. \\
 R9, R10 & \SI{39}{\ohm}, \SI{1}{\percent} & Suma diferencial de \SI{78}{\ohm}; adaptación de fuente a J2. \\
 C1, C3 & \SI{100}{\nano\farad} & Desacople HF de los rieles de U1. \\
 C2, C4 & \SI{10}{\micro\farad} & Reserva local de energía de U1. \\
 U2 & TL082CP & Atenuación diferencial de alta impedancia y sesgo al dominio positivo. \\
-R11, R13, R15, R17 & \SI{100}{\kilo\ohm}, \SI{1}{\percent} & Aseguran $Z_{in,diff}\approx\SI{100}{\kilo\ohm}$ y baja carga de línea. \\
-R12, R14, R16, R18 & \SI{10}{\kilo\ohm}, \SI{1}{\percent} & Con los anteriores fijan atenuación $0{,}1$ y conectan el sesgo a VREF. \\
+R11, R13, R15, R17 & \SI{99}{\kilo\ohm}, \SI{1}{\percent} & Aseguran $Z_{in,diff}\approx\SI{99}{\kilo\ohm}$ y baja carga de línea. \\
+R12, R14, R16, R18 & \SI{10}{\kilo\ohm}, \SI{1}{\percent} & Con los anteriores fijan atenuación $10/99$ y conectan el sesgo a VREF\_RX. \\
 C5, C7 & \SI{100}{\nano\farad} & Desacople HF de los rieles de U2. \\
 C6, C8 & \SI{10}{\micro\farad} & Reserva local de energía de U2. \\
-R21, R22 & \SI{10}{\kilo\ohm}/\SI{10}{\kilo\ohm}, \SI{1}{\percent} & Dan \SI{1.65}{V} sin carga, pero \SI{1.5125}{V} en el circuito. Corregir a \SI{1}{\kilo\ohm}/\SI{1.02}{\kilo\ohm}, buffer o compensación equivalente. \\
-C10 & \SI{100}{\nano\farad} & Filtra VREF; con la carga actual $f_c\approx\SI{347}{Hz}$. \\
-R23, R24 & \SI{5.6}{\kilo\ohm}/\SI{10}{\kilo\ohm}, \SI{1}{\percent} & Generan $V_{TH}=\SI{2.115}{V}$; válidos para el nivel nominal. Tras corregir VREF se recomienda R23=\SI{6.8}{\kilo\ohm}. \\
-C11 & \SI{100}{\nano\farad} & Filtra VTH; $f_c\approx\SI{443}{Hz}$. \\
+R21, R22 & \SI{1}{\kilo\ohm}/\SI{1}{\kilo\ohm}, \SI{1}{\percent} & Generan $V_{REF}=\SI{1.635}{V}$ al incluir la carga real de U2. \\
+C10 & \SI{100}{\nano\farad} & Filtra VREF\_RX; $f_c\approx\SI{3.21}{\kilo\hertz}$. \\
+R23, R25, R24 & \SI{6.7}{\kilo\ohm} $\parallel$ \SI{38}{\kilo\ohm}, y \SI{10}{\kilo\ohm}, \SI{1}{\percent} & Generan $V_{TH}=\SI{2.1025}{V}$ y centran la decisión entre NULL máximo y activo mínimo. \\
+C11 & \SI{100}{\nano\farad} & Filtra VTH\_RX; $f_c\approx\SI{438.6}{Hz}$. \\
 U3 & MCP6562 & Convierte la señal analógica en lógica push-pull de \SI{3.3}{V}; entrada rail-to-rail e histéresis interna. \\
 C9 & \SI{100}{\nano\farad} & Desacople local de U3. \\
 J1 & Conector Pico TX/fuentes & Lleva TX A/B, \SI{3.3}{V}, GND y $\pm\SI{12}{V}$. \\
@@ -691,23 +705,24 @@ J3 & Conector Pico RX & Entrega RX A/B lógicos, \SI{3.3}{V} y GND. \\
 \section{Conclusiones de ingeniería}
 
 \begin{enumerate}
-  \item La relación \SI{20}{\kilo\ohm}/\SI{30}{\kilo\ohm} produce
+  \item La relación \SI{22}{\kilo\ohm}/\SI{33}{\kilo\ohm} produce
   $\pm\SI{9.9}{V}$ diferenciales desde lógica de \SI{3.3}{V}, con carga de
-  GPIO de sólo \SI{0.231}{\milli\ampere} aproximadamente.
+  GPIO de sólo \SI{0.210}{\milli\ampere} aproximadamente.
 
   \item Las dos resistencias de \SI{39}{\ohm} fijan una impedancia diferencial
-  de fuente cercana a \SI{78}{\ohm}. El RX de \SI{100}{\kilo\ohm} supera
+  de fuente cercana a \SI{78}{\ohm}. El RX de \SI{99}{\kilo\ohm} supera
   holgadamente el mínimo de \SI{8}{\kilo\ohm} y no debe reemplazarse por una
   terminación de \SI{78}{\ohm}.
 
-  \item La red RX \SI{100}{\kilo\ohm}/\SI{10}{\kilo\ohm} atenúa a $0{,}1$.
-  El divisor actual, cargado por esa red, desplaza a \SI{1.5125}{V}; la señal
-  nominal permanece dentro del rango del MCP6562.
+  \item La red RX \SI{99}{\kilo\ohm}/\SI{10}{\kilo\ohm} atenúa a
+  $10/99=0{,}101010$. El divisor R21/R22 cargado entrega \SI{1.635}{V}; incluso
+  con $\pm\SI{13}{V}$ diferenciales la señal queda entre \SI{0.322}{V} y
+  \SI{2.948}{V}.
 
-  \item Antes de congelar el PCB debe endurecerse la referencia: bufferizar
-  \SI{1.65}{V} o reemplazar R21/R22 por \SI{1}{\kilo\ohm}/\SI{1.02}{\kilo\ohm},
-  y luego usar R23=\SI{6.8}{\kilo\ohm}. Así se recupera margen frente al mínimo
-  de recepción de \SI{6.5}{V}.
+  \item El umbral R23$\parallel$R25 sobre R24 vale \SI{2.1025}{V}. Deja
+  \SI{215}{\milli\volt} contra el NULL máximo y \SI{189}{\milli\volt} frente
+  al activo mínimo. Con componentes de \SI{1}{\percent} los márgenes peor caso
+  siguen siendo positivos; con \SI{5}{\percent} deben seleccionarse valores.
 
   \item El MCP6562 es la barrera que garantiza una salida lógica de
   \SI{3.3}{V}; las salidas de los TL082 alimentados a $\pm\SI{12}{V}$ no deben
@@ -734,9 +749,8 @@ J3 & Conector Pico RX & Entrega RX A/B lógicos, \SI{3.3}{V} y GND. \\
 \section{Esquemático de referencia}
 
 La figura reproduce el esquemático exacto sobre el cual se realizaron los
-cálculos. Las referencias y valores deben mantenerse sincronizados con esta
-memoria; las correcciones de VREF/VTH indicadas en el texto todavía no están
-incorporadas en esta revisión del circuito.
+cálculos. Las referencias y valores de la revisión E ya incorporan el
+recálculo de VREF\_RX y VTH\_RX con los componentes adquiridos.
 
 \begin{center}
   \includegraphics[width=\linewidth,height=0.70\textheight,keepaspectratio,

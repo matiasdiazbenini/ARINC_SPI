@@ -8,7 +8,20 @@
 
 #include "arinc429_logic.h"
 
-#if ARINC429_LOGIC_MODE
+#ifndef ARINC429_LOGIC_MODE
+#define ARINC429_LOGIC_MODE     0u
+#endif
+#ifndef ARINC429_FWD_GP2_GP0
+#define ARINC429_FWD_GP2_GP0    0u
+#endif
+
+#if ARINC429_FWD_GP2_GP0 && !ARINC429_LOGIC_MODE
+#error "ARINC429_FWD_GP2_GP0 requires ARINC429_LOGIC_MODE"
+#endif
+
+#if ARINC429_FWD_GP2_GP0
+#include "arinc429_logic_gp2_gp0.pio.h"
+#elif ARINC429_LOGIC_MODE
 #include "arinc429_logic.pio.h"
 #else
 #include "arinc_gpio_link.pio.h"
@@ -16,13 +29,19 @@
 
 /*
  * Master con dos enlaces simplex ARINC-like:
- * - canal directo GP2/GP3: master -> slave
+ * - canal directo GP2/GP3 (o GP2/GP0 en variante de laboratorio): master -> slave
  * - canal inverso GP4/GP5: slave -> master (ACK)
  *
  * Esto se acerca mas a la topologia real de ARINC 429: un canal por sentido,
  * en lugar de forzar ida y vuelta sobre el mismo par de pines.
  */
 #define ARINC_FWD_PIN_BASE      2u
+#define ARINC_FWD_PIN_A         2u
+#if ARINC429_FWD_GP2_GP0
+#define ARINC_FWD_PIN_B         0u
+#else
+#define ARINC_FWD_PIN_B         3u
+#endif
 #define ARINC_REV_PIN_BASE      4u
 #ifndef MASTER_BIT_RATE_HZ
 #define MASTER_BIT_RATE_HZ      100000u
@@ -85,10 +104,6 @@
 #ifndef MASTER_PROFILE_VARIANT
 #define MASTER_PROFILE_VARIANT  0u
 #endif
-#ifndef ARINC429_LOGIC_MODE
-#define ARINC429_LOGIC_MODE     0u
-#endif
-
 typedef struct {
     uint8_t label;
     uint8_t sdi;
@@ -282,6 +297,14 @@ static uint32_t word_time_us(uint32_t bit_rate_hz) {
 }
 
 static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, float bit_rate_hz) {
+#if ARINC429_FWD_GP2_GP0
+    (void)pin_base;
+    pio_gpio_init(pio, ARINC_FWD_PIN_A);
+    pio_gpio_init(pio, ARINC_FWD_PIN_B);
+
+    pio_sm_config c = arinc429_logic_gp2_gp0_tx_program_get_default_config(offset);
+    sm_config_set_set_pins(&c, 0u, 3u);
+#else
     pio_gpio_init(pio, pin_base + 0);
     pio_gpio_init(pio, pin_base + 1);
 
@@ -292,6 +315,7 @@ static void arinc_tx_program_init(PIO pio, uint sm, uint offset, uint pin_base, 
 #endif
 
     sm_config_set_set_pins(&c, pin_base, 2);
+#endif
     sm_config_set_out_shift(&c, true, false, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
 
@@ -310,7 +334,9 @@ static void arinc_rx_program_init(PIO pio, uint sm, uint offset, uint pin_base) 
     gpio_pull_down(pin_base + 0);
     gpio_pull_down(pin_base + 1);
 
-#if ARINC429_LOGIC_MODE
+#if ARINC429_FWD_GP2_GP0
+    pio_sm_config c = arinc429_logic_gp2_gp0_rx_program_get_default_config(offset);
+#elif ARINC429_LOGIC_MODE
     pio_sm_config c = arinc429_logic_rx_program_get_default_config(offset);
 #else
     pio_sm_config c = arinc_gpio_link_rx_program_get_default_config(offset);
@@ -329,8 +355,15 @@ static void start_tx_channel(PIO pio, uint sm_tx, uint pin_base) {
     pio_sm_set_enabled(pio, sm_tx, false);
     pio_sm_clear_fifos(pio, sm_tx);
     pio_sm_restart(pio, sm_tx);
+#if ARINC429_FWD_GP2_GP0
+    (void)pin_base;
+    const uint32_t pin_mask = (1u << ARINC_FWD_PIN_A) | (1u << ARINC_FWD_PIN_B);
+    pio_sm_set_pindirs_with_mask(pio, sm_tx, pin_mask, pin_mask);
+    pio_sm_set_pins_with_mask(pio, sm_tx, 0u, pin_mask);
+#else
     pio_sm_set_consecutive_pindirs(pio, sm_tx, pin_base, 2, true);
     pio_sm_set_pins_with_mask(pio, sm_tx, 0u, (1u << pin_base) | (1u << (pin_base + 1)));
+#endif
     pio_sm_set_enabled(pio, sm_tx, true);
 }
 
@@ -484,7 +517,9 @@ int main(void) {
     sleep_ms(STARTUP_DELAY_MS);
 
     printf("MASTER - ARINC-like con dos canales simplex\r\n");
-    printf("TX directo: GP2=FWD_A, GP3=FWD_B\r\n");
+    printf("TX directo: GP%u=FWD_A, GP%u=FWD_B\r\n",
+           ARINC_FWD_PIN_A,
+           ARINC_FWD_PIN_B);
     printf("RX reverso: GP4=REV_A, GP5=REV_B\r\n");
     const uint32_t active_bit_rate_hz = choose_active_bit_rate_hz();
     printf("Bit rate configurado: %u bps | autorate: %s | bit rate activo: %u bps\r\n",
@@ -514,7 +549,10 @@ int main(void) {
     PIO pio = pio0;
     const uint sm_fwd_tx = 0;
     const uint sm_rev_rx = 1;
-#if ARINC429_LOGIC_MODE
+#if ARINC429_FWD_GP2_GP0
+    const uint tx_offset = pio_add_program(pio, &arinc429_logic_gp2_gp0_tx_program);
+    const uint rx_offset = pio_add_program(pio, &arinc429_logic_gp2_gp0_rx_program);
+#elif ARINC429_LOGIC_MODE
     const uint tx_offset = pio_add_program(pio, &arinc429_logic_tx_program);
     const uint rx_offset = pio_add_program(pio, &arinc429_logic_rx_program);
 #else
@@ -715,8 +753,10 @@ int main(void) {
         wait_tx_drain(pio, sm_fwd_tx, active_bit_rate_hz);
 
 #if ENABLE_TX_BATCH_LOG
-        printf("[INFO] MASTER -> batch %lu enviado por GP2/GP3 | utiles=%lu | basura=%lu | esperando ACK en GP4/GP5\r\n",
+        printf("[INFO] MASTER -> batch %lu enviado por GP%u/GP%u | utiles=%lu | basura=%lu | esperando ACK en GP4/GP5\r\n",
                (unsigned long)batch_number,
+               ARINC_FWD_PIN_A,
+               ARINC_FWD_PIN_B,
                (unsigned long)valid_words_in_batch,
                (unsigned long)noise_words_in_batch);
 #endif
