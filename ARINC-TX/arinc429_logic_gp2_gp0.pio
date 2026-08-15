@@ -1,0 +1,76 @@
+.program arinc429_logic_gp2_gp0_tx
+
+.define public HALF_CYCLES 5
+.define public WORD_GAP_HALVES 8
+
+; Variante de laboratorio con salidas no consecutivas:
+; - FWD_A = GP2 (bit 2 del grupo GP0..GP2)
+; - FWD_B = GP0 (bit 0 del grupo GP0..GP2)
+; - GP1 no se inicializa como salida y permanece disponible.
+;
+; Conserva la misma cantidad de instrucciones y la misma temporizacion que
+; arinc429_logic_tx.
+
+.wrap_target
+word_start:
+    pull block
+    set y, 31
+
+bitloop:
+    out x, 1
+    jmp !x send_lo
+
+send_hi:
+    set pins, 1        [HALF_CYCLES - 1]
+    set pins, 0
+    jmp bit_done
+
+send_lo:
+    set pins, 4        [HALF_CYCLES - 1]
+    set pins, 0
+    nop
+
+bit_done:
+    jmp y-- bitloop
+
+gap_setup:
+    set x, 7
+
+gap_loop:
+    nop               [HALF_CYCLES - 2]
+    jmp x-- gap_loop
+.wrap
+
+
+.program arinc429_logic_gp2_gp0_rx
+
+; RX reverso sin cambios: sigue usando el par consecutivo GP4/GP5.
+
+.wrap_target
+word_start:
+    mov isr, null
+    set x, 31
+
+wait_active:
+    mov y, pins
+    jmp !y wait_active
+    jmp pin bit_hi
+
+bit_lo:
+    set y, 0
+    in y, 1
+    jmp wait_null
+
+bit_hi:
+    set y, 1
+    in y, 1
+
+wait_null:
+    mov y, pins
+    jmp !y bit_done
+    jmp wait_null
+
+bit_done:
+    jmp x-- wait_active
+    push block
+.wrap

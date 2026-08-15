@@ -20,6 +20,8 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
 - `exports/memoria_calculo_frontend_tl082.pdf`: memoria de calculo compilada.
 - `proteus/frontend_arinc429_proteus.pdsprj`: simulacion Proteus 8.15 del
   front-end TX/RX con TL082 y comparadores LM393.
+- `evidencia/20260814_banco_tl082/README.md`: resultado y capturas de la
+  validacion fisica del prototipo a `12,5 kbps` y `100 kbps`.
 
 ## Alcance
 
@@ -181,6 +183,19 @@ Pendientes o por confirmar:
 
 Las resistencias de `38 kohm` se usan como R25 en paralelo con R23 para ajustar
 el umbral; no reemplazan las resistencias de salida de `39 ohm`.
+
+## Checkpoint de validacion en banco
+
+La evidencia del 14 de agosto de 2026 confirma el funcionamiento de la cadena
+completa a `12,5 kbps`, desde la Pico TX y el front-end electrico hasta la
+recuperacion logica, el sniffer y la visualizacion. En la corrida observada no
+se registraron errores.
+
+El mismo montaje no resulto confiable a `100 kbps`: los TL082CP ensayados
+presentaron rampas de aproximadamente `8..12 us`, un tiempo comparable con el
+periodo de bit de `10 us`. A `12,5 kbps`, cuyo periodo es `80 us`, queda una
+meseta util suficiente. El detalle y las capturas originales se conservan en
+[evidencia/20260814_banco_tl082](evidencia/20260814_banco_tl082/README.md).
 
 ## Validacion minima
 
