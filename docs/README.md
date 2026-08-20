@@ -30,6 +30,8 @@ Indice rapido para retomar el trabajo y ubicar las fuentes mas importantes.
 
 ## Front-end electrico de laboratorio
 
+- [Avance validado con TL062 - 2026-08-20](avance_frontend_electrico_20260820.md)
+- [Capturas de osciloscopio TL062 - 2026-08-20](../ELECTRICO/frontend_arinc429_lab/evidencia/20-08/README.md)
 - [Proyecto KiCad y explicacion tecnica/simple](../ELECTRICO/frontend_arinc429_lab/README.md)
 - [Esquematico KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_lab.kicad_sch)
 - [PCB preliminar KiCad](../ELECTRICO/frontend_arinc429_lab/frontend_arinc429_lab.kicad_pcb)

@@ -32,7 +32,7 @@ Por lo tanto, no conviene pensar el problema como "subir una senal a 5 V e inver
 
 ```text
 Pico de prueba
-  GP2/GP3 TX logico 0..3,3 V
+  GP6/GP7 TX logico 0..3,3 V
         |
         v
 Front-end TX bipolar

@@ -2,6 +2,14 @@
 
 Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratorio.
 
+## Estado vigente
+
+La configuracion de banco vigente usa TL062 y fue validada el 20 de agosto de
+2026 a `12,5 kbps` y `100 kbps`. El TX recibe `FWD_A` por `GP6` y `FWD_B` por
+`GP7`. El detalle se encuentra en
+[avance_frontend_electrico_20260820.md](../../docs/avance_frontend_electrico_20260820.md)
+y las capturas originales en [evidencia/20-08](evidencia/20-08/README.md).
+
 ## Archivos
 
 - `frontend_arinc429_lab.kicad_pro`: proyecto KiCad.
@@ -22,6 +30,8 @@ Proyecto KiCad inicial para revisar el acondicionamiento electrico de laboratori
   front-end TX/RX con TL082 y comparadores LM393.
 - `evidencia/20260814_banco_tl082/README.md`: resultado y capturas de la
   validacion fisica del prototipo a `12,5 kbps` y `100 kbps`.
+- `evidencia/20-08/README.md`: validacion vigente con TL062 a `12,5 kbps` y
+  `100 kbps`.
 
 ## Alcance
 
@@ -30,8 +40,8 @@ PCB final ni un transceptor certificable para campo.
 
 ## Conexion funcional
 
-- `GP2`: TX_A_LOGIC.
-- `GP3`: TX_B_LOGIC.
+- `GP6`: TX_A_LOGIC / FWD_A.
+- `GP7`: TX_B_LOGIC / FWD_B.
 - `GP4`: RX_A_LOGIC.
 - `GP5`: RX_B_LOGIC.
 - `LINE_A/LINE_B`: par diferencial de banco.
@@ -43,8 +53,8 @@ PCB final ni un transceptor certificable para campo.
 
 | Net | Desde | Hasta | Funcion |
 | --- | --- | --- | --- |
-| `TX_A_LOGIC` | Pico `GP2` | entrada `U1A` | dato logico lado A antes de acondicionar |
-| `TX_B_LOGIC` | Pico `GP3` | entrada `U1A` | dato logico lado B antes de acondicionar |
+| `TX_A_LOGIC` | Pico `GP6` | entrada `U1A` | dato logico lado A antes de acondicionar |
+| `TX_B_LOGIC` | Pico `GP7` | entrada `U1A` | dato logico lado B antes de acondicionar |
 | `LINE_A` | salida `U1A` | `J2 pin 1` y entrada `A_SENSE` | conductor A bipolar |
 | `LINE_B` | salida `U1B` | `J2 pin 2` y entrada `B_SENSE` | conductor B bipolar |
 | `GND_REF` | `J2 pin 3` | `GND_COMUN` | referencia de banco para medicion |
@@ -115,7 +125,7 @@ esta pensada para banco:
 - `J1` como header simple hacia la Pico de prueba;
 - `J2` como bornera de linea `LINE_A`, `LINE_B`, `GND_REF`;
 - `J3` como bornera de alimentacion `+3V3`, `+6V`, `-6V`, `GND`;
-- `U1` en DIP8 para TL072/TL082 o equivalente de op-amp dual;
+- `U1` en DIP8 para TL062 o equivalente de op-amp dual;
 - `U2` en DIP8 para LM393N de banco o adaptador hacia MCP6562/LMV393 si luego se compran SMD;
 - resistencias y capacitores THT para facilitar cambios;
 - testpoints para `LINE_A`, `LINE_B`, `GND_COMUN` y `VTH_COMP`;
@@ -186,6 +196,14 @@ el umbral; no reemplazan las resistencias de salida de `39 ohm`.
 
 ## Checkpoint de validacion en banco
 
+La evidencia del 20 de agosto de 2026 confirma el funcionamiento correcto del
+front-end con TL062 a `12,5 kbps` y `100 kbps`. Se verificaron la salida
+diferencial, los tiempos de bit, el retorno a cero y la recuperacion logica. El
+detalle y las capturas originales se conservan en
+[evidencia/20-08](evidencia/20-08/README.md).
+
+### Antecedente de la revision anterior
+
 La evidencia del 14 de agosto de 2026 confirma el funcionamiento de la cadena
 completa a `12,5 kbps`, desde la Pico TX y el front-end electrico hasta la
 recuperacion logica, el sniffer y la visualizacion. En la corrida observada no
@@ -209,8 +227,8 @@ meseta util suficiente. El detalle y las capturas originales se conservan en
 El esquema representa un acondicionador electrico entre la logica de una
 Raspberry Pi Pico y una linea diferencial tipo ARINC 429 de laboratorio.
 
-La Pico entrega dos senales logicas: `TX_A_LOGIC` por `GP2` y `TX_B_LOGIC` por
-`GP3`. Esas senales entran al bloque `TX bipolar`. La primera etapa, `U1A`,
+La Pico entrega dos senales logicas: `TX_A_LOGIC` por `GP6` y `TX_B_LOGIC` por
+`GP7`. Esas senales entran al bloque `TX bipolar`. La primera etapa, `U1A`,
 esta planteada como un amplificador diferencial con ganancia 1,5:
 
 ```text
@@ -223,7 +241,7 @@ La segunda etapa, `U1B`, invierte `LINE_A`:
 LINE_B = -LINE_A
 ```
 
-De esa manera, cuando `GP2` esta alto y `GP3` bajo, la linea queda
+De esa manera, cuando `GP6` esta alto y `GP7` bajo, la linea queda
 aproximadamente `LINE_A=+5 V` y `LINE_B=-5 V`. Cuando se invierten los GPIO, la
 polaridad diferencial tambien se invierte. Cuando ambos GPIO estan en cero, el
 resultado esperado es `LINE_A=0 V` y `LINE_B=0 V`.
@@ -255,8 +273,8 @@ La Pico sola no puede sacar una senal ARINC real porque sus pines solo manejan
 
 Primero la Pico dice que quiere transmitir usando dos pines:
 
-- `GP2` representa el lado A.
-- `GP3` representa el lado B.
+- `GP6` representa el lado A.
+- `GP7` representa el lado B.
 
 Despues el bloque TX agranda esa senal y la convierte en una senal bipolar:
 

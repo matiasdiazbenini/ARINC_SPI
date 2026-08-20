@@ -5,15 +5,13 @@
 ARINC-TX genera palabras ARINC de laboratorio, las codifica como una senal
 bipolar con retorno a cero y las transmite por:
 
-- `GP2`: FWD_A.
-- `GP3`: FWD_B.
+- `GP6`: FWD_A.
+- `GP7`: FWD_B.
 
-En el modo operativo validado, `arinc_tx_arinc429_logic_stream`, transmite
+En el modo operativo validado, `arinc_tx_arinc429_logic_stream_gp6_gp7`, transmite
 rafagas aleatorias de 1 a 2000 palabras con pausas aleatorias de 0 a 25 ms a
-`100 kbps`. El target `arinc_tx_arinc429_logic_stream_12k5` fuerza `12.5 kbps`.
-El target `arinc_tx_arinc429_logic_stream_autorate` conserva el mismo flujo,
-pero elige al arrancar entre `100 kbps` y `12.5 kbps`. No espera ACK y no
-depende del canal REV.
+`100 kbps`. El target `arinc_tx_arinc429_logic_stream_12k5_gp6_gp7` fuerza
+`12.5 kbps`. No espera ACK y no depende del canal REV.
 
 ## 2. Diagrama general
 
@@ -52,7 +50,7 @@ flowchart LR
         RZ --> GAP["Gap entre palabras<br/>8 medias celdas NULL"]
     end
 
-    GAP --> PINS["GP2/GP3<br/>FWD_A/FWD_B"]
+    GAP --> PINS["GP6/GP7<br/>FWD_A/FWD_B"]
 ```
 
 ## 3. Construccion de la palabra
@@ -112,7 +110,7 @@ sequenceDiagram
     participant F as TX FIFO PIO
     participant O as OSR
     participant X as registro X
-    participant P as GP2/GP3
+    participant P as GP6/GP7
 
     C->>F: pio_sm_put_blocking(word)
     Note over C,F: Si el FIFO esta lleno, la CPU espera
@@ -144,16 +142,16 @@ Detalles:
 
 ## 6. Simbolos electricos logicos
 
-El valor escrito por `set pins` se interpreta como `GP3:GP2`:
+El valor escrito por `set pins` se interpreta como `GP7:GP6`:
 
-| Bit | Valor PIO | GP2 | GP3 | Simbolo | `GP3 - GP2` ideal |
+| Bit | Valor PIO | GP6 | GP7 | Simbolo | `GP7 - GP6` ideal |
 |---:|---:|---:|---:|---|---:|
 | 1 | `10` | 0 | 1 | HI | +3.3 V |
 | 0 | `01` | 1 | 0 | LO | -3.3 V |
 | reposo | `00` | 0 | 0 | NULL | 0 V |
 | invalido | `11` | 1 | 1 | INVALID | 0 V, no generado |
 
-Si el osciloscopio calcula `GP2 - GP3`, los signos positivo y negativo quedan
+Si el osciloscopio calcula `GP6 - GP7`, los signos positivo y negativo quedan
 invertidos. La codificacion no cambia; cambia el orden de la resta.
 
 Estos son niveles logicos de laboratorio. Una interfaz ARINC 429 de campo

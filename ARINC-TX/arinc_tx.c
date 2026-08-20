@@ -29,18 +29,30 @@
 
 /*
  * Master con dos enlaces simplex ARINC-like:
- * - canal directo GP2/GP3 (o GP2/GP0 en variante de laboratorio): master -> slave
+ * - canal directo configurable; el target vigente usa GP6/GP7: master -> slave
  * - canal inverso GP4/GP5: slave -> master (ACK)
  *
  * Esto se acerca mas a la topologia real de ARINC 429: un canal por sentido,
  * en lugar de forzar ida y vuelta sobre el mismo par de pines.
  */
+#ifndef ARINC_FWD_PIN_BASE
 #define ARINC_FWD_PIN_BASE      2u
+#endif
+#ifndef ARINC_FWD_PIN_A
 #define ARINC_FWD_PIN_A         2u
+#endif
+#ifndef ARINC_FWD_PIN_B
 #if ARINC429_FWD_GP2_GP0
 #define ARINC_FWD_PIN_B         0u
 #else
 #define ARINC_FWD_PIN_B         3u
+#endif
+#endif
+
+#if !ARINC429_FWD_GP2_GP0 && \
+    ((ARINC_FWD_PIN_A != ARINC_FWD_PIN_BASE) || \
+     (ARINC_FWD_PIN_B != (ARINC_FWD_PIN_BASE + 1u)))
+#error "The standard ARINC429 PIO program requires consecutive FWD pins"
 #endif
 #define ARINC_REV_PIN_BASE      4u
 #ifndef MASTER_BIT_RATE_HZ

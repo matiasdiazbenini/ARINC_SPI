@@ -48,6 +48,14 @@ add_executable(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0
     arinc_tx.c
 )
 
+add_executable(arinc_tx_arinc429_logic_stream_gp6_gp7
+    arinc_tx.c
+)
+
+add_executable(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7
+    arinc_tx.c
+)
+
 add_executable(arinc_tx_arinc429_logic_stream_autorate
     arinc_tx.c
 )
@@ -95,6 +103,14 @@ pico_generate_pio_header(arinc_tx_arinc429_logic_stream_gp2_gp0
 
 pico_generate_pio_header(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0
     ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic_gp2_gp0.pio
+)
+
+pico_generate_pio_header(arinc_tx_arinc429_logic_stream_gp6_gp7
+    ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic.pio
+)
+
+pico_generate_pio_header(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7
+    ${CMAKE_CURRENT_LIST_DIR}/arinc429_logic.pio
 )
 
 pico_generate_pio_header(arinc_tx_arinc429_logic_stream_autorate
@@ -153,6 +169,18 @@ target_link_libraries(arinc_tx_arinc429_logic_stream_gp2_gp0
 )
 
 target_link_libraries(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_link_libraries(arinc_tx_arinc429_logic_stream_gp6_gp7
+    pico_stdlib
+    hardware_pio
+    hardware_clocks
+)
+
+target_link_libraries(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7
     pico_stdlib
     hardware_pio
     hardware_clocks
@@ -261,6 +289,39 @@ target_compile_definitions(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0 PRIVATE
     MASTER_STREAM_MONITOR_REV=1
 )
 
+target_compile_definitions(arinc_tx_arinc429_logic_stream_gp6_gp7 PRIVATE
+    ARINC429_LOGIC_MODE=1
+    ARINC_FWD_PIN_BASE=6
+    ARINC_FWD_PIN_A=6
+    ARINC_FWD_PIN_B=7
+    MASTER_STREAM_MODE=1
+    MASTER_PROFILE_VARIANT=0
+    MASTER_ENABLE_TX_BATCH_LOG=0
+    MASTER_STREAM_MIN_BURST_WORDS=1
+    MASTER_STREAM_MAX_BURST_WORDS=2000
+    MASTER_STREAM_GAP_MIN_US=0
+    MASTER_STREAM_GAP_MAX_US=25000
+    MASTER_STREAM_LOG_EVERY=16
+    MASTER_STREAM_MONITOR_REV=1
+)
+
+target_compile_definitions(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7 PRIVATE
+    ARINC429_LOGIC_MODE=1
+    ARINC_FWD_PIN_BASE=6
+    ARINC_FWD_PIN_A=6
+    ARINC_FWD_PIN_B=7
+    MASTER_BIT_RATE_HZ=12500
+    MASTER_STREAM_MODE=1
+    MASTER_PROFILE_VARIANT=0
+    MASTER_ENABLE_TX_BATCH_LOG=0
+    MASTER_STREAM_MIN_BURST_WORDS=1
+    MASTER_STREAM_MAX_BURST_WORDS=2000
+    MASTER_STREAM_GAP_MIN_US=0
+    MASTER_STREAM_GAP_MAX_US=25000
+    MASTER_STREAM_LOG_EVERY=16
+    MASTER_STREAM_MONITOR_REV=1
+)
+
 target_compile_definitions(arinc_tx_arinc429_logic_stream_autorate PRIVATE
     ARINC429_LOGIC_MODE=1
     MASTER_STREAM_MODE=1
@@ -326,6 +387,10 @@ pico_enable_stdio_usb(arinc_tx_arinc429_logic_stream_gp2_gp0 1)
 pico_enable_stdio_uart(arinc_tx_arinc429_logic_stream_gp2_gp0 0)
 pico_enable_stdio_usb(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0 1)
 pico_enable_stdio_uart(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0 0)
+pico_enable_stdio_usb(arinc_tx_arinc429_logic_stream_gp6_gp7 1)
+pico_enable_stdio_uart(arinc_tx_arinc429_logic_stream_gp6_gp7 0)
+pico_enable_stdio_usb(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7 1)
+pico_enable_stdio_uart(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7 0)
 pico_enable_stdio_usb(arinc_tx_arinc429_logic_stream_autorate 1)
 pico_enable_stdio_uart(arinc_tx_arinc429_logic_stream_autorate 0)
 pico_enable_stdio_usb(arinc_tx_arinc429_logic_parity_test 1)
@@ -345,6 +410,8 @@ pico_add_extra_outputs(arinc_tx_arinc429_logic_stream)
 pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_12k5)
 pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_gp2_gp0)
 pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_12k5_gp2_gp0)
+pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_gp6_gp7)
+pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_12k5_gp6_gp7)
 pico_add_extra_outputs(arinc_tx_arinc429_logic_stream_autorate)
 pico_add_extra_outputs(arinc_tx_arinc429_logic_parity_test)
 pico_add_extra_outputs(arinc_tx_stress)

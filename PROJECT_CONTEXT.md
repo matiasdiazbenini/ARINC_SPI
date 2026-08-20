@@ -40,7 +40,7 @@ Recrear una arquitectura de comunicacion inspirada en ARINC 429 en un entorno de
 
 - `master <-> slave`
   - 2 enlaces simplex logicos:
-    - `FWD`: `GP2 / GP3`
+    - `FWD`: TX por `GP6 / GP7`
     - `REV`: `GP4 / GP5`
 - `sniffer <-> 3B+`
   - SPI
@@ -88,7 +88,8 @@ Se comprobo:
 - aceptacion estricta por paridad implementada en RX y SNIFFER
 - soporte implementado para prueba autorate `100 kbps` / `12.5 kbps`:
   - TX puede elegir velocidad al arrancar con `arinc_tx_arinc429_logic_stream_autorate`
-  - TX puede forzar `12.5 kbps` con `arinc_tx_arinc429_logic_stream_12k5`
+  - TX puede forzar `12.5 kbps` con
+    `arinc_tx_arinc429_logic_stream_12k5_gp6_gp7`
   - RX stream recibe por flancos/nivel activo y no requiere conocer la velocidad
   - SNIFFER detecta autonomamente la velocidad FWD y la exporta a bridge/metricas
   - validacion de `30 min` a `12.5 kbps`:
@@ -152,7 +153,8 @@ Se comprobo:
   - `100000 bps`
   - `12500 bps`
   - target TX: `arinc_tx_arinc429_logic_stream_autorate`
-  - target TX forzado a 12.5 kbps: `arinc_tx_arinc429_logic_stream_12k5`
+  - target TX forzado a 12.5 kbps:
+    `arinc_tx_arinc429_logic_stream_12k5_gp6_gp7`
 - bit time:
   - `10 us`
 - media celda activa:
@@ -455,68 +457,46 @@ Baseline final:
 
 ## 11. Estado actual del frente electrico
 
-La fase logica quedo cerrada como baseline validada. El trabajo actual paso al
-front-end electrico de laboratorio, con el objetivo de intercalar una etapa
-analogica entre dos Raspberry Pi Pico para convertir la senal logica `0..3.3 V`
-en una linea ARINC 429-like y luego recuperarla como logica segura para la Pico
-RX.
+El 20 de agosto de 2026 se valido en banco la cadena electrica basada en TL062
+a las dos velocidades de trabajo. Esta es la configuracion vigente que debe
+usarse en documentacion y nuevas pruebas:
 
-La propuesta vigente no usa aun un transceptor ARINC 429 certificado. Es una
-etapa de banco para validar niveles, impedancias, forma de onda y recepcion con
-componentes conseguibles:
+- Pico TX:
+  - `GP6 = FWD_A`
+  - `GP7 = FWD_B`
+- `U1 TL062`: genera `LINE_A` y `LINE_B` con alimentacion
+  `+12 V / GND / -12 V`.
+- salida nominal por conductor: `+5 V / 0 V / -5 V`;
+- salida diferencial nominal `LINE_A - LINE_B`: `+10 V / 0 V / -10 V`;
+- `R9/R10 = 39 ohm`: resistencia serie por rama y aproximadamente `78 ohm`
+  diferenciales de salida;
+- `U2 TL062`: front-end RX de alta impedancia con redes `100 kohm / 10 kohm`;
+- `VREF_RX`: aproximadamente `1.65 V`;
+- `LM393N`: decision digital con pull-up a `3.3 V` en cada salida;
+- fuente y masas: referencia comun entre ambas Pico, la fuente bipolar y la
+  Raspberry Pi 3B+.
 
-- `U1 TL082CP`:
-  - dos op-amps para generar `LINE_A` y `LINE_B`
-  - alimentacion recomendada: `+12 V / -12 V / GND`
-  - salida esperada por conductor: aproximadamente `+5 V / 0 V / -5 V`
-  - salida diferencial esperada `LINE_A - LINE_B`: `+10 V / 0 V / -10 V`
-- `R9/R10 = 39 ohm`:
-  - resistencia serie por rama
-  - `Zout` diferencial aproximada: `78 ohm`
-- `J2`:
-  - representa la linea ARINC 429-like de banco
-  - pines: `LINE_A`, `LINE_B`, `GND_REF`
-- `U2 TL082CP`:
-  - front-end analogico RX de alta impedancia
-  - reduce y sesga la senal recibida antes de la decision digital
-  - redes vigentes: `99 kohm / 10 kohm`
-  - ganancia: `10/99 = 0.101010`
-  - `Zin` diferencial aproximada: `99 kohm`
-- `U3 MCP6562-E/P`:
-  - comparador dual push-pull
-  - convierte la senal analogica RX a `RX_A_LOGIC` y `RX_B_LOGIC`
-  - alimentacion: `+3.3 V / GND`
-  - sus salidas son las unicas que deben entrar a los GPIO de la Pico RX
-- redes recalculadas con los componentes adquiridos:
-  - TX: `22 kohm / 33 kohm`, ganancia exacta `1.5`
-  - `R21 = 1 kohm`
-  - `R22 = 1 kohm`
-  - `VREF_RX = 1.635 V` incluyendo la carga real
-  - `R23 = 6.7 kohm` en paralelo con `R25 = 38 kohm`
-  - `R24 = 10 kohm`
-  - `VTH_RX = 2.102 V`
-  - margen nominal contra NULL maximo: `215 mV`
-  - margen nominal frente al activo minimo: `189 mV`
-  - peor caso con resistencias independientes de `1 %`: `176.6 mV` contra
-    falso activo y `144.2 mV` para activo minimo
-  - con `5 %`: apenas `19.8 mV` contra falso activo y `-31.9 mV` frente al
-    activo minimo; por eso se exige `1 %` o seleccion por medicion
-  - U3 queda orientado con senal sesgada en la entrada no inversora y
-    `VTH_RX` en la inversora, de modo que `RX_A_LOGIC/RX_B_LOGIC` son activas
-    en alto y conservan la polaridad esperada por la Pico
-- componentes ya disponibles:
-  - `TL082CP x2`
-  - resistencias y capacitores principales de las redes TX/RX/referencias
-  - bornera, pines y cableado
-- pendientes de compra o confirmacion:
-  - `MCP6562-E/P x1`
-  - `39 ohm x2` para R9/R10; `38 kohm` no es sustituto
-  - fuente bipolar regulada `+12 V / GND / -12 V`
-  - confirmar zocalos PDIP-8 y placa de montaje
+Resultados del ensayo:
+
+| Velocidad | Tiempo de bit | Media celda activa | Resultado |
+| --- | ---: | ---: | --- |
+| `12.5 kbps` | `80 us` | `40 us` | funcionamiento correcto |
+| `100 kbps` | `10 us` | `5 us` | funcionamiento correcto |
+
+Se observaron los tres estados diferenciales, la forma de palabra completa y
+la recuperacion logica. Las capturas originales estan en
+[`ELECTRICO/frontend_arinc429_lab/evidencia/20-08`](ELECTRICO/frontend_arinc429_lab/evidencia/20-08/README.md).
+
+Firmware TX validado:
+
+- `100 kbps`: `arinc_tx_arinc429_logic_stream_gp6_gp7.uf2`;
+- `12.5 kbps`: `arinc_tx_arinc429_logic_stream_12k5_gp6_gp7.uf2`.
 
 Archivos principales de esta etapa:
 
 - [README electrico](ELECTRICO/frontend_arinc429_lab/README.md)
+- [avance de banco TL062 2026-08-20](docs/avance_frontend_electrico_20260820.md)
+- [evidencia de osciloscopio TL062](ELECTRICO/frontend_arinc429_lab/evidencia/20-08/README.md)
 - [revision TL082CP](ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_rework.md)
 - [esquematico KiCad TL082CP](ELECTRICO/frontend_arinc429_lab/frontend_arinc429_tl082_circuit.kicad_sch)
 - [PDF esquematico TL082CP](ELECTRICO/frontend_arinc429_lab/exports/frontend_arinc429_tl082_circuit.pdf)
@@ -526,8 +506,8 @@ Archivos principales de esta etapa:
 
 Restricciones tecnicas importantes:
 
-- La salida de un TL082CP alimentado en bipolar no debe conectarse directo a un
-  GPIO de Raspberry Pi Pico.
+- La salida analogica alimentada en bipolar no debe conectarse directo a un GPIO
+  de Raspberry Pi Pico.
 - Los capacitores de desacople deben ir fisicamente cerca de los pines de
   alimentacion de cada integrado.
 - No usar capacitores de acople en serie sobre la linea ARINC-like, porque se
@@ -536,17 +516,9 @@ Restricciones tecnicas importantes:
   debe revisar DRC/ERC, footprints reales, ruteo, distancias, disponibilidad de
   componentes y comportamiento con osciloscopio.
 
-Proximo paso tecnico real:
-
-1. completar los componentes pendientes y medir las resistencias adquiridas;
-2. seleccionar redes apareadas equivalentes a tolerancia de `1 %` o mejor;
-3. montar primero en protoboard o placa experimental;
-4. verificar sin conectar la Pico RX: `VREF_RX`, `VTH_RX` y salidas de U2;
-5. validar con osciloscopio `LINE_A`, `LINE_B` y `MATH = LINE_A - LINE_B`;
-6. confirmar que `RX_A_LOGIC` y `RX_B_LOGIC` nunca salgan de `0..3.3 V`;
-7. probar a `100 kbps` y `12.5 kbps`;
-8. ajustar valores solo con evidencia de medicion;
-9. recien despues cerrar PCB de laboratorio.
+Proximo paso tecnico real: trasladar la configuracion validada a un PCB de
+laboratorio, revisar footprints y ruteo, ejecutar ERC/DRC y repetir la prueba a
+ambas velocidades sobre la placa fabricada.
 
 
 ## 12. Ramas que no deben tocarse

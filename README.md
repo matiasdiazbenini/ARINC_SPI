@@ -92,7 +92,7 @@ Quedo validado:
 ## Topologia actual recomendada
 
 - Pico transmisor:
-  - genera `FWD` por `GP2/GP3`
+  - genera `FWD_A` por `GP6` y `FWD_B` por `GP7`
 - Pico receptor:
   - recibe `FWD`
   - responde `ACK` por `GP4/GP5`

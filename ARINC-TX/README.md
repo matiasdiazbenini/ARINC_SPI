@@ -13,11 +13,13 @@ Firmware del nodo transmisor de la fase `arinc429_logic`.
 
 ## Cableado logico
 
-- `GP2 / GP3`
-  - transmision `FWD`
+- `GP6`: transmision `FWD_A`
+- `GP7`: transmision `FWD_B`
 - `GP4 / GP5`
   - recepcion `REV`
 - masa comun
+
+Para el banco actual se deben usar los targets terminados en `gp6_gp7`.
 
 ## Estado dentro del repo
 
@@ -33,29 +35,17 @@ como referencia de esta etapa del proyecto.
 
 ## Targets principales
 
-- `arinc_tx_arinc429_logic`
-  - modo laboratorio validado
-  - transmite batches de `1000` palabras y espera ACK por `REV`
-- `arinc_tx_arinc429_logic_stream`
-  - modo post tutor para prueba de flujo
-  - transmite rafagas de longitud variable
-  - no bloquea esperando ACK
-  - mantiene la codificacion `arinc429_logic` a `100 kbps`
-- `arinc_tx_arinc429_logic_stream_12k5`
-  - mismo modo stream, forzado a `12.5 kbps`
-  - util para validar la velocidad baja sin depender del azar del autorate
-- `arinc_tx_arinc429_logic_stream_gp2_gp0`
-  - variante de laboratorio a `100 kbps` con `GP2=FWD_A` y `GP0=FWD_B`
-  - deja `GP1` sin manejar y conserva intactos los targets con `GP2/GP3`
-- `arinc_tx_arinc429_logic_stream_12k5_gp2_gp0`
-  - misma variante de pines, forzada a `12.5 kbps`
-- `arinc_tx_arinc429_logic_stream_autorate`
-  - igual al modo stream validado, pero elige al arrancar entre `100 kbps`
-    y `12.5 kbps`
-  - sirve para probar que RX y SNIFFER sigan el canal sin recibir la velocidad
-    por configuracion externa
-- `arinc_tx_arinc429_logic_parity_test`
-  - usa el mismo modo stream
-  - invierte la paridad de una palabra cada `100`
-  - sirve solamente para validar rechazo estricto en RX y SNIFFER
-  - no debe usarse en la corrida larga normal
+- `arinc_tx_arinc429_logic_stream_gp6_gp7`
+  - firmware vigente a `100 kbps`
+  - usa `GP6=FWD_A` y `GP7=FWD_B`
+- `arinc_tx_arinc429_logic_stream_12k5_gp6_gp7`
+  - firmware vigente a `12.5 kbps`
+  - usa `GP6=FWD_A` y `GP7=FWD_B`
+
+UF2 para cargar en la Pico TX:
+
+- `build/arinc_tx_arinc429_logic_stream_gp6_gp7.uf2`: `100 kbps`.
+- `build/arinc_tx_arinc429_logic_stream_12k5_gp6_gp7.uf2`: `12.5 kbps`.
+
+Ambas variantes fueron verificadas en banco el 20 de agosto de 2026 con el
+front-end analogico basado en TL062.
