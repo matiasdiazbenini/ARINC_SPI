@@ -1,0 +1,140 @@
+.program mil1553_rx
+
+; ============================================================
+; Detector inicial de sincronismo CMD/STATUS MIL-STD-1553
+;
+; Reloj PIO: 8 MHz
+; 1 ciclo = 125 ns
+;
+; CMD/STATUS observado sobre P:
+;
+;     HIGH durante 1.5 us
+;     LOW  durante 1.5 us
+;
+; Comprobaciones:
+;     t = 1.25 us -> P debe ser HIGH
+;     t = 1.75 us -> P debe ser LOW
+;     t = 2.75 us -> P debe seguir LOW
+;
+; Cuando el patrón es válido:
+;     PUSH 1 a la RX FIFO
+;
+; Esta es solamente una primera etapa de prueba.
+; Todavía no decodifica Manchester ni recibe los 16 bits.
+; ============================================================
+
+
+.wrap_target
+
+wait_start:
+
+    ; --------------------------------------------------------
+    ; Esperar comienzo de actividad compatible con CMD/STATUS
+    ;
+    ; pin 0 es relativo al IN base, que configuraremos en GP2/P.
+    ; --------------------------------------------------------
+
+    wait 1 pin 0
+
+
+    ; --------------------------------------------------------
+    ; Primera comprobación
+    ;
+    ; Esperamos 10 ciclos:
+    ;
+    ; 10 * 125 ns = 1.25 us
+    ;
+    ; P todavía debe estar HIGH.
+    ; --------------------------------------------------------
+
+    nop [9]
+
+    jmp pin high_ok
+
+    ; Si P ya volvió a LOW, el pulso fue demasiado corto.
+    jmp false_sync
+
+
+high_ok:
+
+    ; --------------------------------------------------------
+    ; Segunda comprobación
+    ;
+    ; El JMP anterior consume 1 ciclo.
+    ; Esperamos otros 3 ciclos.
+    ;
+    ; La siguiente comprobación ocurre aproximadamente
+    ; 14 ciclos después del comienzo:
+    ;
+    ; 14 * 125 ns = 1.75 us
+    ;
+    ; Para este instante P ya debe ser LOW.
+    ; --------------------------------------------------------
+
+    nop [2]
+
+    ; Si continúa HIGH, no es un CMD/STATUS sync válido.
+    jmp pin false_sync
+
+
+    ; --------------------------------------------------------
+    ; Tercera comprobación
+    ;
+    ; Queremos comprobar nuevamente cerca de:
+    ;
+    ; 22 ciclos * 125 ns = 2.75 us
+    ;
+    ; P debe continuar LOW.
+    ; --------------------------------------------------------
+
+    nop [6]
+
+    ; HIGH en este instante -> patrón incorrecto.
+    jmp pin false_sync
+
+
+    ; --------------------------------------------------------
+    ; Sincronismo CMD/STATUS detectado
+    ;
+    ; Entregamos:
+    ;
+    ;     RX FIFO = 1
+    ;
+    ; El Cortex solamente leerá el evento.
+    ; No realiza ninguna medición temporal.
+    ; --------------------------------------------------------
+
+    set x, 1
+    mov isr, x
+    push block
+
+
+    ; --------------------------------------------------------
+    ; Tiempo muerto TEMPORAL para esta prueba.
+    ;
+    ; Evitamos que los bits Manchester de la misma palabra
+    ; sean interpretados como posibles nuevos sincronismos.
+    ;
+    ; 5 * 32 ciclos = 160 ciclos
+    ; 160 * 125 ns = 20 us
+    ;
+    ; Esto desaparecerá cuando implementemos el RX completo.
+    ; --------------------------------------------------------
+
+    nop [31]
+    nop [31]
+    nop [31]
+    nop [31]
+    nop [31]
+
+    jmp wait_start
+
+
+false_sync:
+
+    ; El patrón observado no corresponde a un sincronismo
+    ; CMD/STATUS. Volvemos a buscar un nuevo candidato.
+
+    jmp wait_start
+
+.wrap

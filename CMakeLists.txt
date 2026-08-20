@@ -28,12 +28,16 @@ pico_sdk_init()
 add_executable(slave_spi
     main.c
     bus/bus.c
+    bus/mil1553_rx.c
 )
 
 pico_generate_pio_header(slave_spi
     ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
 )
-
+pico_generate_pio_header(
+    slave_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/mil1553_rx.pio
+)
 pico_generate_pio_header(slave_spi
     ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
 )

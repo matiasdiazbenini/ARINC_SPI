@@ -2,34 +2,41 @@
 #include <stdint.h>
 
 #include "pico/stdlib.h"
-#include "bus/bus.h"
 
-#define MY_RT_ADDR 3u
+#include "bus/mil1553_rx.h"
+
 
 int main(void)
 {
     stdio_init_all();
-    sleep_ms(1200);
 
-    bus_init();
-    bus_set_rx_mode();
+    sleep_ms(1500);
 
-    printf("MIL1553 REAL RX TEST\n");
+    printf("MIL-STD-1553 PIO RX TEST\n");
 
-    while (true) {
+    mil1553_rx_init();
 
-        uint16_t cmd = 0;
+    printf("RX PIO iniciado\n");
 
-        if (bus_read_command_word_parity_pio(&cmd)) {
+    while (true)
+    {
+        if (mil1553_rx_available())
+        {
+            uint32_t event = mil1553_rx_get();
 
-            printf(
-                "CMD=0x%04X|RT=%u|TR=%u|SUB=%u|WC=%u\n",
-                cmd,
-                BUS_1553_CMD_RT(cmd),
-                BUS_1553_CMD_TR(cmd),
-                BUS_1553_CMD_SUB(cmd),
-                BUS_1553_CMD_WC(cmd)
-            );
+            if (event == 1u)
+            {
+                printf("SYNC CMD/STATUS detectado\n");
+            }
+            else
+            {
+                printf(
+                    "Evento RX desconocido: 0x%08lX\n",
+                    (unsigned long)event
+                );
+            }
         }
+
+        tight_loop_contents();
     }
 }
