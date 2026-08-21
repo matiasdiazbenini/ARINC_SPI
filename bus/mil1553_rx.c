@@ -290,27 +290,21 @@ uint32_t mil1553_rx_get(void)
                 rx_sm_cmd
             );
 
-
-        uint16_t word =
-            (uint16_t)(
-                raw & MIL1553_RX_WORD_MASK
-            );
-
+        uint32_t payload =
+            raw & MIL1553_RX_PAYLOAD_MASK;
 
         return
-            MIL1553_RX_TYPE_CMD_STATUS
-            |
-            (uint32_t)word;
+            MIL1553_RX_TYPE_CMD_STATUS |
+            payload;
     }
-
 
     // --------------------------------------------------------
     // DATA WORD
     // --------------------------------------------------------
 
     if (!pio_sm_is_rx_fifo_empty(
-            rx_pio,
-            rx_sm_data))
+        rx_pio,
+        rx_sm_data))
     {
         uint32_t raw =
             pio_sm_get(
@@ -318,21 +312,12 @@ uint32_t mil1553_rx_get(void)
                 rx_sm_data
             );
 
-
-        /*
-         * La inversión de polaridad ya fue hecha
-         * dentro del PIO.
-         */
-        uint16_t word =
-            (uint16_t)(
-                raw & MIL1553_RX_WORD_MASK
-            );
-
+        uint32_t payload =
+            raw & MIL1553_RX_PAYLOAD_MASK;
 
         return
-            MIL1553_RX_TYPE_DATA
-            |
-            (uint32_t)word;
+            MIL1553_RX_TYPE_DATA |
+            payload;
     }
 
 

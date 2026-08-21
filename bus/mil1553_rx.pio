@@ -24,7 +24,9 @@ wait_start:
     mov isr, null
 
     ; 16 bits: X = 15 ... 0
-    set x, 15
+    ; 16 bits de información + 1 bit de paridad
+    ; X=16 -> 17 iteraciones
+    set x, 16
 
     wait 0 pin 0
     wait 1 pin 0

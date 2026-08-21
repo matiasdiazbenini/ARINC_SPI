@@ -6,24 +6,33 @@
 
 
 /*
- * Descriptor temporal para esta etapa:
+ * Evento entregado al Cortex:
  *
- * bits 17..16:
+ * bits 19..18:
  *
  *      01 -> CMD / STATUS
- *      10 -> DATA WORD
+ *      10 -> DATA
  *
- * bits 15..0:
+ * bits 16..1:
  *
- *      palabra recibida
+ *      palabra de 16 bits
+ *
+ * bit 0:
+ *
+ *      paridad recibida
  */
 
-#define MIL1553_RX_TYPE_MASK          0x00030000u
+#define MIL1553_RX_TYPE_MASK          0x000C0000u
 
-#define MIL1553_RX_TYPE_CMD_STATUS    0x00010000u
-#define MIL1553_RX_TYPE_DATA          0x00020000u
+#define MIL1553_RX_TYPE_CMD_STATUS    0x00040000u
+#define MIL1553_RX_TYPE_DATA          0x00080000u
 
+#define MIL1553_RX_PAYLOAD_MASK       0x0001FFFFu
+
+#define MIL1553_RX_WORD_SHIFT         1u
 #define MIL1553_RX_WORD_MASK          0x0000FFFFu
+
+#define MIL1553_RX_PARITY_MASK        0x00000001u
 
 
 void mil1553_rx_init(void);
