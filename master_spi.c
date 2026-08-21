@@ -42,19 +42,38 @@ int main(void)
     printf("CMD=0x%04X\n", cmd);
 
 
-    while (true) {
+   const uint16_t data_test = 0xA5A5;
 
+    while (true)
+    {
+        // 1) Command / Status sync
         mil1553_tx_send_word(
             BUS_1553_SYNC_CMD_STATUS,
-            cmd);
+            cmd
+        );
 
-        //mil1553_tx_release_bus();
+        printf("TX CMD  = 0x%04X\n", cmd);
 
-        printf("TX CMD=0x%04X\n", cmd);
         /*
-         * Muchísimo espacio entre palabras
-         * solamente para poder medir cómodamente.
-         */
+        * Separación TEMPORAL para esta prueba.
+        *
+        * El RX todavía tiene un tiempo muerto de ~20 us
+        * después de detectar un sincronismo.
+        * Dejamos margen suficiente para que vuelva a buscar.
+        */
+        sleep_us(50);
+
+
+        // 2) Data sync
+        mil1553_tx_send_word(
+            BUS_1553_SYNC_DATA,
+            data_test
+        );
+
+        printf("TX DATA = 0x%04X\n", data_test);
+
+
+        // Para verlo cómodamente
         sleep_ms(500);
     }
 }
