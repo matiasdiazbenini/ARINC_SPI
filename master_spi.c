@@ -49,8 +49,8 @@ int main(void)
     while (true)
     {
         mil1553_tx_send_word(
-            BUS_1553_SYNC_CMD_STATUS,
-            cmd
+            BUS_1553_SYNC_DATA,
+            0xA5A5
         );
 
         sleep_ms(500);
