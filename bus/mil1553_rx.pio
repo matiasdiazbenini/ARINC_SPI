@@ -1,162 +1,115 @@
 .program mil1553_rx
 
 ; ============================================================
-; CLASIFICADOR INICIAL CMD/STATUS - DATA
+; Clasificador inicial de sincronismo MIL-STD-1553
 ;
-; IN base = GP3 / N
-; JMP PIN = GP2 / P
+; MISMO programa para dos State Machines:
 ;
-; Reposo:
+; SM0:
+;   pin 0    = GP2 / P
+;   JMP PIN  = GP2 / P
+;   FIFO     = CMD/STATUS
 ;
-;       P = 0
-;       N = 0
+; SM1:
+;   pin 0    = GP3 / N
+;   JMP PIN  = GP3 / N
+;   FIFO     = DATA WORD
 ;
-; Inicio CMD/STATUS:
+; La primera línea que sube después del reposo gana.
 ;
-;       P = 1
-;       N = 0
+; IRQ 0 actúa como lock entre ambas SM.
 ;
-; Inicio DATA:
-;
-;       P = 0
-;       N = 1
-;
-; Evento:
-;
-;       1 = CMD/STATUS
-;       2 = DATA WORD
-;
-; IMPORTANTE:
-; todavía NO validamos los 3 us completos del sync.
-; Solamente clasificamos correctamente su comienzo.
+; Todavía NO validamos los 3 us completos del sincronismo.
 ; ============================================================
-
 
 .wrap_target
 
 
-; ============================================================
-; ESPERAR REPOSO REAL: P=0, N=0
-; ============================================================
+wait_start:
 
-wait_idle:
+    ; La línea propia debe estar LOW.
+    wait 0 pin 0
 
-    ; Leer N.
-    mov isr, null
-    in pins, 1
-    mov x, isr
+    ; Esperar su flanco ascendente.
+    wait 1 pin 0
 
-    ; N debe ser LOW.
-    jmp !x idle_n_low
-
-    ; N sigue HIGH.
-    jmp wait_idle
-
-
-idle_n_low:
-
-    ; N=0.
-    ; Comprobar ahora P.
-
-    ; P=1 -> todavía hay actividad.
-    jmp pin wait_idle
-
-    ; P=0, N=0.
-    ; Reposo confirmado.
-    jmp wait_activity
-
-
-
-; ============================================================
-; ESPERAR PRIMERA ACTIVIDAD
-; ============================================================
-
-wait_activity:
 
     ; --------------------------------------------------------
-    ; PRIMERO mirar N.
+    ; Esperar que el clasificador esté libre.
     ;
-    ; N=1 desde reposo:
-    ;
-    ;       P/N = 01
-    ;
-    ; corresponde a DATA.
+    ; La SM correspondiente a la primera mitad del sync
+    ; llegará acá antes que la otra.
     ; --------------------------------------------------------
 
-    mov isr, null
-    in pins, 1
-    mov x, isr
+    wait 0 irq 0
 
-    ; Si N=0, comprobar P.
-    jmp !x check_p
-
-
-    ; N=1 -> DATA
-    set x, 2
-    jmp emit_event
-
-
-
-check_p:
 
     ; --------------------------------------------------------
-    ; N sigue LOW.
+    ; IMPORTANTE:
     ;
-    ; Comprobar P:
+    ; Si estuvimos bloqueados esperando que la otra SM
+    ; terminara, este flanco puede pertenecer a la segunda
+    ; mitad del mismo sync.
     ;
-    ; P=1:
-    ;
-    ;       P/N = 10
-    ;
-    ; corresponde a CMD/STATUS.
+    ; Por eso comprobamos que nuestra línea SIGA HIGH.
     ; --------------------------------------------------------
 
-    jmp pin cmd_detected
+    jmp pin claim
 
-
-    ; P=0 y N=0.
-    ; Todavía no comenzó ninguna palabra.
-    jmp wait_activity
+    ; Ya volvió a LOW -> candidato viejo.
+    jmp wait_start
 
 
 
-cmd_detected:
+claim:
+
+    ; Bloquear a la otra State Machine.
+    irq set 0
+
+
+    ; --------------------------------------------------------
+    ; Entregar un evento a la FIFO propia.
+    ;
+    ; Ambas SM escriben 1.
+    ;
+    ; El Cortex determina el tipo según la FIFO:
+    ;
+    ; SM0 FIFO -> CMD/STATUS
+    ; SM1 FIFO -> DATA
+    ; --------------------------------------------------------
 
     set x, 1
-
-
-
-; ============================================================
-; ENTREGAR EVENTO
-;
-; X:
-;
-;       1 -> CMD/STATUS
-;       2 -> DATA
-; ============================================================
-
-emit_event:
-
     mov isr, x
     push block
 
 
+    ; --------------------------------------------------------
+    ; LOCK TEMPORAL
+    ;
+    ; Esperamos ~25 us, más que la palabra completa (~20 us).
+    ;
+    ; Y=5 -> seis iteraciones.
+    ;
+    ; 6 * 33 ciclos ~= 198 ciclos
+    ; 198 * 125 ns ~= 24.75 us
+    ;
+    ; Así la segunda mitad del sync y los bits Manchester
+    ; quedan completamente ignorados.
+    ; --------------------------------------------------------
 
-; ============================================================
-; TIEMPO MUERTO TEMPORAL
-;
-; Ignorar el resto de la palabra hasta que implementemos
-; la recepción Manchester completa.
-; ============================================================
+    set y, 5
 
-    set y, 4
 
-dead_time:
+hold_bus:
 
     nop [31]
-    jmp y-- dead_time
+    jmp y-- hold_bus
 
-    jmp wait_idle
+
+    ; La palabra ya terminó.
+    irq clear 0
+
+    jmp wait_start
 
 
 .wrap
