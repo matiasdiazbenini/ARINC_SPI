@@ -11,15 +11,11 @@
 #include "mil1553_rx.pio.h"
 
 
-// ============================================================
-// Configuración
-// ============================================================
-
 static PIO rx_pio = pio1;
 
 /*
- * SM0 observa GP2/P -> CMD/STATUS
- * SM1 observa GP3/N -> DATA WORD
+ * SM0 -> GP2/P -> CMD/STATUS
+ * SM1 -> GP3/N -> DATA
  */
 static const uint rx_sm_cmd  = 0u;
 static const uint rx_sm_data = 1u;
@@ -31,11 +27,7 @@ static bool rx_initialized = false;
 
 
 
-// ============================================================
-// Configurar una State Machine
-// ============================================================
-
-static void mil1553_rx_configure_sm(
+static void configure_rx_sm(
     uint sm,
     uint input_pin)
 {
@@ -46,7 +38,7 @@ static void mil1553_rx_configure_sm(
 
 
     /*
-     * WAIT PIN 0 será relativo a este IN base.
+     * WAIT PIN 0 será relativo a este pin.
      */
     sm_config_set_in_pins(
         &c,
@@ -63,7 +55,6 @@ static void mil1553_rx_configure_sm(
     );
 
 
-    // FIFO dedicada a RX.
     sm_config_set_fifo_join(
         &c,
         PIO_FIFO_JOIN_RX
@@ -111,10 +102,6 @@ static void mil1553_rx_configure_sm(
 
 
 
-// ============================================================
-// Inicialización
-// ============================================================
-
 void mil1553_rx_init(void)
 {
     if (rx_initialized)
@@ -123,7 +110,6 @@ void mil1553_rx_init(void)
     }
 
 
-    // Cargar el programa PIO una sola vez.
     rx_offset =
         pio_add_program(
             rx_pio,
@@ -147,7 +133,7 @@ void mil1553_rx_init(void)
 
 
     /*
-     * El receptor nunca conduce las líneas.
+     * El receptor nunca conduce P/N.
      */
     pio_sm_set_consecutive_pindirs(
         rx_pio,
@@ -167,7 +153,7 @@ void mil1553_rx_init(void)
 
 
     /*
-     * Reposo del banco GPIO directo:
+     * Reposo del banco GPIO:
      *
      * P/N = 00
      */
@@ -180,37 +166,29 @@ void mil1553_rx_init(void)
     );
 
 
-    // Lock inicialmente libre.
-    pio_interrupt_clear(
-        rx_pio,
-        0u
-    );
-
-
     // --------------------------------------------------------
-    // SM0 -> GP2 / P -> CMD
+    // SM0 -> P -> CMD/STATUS
     // --------------------------------------------------------
 
-    mil1553_rx_configure_sm(
+    configure_rx_sm(
         rx_sm_cmd,
         BUS_PIN_P
     );
 
 
     // --------------------------------------------------------
-    // SM1 -> GP3 / N -> DATA
+    // SM1 -> N -> DATA WORD
     // --------------------------------------------------------
 
-    mil1553_rx_configure_sm(
+    configure_rx_sm(
         rx_sm_data,
         BUS_PIN_N
     );
 
 
-    // --------------------------------------------------------
-    // Arrancar ambas simultáneamente.
-    // --------------------------------------------------------
-
+    /*
+     * Arrancarlas juntas.
+     */
     pio_enable_sm_mask_in_sync(
         rx_pio,
         (1u << rx_sm_cmd) |
@@ -222,10 +200,6 @@ void mil1553_rx_init(void)
 }
 
 
-
-// ============================================================
-// Evento disponible
-// ============================================================
 
 bool mil1553_rx_available(void)
 {
@@ -249,10 +223,6 @@ bool mil1553_rx_available(void)
 
 
 
-// ============================================================
-// Leer evento
-// ============================================================
-
 uint32_t mil1553_rx_get(void)
 {
     if (!rx_initialized)
@@ -261,10 +231,9 @@ uint32_t mil1553_rx_get(void)
     }
 
 
-    // --------------------------------------------------------
-    // SM0 -> CMD / STATUS
-    // --------------------------------------------------------
-
+    /*
+     * SM0 -> CMD/STATUS
+     */
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
             rx_sm_cmd))
@@ -278,10 +247,9 @@ uint32_t mil1553_rx_get(void)
     }
 
 
-    // --------------------------------------------------------
-    // SM1 -> DATA WORD
-    // --------------------------------------------------------
-
+    /*
+     * SM1 -> DATA WORD
+     */
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
             rx_sm_data))

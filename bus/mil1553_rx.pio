@@ -1,25 +1,32 @@
 .program mil1553_rx
 
 ; ============================================================
-; Clasificador inicial de sincronismo MIL-STD-1553
+; Detector de sincronismo MIL-STD-1553
 ;
-; MISMO programa para dos State Machines:
+; Mismo programa para dos State Machines:
 ;
 ; SM0:
-;   pin 0    = GP2 / P
+;   IN base  = GP2 / P
 ;   JMP PIN  = GP2 / P
-;   FIFO     = CMD/STATUS
+;   FIFO     -> CMD/STATUS
 ;
 ; SM1:
-;   pin 0    = GP3 / N
+;   IN base  = GP3 / N
 ;   JMP PIN  = GP3 / N
-;   FIFO     = DATA WORD
+;   FIFO     -> DATA WORD
 ;
-; La primera línea que sube después del reposo gana.
+; Un sincronismo válido, visto sobre la línea que comienza
+; activa, tiene:
 ;
-; IRQ 0 actúa como lock entre ambas SM.
+;       HIGH ~1.5 us
+;       LOW  ~1.5 us
 ;
-; Todavía NO validamos los 3 us completos del sincronismo.
+; PIO = 8 MHz
+; 1 ciclo = 125 ns
+;
+; La segunda mitad se comprueba varias veces.
+; Esto permite rechazar el flanco de mitad de sync de la
+; otra polaridad, porque después de él comienza Manchester.
 ; ============================================================
 
 .wrap_target
@@ -27,87 +34,120 @@
 
 wait_start:
 
-    ; La línea propia debe estar LOW.
+    ; Partir desde LOW.
     wait 0 pin 0
 
-    ; Esperar su flanco ascendente.
+    ; Esperar comienzo del candidato.
     wait 1 pin 0
 
 
-    ; --------------------------------------------------------
-    ; Esperar que el clasificador esté libre.
+    ; ========================================================
+    ; MUESTRA 1
     ;
-    ; La SM correspondiente a la primera mitad del sync
-    ; llegará acá antes que la otra.
-    ; --------------------------------------------------------
+    ; Aproximadamente 0.75 us.
+    ;
+    ; Debe seguir HIGH.
+    ; ========================================================
 
-    wait 0 irq 0
+    nop [4]
+
+    jmp pin first_high_ok
+
+    jmp false_sync
 
 
-    ; --------------------------------------------------------
+first_high_ok:
+
+    ; ========================================================
+    ; MUESTRA 2
+    ;
+    ; Aproximadamente 1.75 us.
+    ;
+    ; Ya debe estar LOW.
+    ; ========================================================
+
+    nop [6]
+
+    ; HIGH -> inválido.
+    jmp pin false_sync
+
+
+    ; ========================================================
+    ; MUESTRA 3
+    ;
+    ; Aproximadamente 2.25 us.
+    ;
+    ; Debe continuar LOW.
+    ;
     ; IMPORTANTE:
+    ; si este candidato era en realidad el flanco central
+    ; del sync contrario, las muestras de 1.75 y 2.25 us
+    ; caen en mitades opuestas de un bit Manchester.
+    ; ========================================================
+
+    nop [2]
+
+    jmp pin false_sync
+
+
+    ; ========================================================
+    ; MUESTRA 4
     ;
-    ; Si estuvimos bloqueados esperando que la otra SM
-    ; terminara, este flanco puede pertenecer a la segunda
-    ; mitad del mismo sync.
+    ; Aproximadamente 2.75 us.
     ;
-    ; Por eso comprobamos que nuestra línea SIGA HIGH.
-    ; --------------------------------------------------------
+    ; Todavía debe seguir LOW.
+    ; ========================================================
 
-    jmp pin claim
+    nop [2]
 
-    ; Ya volvió a LOW -> candidato viejo.
-    jmp wait_start
-
+    jmp pin false_sync
 
 
-claim:
-
-    ; Bloquear a la otra State Machine.
-    irq set 0
-
-
-    ; --------------------------------------------------------
-    ; Entregar un evento a la FIFO propia.
+    ; ========================================================
+    ; Sincronismo válido
     ;
     ; Ambas SM escriben 1.
     ;
-    ; El Cortex determina el tipo según la FIFO:
+    ; El Cortex identifica el tipo por la FIFO:
     ;
-    ; SM0 FIFO -> CMD/STATUS
-    ; SM1 FIFO -> DATA
-    ; --------------------------------------------------------
+    ; SM0 -> CMD/STATUS
+    ; SM1 -> DATA
+    ; ========================================================
 
     set x, 1
     mov isr, x
     push block
 
+    jmp dead_time
 
-    ; --------------------------------------------------------
-    ; LOCK TEMPORAL
-    ;
-    ; Esperamos ~25 us, más que la palabra completa (~20 us).
-    ;
-    ; Y=5 -> seis iteraciones.
-    ;
-    ; 6 * 33 ciclos ~= 198 ciclos
-    ; 198 * 125 ns ~= 24.75 us
-    ;
-    ; Así la segunda mitad del sync y los bits Manchester
-    ; quedan completamente ignorados.
-    ; --------------------------------------------------------
+
+
+; ============================================================
+; CANDIDATO INVÁLIDO
+;
+; No seguimos buscando dentro de la misma palabra.
+; ============================================================
+
+false_sync:
+
+    jmp dead_time
+
+
+
+; ============================================================
+; TIEMPO MUERTO TEMPORAL
+;
+; ~25 us para ignorar el resto de la palabra.
+; ============================================================
+
+dead_time:
 
     set y, 5
 
-
-hold_bus:
+dead_loop:
 
     nop [31]
-    jmp y-- hold_bus
-
-
-    ; La palabra ya terminó.
-    irq clear 0
+    jmp y-- dead_loop
 
     jmp wait_start
 
