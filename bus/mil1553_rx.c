@@ -58,6 +58,11 @@ void mil1553_rx_init(void)
         BUS_PIN_P
     );
 
+    sm_config_set_in_pin_count(
+        &c,
+        2u
+    );
+
     sm_config_set_jmp_pin(
         &c,
         BUS_PIN_P

@@ -1,140 +1,271 @@
 .program mil1553_rx
 
 ; ============================================================
-; Detector inicial de sincronismo CMD/STATUS MIL-STD-1553
+; Detector de sincronismo CMD/STATUS y DATA WORD
 ;
-; Reloj PIO: 8 MHz
-; 1 ciclo = 125 ns
+; Reloj PIO = 8 MHz
+; 1 ciclo   = 125 ns
 ;
-; CMD/STATUS observado sobre P:
+; IN base = GP2
 ;
-;     HIGH durante 1.5 us
-;     LOW  durante 1.5 us
+; bit 0 = GP2 = P
+; bit 1 = GP3 = N
 ;
-; Comprobaciones:
-;     t = 1.25 us -> P debe ser HIGH
-;     t = 1.75 us -> P debe ser LOW
-;     t = 2.75 us -> P debe seguir LOW
+; Valores leídos mediante MOV X, PINS:
 ;
-; Cuando el patrón es válido:
-;     PUSH 1 a la RX FIFO
+;   0 = 00 -> reposo
+;   1 = 01 -> P=1, N=0 -> nivel H
+;   2 = 10 -> P=0, N=1 -> nivel L
+;   3 = 11 -> estado inválido
 ;
-; Esta es solamente una primera etapa de prueba.
-; Todavía no decodifica Manchester ni recibe los 16 bits.
+; Eventos enviados a RX FIFO:
+;
+;   1 -> SYNC CMD/STATUS detectado
+;   2 -> SYNC DATA WORD detectado
+;
+; NOTA:
+; Esta versión solamente detecta y clasifica sincronismos.
+; Todavía no decodifica los bits Manchester.
 ; ============================================================
 
 
 .wrap_target
 
-wait_start:
+
+; ============================================================
+; ESPERAR ACTIVIDAD
+; ============================================================
+
+wait_activity:
+
+    ; Leer simultáneamente P y N.
+    mov x, pins
+
+    ; 00 = bus en reposo.
+    jmp !x wait_activity
+
 
     ; --------------------------------------------------------
-    ; Esperar comienzo de actividad compatible con CMD/STATUS
+    ; Descartar 11.
     ;
-    ; pin 0 es relativo al IN base, que configuraremos en GP2/P.
+    ; Los únicos estados activos válidos para nuestro
+    ; prototipo diferencial son:
+    ;
+    ;   01 -> P=1, N=0
+    ;   10 -> P=0, N=1
     ; --------------------------------------------------------
 
-    wait 1 pin 0
+    set y, 3
+    jmp x!=y classify
 
-
-    ; --------------------------------------------------------
-    ; Primera comprobación
-    ;
-    ; Esperamos 10 ciclos:
-    ;
-    ; 10 * 125 ns = 1.25 us
-    ;
-    ; P todavía debe estar HIGH.
-    ; --------------------------------------------------------
-
-    nop [9]
-
-    jmp pin high_ok
-
-    ; Si P ya volvió a LOW, el pulso fue demasiado corto.
+    ; X = 3 -> 11 -> inválido.
     jmp false_sync
 
 
-high_ok:
+classify:
 
     ; --------------------------------------------------------
-    ; Segunda comprobación
+    ; JMP PIN observa GP2/P.
     ;
-    ; El JMP anterior consume 1 ciclo.
-    ; Esperamos otros 3 ciclos.
+    ; P = 1 -> CMD/STATUS
+    ; P = 0 -> DATA WORD
     ;
-    ; La siguiente comprobación ocurre aproximadamente
-    ; 14 ciclos después del comienzo:
+    ; Como ya sabemos que X != 0 y X != 3:
     ;
-    ; 14 * 125 ns = 1.75 us
-    ;
-    ; Para este instante P ya debe ser LOW.
+    ; P=1 implica P/N = 10
+    ; P=0 implica P/N = 01
     ; --------------------------------------------------------
+
+    jmp pin cmd_candidate
+
+
+; ============================================================
+; CANDIDATO DATA WORD
+;
+; DATA:
+;
+; primera mitad : P=0, N=1
+; segunda mitad : P=1, N=0
+;
+; Sobre P:
+;
+;      LOW  -> HIGH
+;
+; Primera muestra  : ~1.0 us
+; Segunda muestra  : ~2.0 us
+; Tercera muestra  : ~2.625 us
+; ============================================================
+
+data_candidate:
+
+    ; ------------------------------------
+    ; Primera muestra:
+    ; P todavía debe estar LOW.
+    ; ------------------------------------
 
     nop [2]
 
-    ; Si continúa HIGH, no es un CMD/STATUS sync válido.
+    ; Si P=1 demasiado pronto -> error.
     jmp pin false_sync
 
 
-    ; --------------------------------------------------------
-    ; Tercera comprobación
-    ;
-    ; Queremos comprobar nuevamente cerca de:
-    ;
-    ; 22 ciclos * 125 ns = 2.75 us
-    ;
-    ; P debe continuar LOW.
-    ; --------------------------------------------------------
+    ; ------------------------------------
+    ; Segunda muestra:
+    ; P ya debe estar HIGH.
+    ; ------------------------------------
 
     nop [6]
 
-    ; HIGH en este instante -> patrón incorrecto.
+    jmp pin data_high_ok
+
+    ; Sigue LOW -> error.
+    jmp false_sync
+
+
+data_high_ok:
+
+    ; ------------------------------------
+    ; Tercera muestra:
+    ; P debe continuar HIGH.
+    ; ------------------------------------
+
+    nop [3]
+
+    jmp pin data_detected
+
+    ; Volvió a LOW demasiado pronto.
+    jmp false_sync
+
+
+data_detected:
+
+    ; Evento 2 = DATA WORD.
+    set x, 2
+
+    ; DATA necesita saltar al bloque común.
+    jmp emit_event
+
+
+
+; ============================================================
+; CANDIDATO CMD / STATUS
+;
+; CMD/STATUS:
+;
+; primera mitad : P=1, N=0
+; segunda mitad : P=0, N=1
+;
+; Sobre P:
+;
+;      HIGH -> LOW
+;
+; Primera muestra  : ~1.0 us
+; Segunda muestra  : ~2.0 us
+; Tercera muestra  : ~2.625 us
+; ============================================================
+
+cmd_candidate:
+
+    ; ------------------------------------
+    ; Primera muestra:
+    ; P todavía debe estar HIGH.
+    ; ------------------------------------
+
+    nop [2]
+
+    jmp pin cmd_high_ok
+
+    ; Ya está LOW -> error.
+    jmp false_sync
+
+
+cmd_high_ok:
+
+    ; ------------------------------------
+    ; Segunda muestra:
+    ; P ya debe estar LOW.
+    ; ------------------------------------
+
+    nop [6]
+
+    ; Si todavía está HIGH -> error.
     jmp pin false_sync
 
 
-    ; --------------------------------------------------------
-    ; Sincronismo CMD/STATUS detectado
-    ;
-    ; Entregamos:
-    ;
-    ;     RX FIFO = 1
-    ;
-    ; El Cortex solamente leerá el evento.
-    ; No realiza ninguna medición temporal.
-    ; --------------------------------------------------------
+    ; ------------------------------------
+    ; Tercera muestra:
+    ; P debe continuar LOW.
+    ; ------------------------------------
 
+    nop [3]
+
+    ; Si volvió a HIGH -> error.
+    jmp pin false_sync
+
+
+    ; Evento 1 = CMD/STATUS.
     set x, 1
+
+
+
+; ============================================================
+; BLOQUE COMÚN DE ENTREGA
+;
+; X contiene:
+;
+;   1 -> CMD/STATUS
+;   2 -> DATA WORD
+; ============================================================
+
+emit_event:
+
     mov isr, x
     push block
 
 
-    ; --------------------------------------------------------
-    ; Tiempo muerto TEMPORAL para esta prueba.
-    ;
-    ; Evitamos que los bits Manchester de la misma palabra
-    ; sean interpretados como posibles nuevos sincronismos.
-    ;
-    ; 5 * 32 ciclos = 160 ciclos
-    ; 160 * 125 ns = 20 us
-    ;
-    ; Esto desaparecerá cuando implementemos el RX completo.
-    ; --------------------------------------------------------
+
+; ============================================================
+; TIEMPO MUERTO TEMPORAL
+;
+; No queremos que los bits Manchester de la misma palabra
+; sean interpretados como nuevos sincronismos.
+;
+; En lugar de usar cinco NOP distintos, usamos un bucle.
+;
+; Y = 4 produce cinco pasadas por el bucle.
+;
+; Cada pasada:
+;
+;   nop [31]       = 32 ciclos
+;   jmp y--        = 1 ciclo
+;
+; Aproximadamente:
+;
+;   5 x 33 ciclos = 165 ciclos
+;   165 x 125 ns  = 20.625 us
+;
+; Este tiempo muerto desaparecerá cuando implementemos
+; la recepción completa de la palabra.
+; ============================================================
+
+    set y, 4
+
+dead_time:
 
     nop [31]
-    nop [31]
-    nop [31]
-    nop [31]
-    nop [31]
+    jmp y-- dead_time
 
-    jmp wait_start
+    jmp wait_activity
 
+
+
+; ============================================================
+; SINCRONISMO INVÁLIDO
+; ============================================================
 
 false_sync:
 
-    ; El patrón observado no corresponde a un sincronismo
-    ; CMD/STATUS. Volvemos a buscar un nuevo candidato.
+    jmp wait_activity
 
-    jmp wait_start
 
 .wrap
