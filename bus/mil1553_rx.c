@@ -43,7 +43,8 @@ static void configure_rx_sm(
 
 
     /*
-     * WAIT PIN 0 observa la línea propia.
+     * IN PINS,1 y WAIT PIN 0 observarán
+     * la línea propia de cada State Machine.
      */
     sm_config_set_in_pins(
         &c,
@@ -60,12 +61,25 @@ static void configure_rx_sm(
     );
 
 
+    /*
+     * FIFO completa dedicada a RX.
+     */
     sm_config_set_fifo_join(
         &c,
         PIO_FIFO_JOIN_RX
     );
 
 
+    /*
+     * Shift hacia la izquierda.
+     *
+     * Al recibir:
+     *
+     * b15, b14, ... b0
+     *
+     * terminamos con la palabra en los 16 bits bajos
+     * del ISR.
+     */
     sm_config_set_in_shift(
         &c,
         false,
@@ -116,7 +130,7 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Cargar programa
+    // Cargar programa PIO
     // --------------------------------------------------------
 
     rx_offset =
@@ -142,7 +156,7 @@ void mil1553_rx_init(void)
 
 
     /*
-     * El receptor nunca conduce P/N.
+     * El RX nunca conduce P/N.
      */
     pio_sm_set_consecutive_pindirs(
         rx_pio,
@@ -162,7 +176,7 @@ void mil1553_rx_init(void)
 
 
     /*
-     * Reposo del banco GPIO:
+     * Reposo del banco GPIO directo:
      *
      * P/N = 00
      */
@@ -176,7 +190,7 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Configurar ambas State Machines
+    // Configurar SM0 y SM1
     // --------------------------------------------------------
 
     configure_rx_sm(
@@ -191,14 +205,16 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Identidad de cada State Machine
+    // Identidad permanente de las State Machines
     //
-    // Y se mantiene constante durante todo el programa:
+    // SM0:
+    //      Y=0
     //
-    // SM0 -> Y=0 -> observa P -> CMD
-    // SM1 -> Y=1 -> observa N -> DATA
+    // SM1:
+    //      Y=1
     //
-    // Esto permite que el propio PIO normalice Manchester.
+    // El PIO utiliza Y solamente al terminar los 16 bits
+    // para decidir si debe invertir la palabra.
     // --------------------------------------------------------
 
     pio_sm_exec(
@@ -215,7 +231,7 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Arrancar ambas juntas
+    // Arrancar simultáneamente
     // --------------------------------------------------------
 
     pio_enable_sm_mask_in_sync(
@@ -268,19 +284,23 @@ uint32_t mil1553_rx_get(void)
             rx_pio,
             rx_sm_cmd))
     {
-        uint32_t bit =
+        uint32_t raw =
             pio_sm_get(
                 rx_pio,
                 rx_sm_cmd
-            ) & 0x01u;
+            );
 
 
-        if (bit == 0u)
-        {
-            return MIL1553_RX_EVENT_CMD_BIT0;
-        }
+        uint16_t word =
+            (uint16_t)(
+                raw & MIL1553_RX_WORD_MASK
+            );
 
-        return MIL1553_RX_EVENT_CMD_BIT1;
+
+        return
+            MIL1553_RX_TYPE_CMD_STATUS
+            |
+            (uint32_t)word;
     }
 
 
@@ -292,19 +312,27 @@ uint32_t mil1553_rx_get(void)
             rx_pio,
             rx_sm_data))
     {
-        uint32_t bit =
+        uint32_t raw =
             pio_sm_get(
                 rx_pio,
                 rx_sm_data
-            ) & 0x01u;
+            );
 
 
-        if (bit == 0u)
-        {
-            return MIL1553_RX_EVENT_DATA_BIT0;
-        }
+        /*
+         * La inversión de polaridad ya fue hecha
+         * dentro del PIO.
+         */
+        uint16_t word =
+            (uint16_t)(
+                raw & MIL1553_RX_WORD_MASK
+            );
 
-        return MIL1553_RX_EVENT_DATA_BIT1;
+
+        return
+            MIL1553_RX_TYPE_DATA
+            |
+            (uint32_t)word;
     }
 
 

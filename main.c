@@ -13,16 +13,16 @@ int main(void)
 
     mil1553_rx_init();
 
-    printf("RX PIO - PRIMER BIT MANCHESTER\n");
+    printf(
+        "RX PIO - 16 BITS MANCHESTER\n"
+    );
 
 
-    uint32_t cmd_bit0  = 0;
-    uint32_t cmd_bit1  = 0;
+    uint32_t cmd_ok   = 0;
+    uint32_t cmd_bad  = 0;
 
-    uint32_t data_bit0 = 0;
-    uint32_t data_bit1 = 0;
-
-    uint32_t other = 0;
+    uint32_t data_ok  = 0;
+    uint32_t data_bad = 0;
 
 
     absolute_time_t next_report =
@@ -37,29 +37,49 @@ int main(void)
                 mil1553_rx_get();
 
 
-            if (event ==
-                MIL1553_RX_EVENT_CMD_BIT0)
+            uint32_t type =
+                event & MIL1553_RX_TYPE_MASK;
+
+
+            uint16_t word =
+                (uint16_t)(
+                    event & MIL1553_RX_WORD_MASK
+                );
+
+
+            if (type ==
+                MIL1553_RX_TYPE_CMD_STATUS)
             {
-                cmd_bit0++;
+                if (word == 0x1CE3u)
+                {
+                    cmd_ok++;
+                }
+                else
+                {
+                    cmd_bad++;
+
+                    printf(
+                        "CMD incorrecto: 0x%04X\n",
+                        word
+                    );
+                }
             }
-            else if (event ==
-                     MIL1553_RX_EVENT_CMD_BIT1)
+            else if (type ==
+                     MIL1553_RX_TYPE_DATA)
             {
-                cmd_bit1++;
-            }
-            else if (event ==
-                     MIL1553_RX_EVENT_DATA_BIT0)
-            {
-                data_bit0++;
-            }
-            else if (event ==
-                     MIL1553_RX_EVENT_DATA_BIT1)
-            {
-                data_bit1++;
-            }
-            else
-            {
-                other++;
+                if (word == 0xA5A5u)
+                {
+                    data_ok++;
+                }
+                else
+                {
+                    data_bad++;
+
+                    printf(
+                        "DATA incorrecto: 0x%04X\n",
+                        word
+                    );
+                }
             }
         }
 
@@ -69,27 +89,22 @@ int main(void)
                 next_report) <= 0)
         {
             printf(
-                "CMD[b0=%lu b1=%lu] "
-                "DATA[b0=%lu b1=%lu] "
-                "OTROS=%lu\n",
+                "CMD[OK=%lu ERR=%lu] "
+                "DATA[OK=%lu ERR=%lu]\n",
 
-                (unsigned long)cmd_bit0,
-                (unsigned long)cmd_bit1,
+                (unsigned long)cmd_ok,
+                (unsigned long)cmd_bad,
 
-                (unsigned long)data_bit0,
-                (unsigned long)data_bit1,
-
-                (unsigned long)other
+                (unsigned long)data_ok,
+                (unsigned long)data_bad
             );
 
 
-            cmd_bit0  = 0;
-            cmd_bit1  = 0;
+            cmd_ok   = 0;
+            cmd_bad  = 0;
 
-            data_bit0 = 0;
-            data_bit1 = 0;
-
-            other = 0;
+            data_ok  = 0;
+            data_bad = 0;
 
 
             next_report =

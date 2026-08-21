@@ -5,11 +5,25 @@
 #include <stdbool.h>
 
 
-#define MIL1553_RX_EVENT_CMD_BIT0   0x10u
-#define MIL1553_RX_EVENT_CMD_BIT1   0x11u
+/*
+ * Descriptor temporal para esta etapa:
+ *
+ * bits 17..16:
+ *
+ *      01 -> CMD / STATUS
+ *      10 -> DATA WORD
+ *
+ * bits 15..0:
+ *
+ *      palabra recibida
+ */
 
-#define MIL1553_RX_EVENT_DATA_BIT0  0x20u
-#define MIL1553_RX_EVENT_DATA_BIT1  0x21u
+#define MIL1553_RX_TYPE_MASK          0x00030000u
+
+#define MIL1553_RX_TYPE_CMD_STATUS    0x00010000u
+#define MIL1553_RX_TYPE_DATA          0x00020000u
+
+#define MIL1553_RX_WORD_MASK          0x0000FFFFu
 
 
 void mil1553_rx_init(void);
