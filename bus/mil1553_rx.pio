@@ -1,66 +1,162 @@
 .program mil1553_rx
 
+; ============================================================
+; CLASIFICADOR INICIAL CMD/STATUS - DATA
+;
+; IN base = GP3 / N
+; JMP PIN = GP2 / P
+;
+; Reposo:
+;
+;       P = 0
+;       N = 0
+;
+; Inicio CMD/STATUS:
+;
+;       P = 1
+;       N = 0
+;
+; Inicio DATA:
+;
+;       P = 0
+;       N = 1
+;
+; Evento:
+;
+;       1 = CMD/STATUS
+;       2 = DATA WORD
+;
+; IMPORTANTE:
+; todavía NO validamos los 3 us completos del sync.
+; Solamente clasificamos correctamente su comienzo.
+; ============================================================
+
+
 .wrap_target
 
-wait_start:
 
-    ; Para esta prueba:
-    ; pin 0 = GP2 / P
+; ============================================================
+; ESPERAR REPOSO REAL: P=0, N=0
+; ============================================================
 
-    wait 0 pin 0
-    wait 1 pin 0
+wait_idle:
 
+    ; Leer N.
+    mov isr, null
+    in pins, 1
+    mov x, isr
 
-    ; Primera muestra:
-    ; P debe continuar HIGH.
+    ; N debe ser LOW.
+    jmp !x idle_n_low
 
-    nop [4]
-
-    jmp pin first_ok
-    jmp false_sync
-
-
-first_ok:
-
-    ; Segunda muestra:
-    ; P ya debe estar LOW.
-
-    nop [10]
-
-    jmp pin false_sync
+    ; N sigue HIGH.
+    jmp wait_idle
 
 
-    ; Tercera muestra:
-    ; P debe continuar LOW.
+idle_n_low:
 
-    nop [2]
+    ; N=0.
+    ; Comprobar ahora P.
 
-    jmp pin false_sync
+    ; P=1 -> todavía hay actividad.
+    jmp pin wait_idle
+
+    ; P=0, N=0.
+    ; Reposo confirmado.
+    jmp wait_activity
 
 
-    ; CMD/STATUS detectado.
+
+; ============================================================
+; ESPERAR PRIMERA ACTIVIDAD
+; ============================================================
+
+wait_activity:
+
+    ; --------------------------------------------------------
+    ; PRIMERO mirar N.
+    ;
+    ; N=1 desde reposo:
+    ;
+    ;       P/N = 01
+    ;
+    ; corresponde a DATA.
+    ; --------------------------------------------------------
+
+    mov isr, null
+    in pins, 1
+    mov x, isr
+
+    ; Si N=0, comprobar P.
+    jmp !x check_p
+
+
+    ; N=1 -> DATA
+    set x, 2
+    jmp emit_event
+
+
+
+check_p:
+
+    ; --------------------------------------------------------
+    ; N sigue LOW.
+    ;
+    ; Comprobar P:
+    ;
+    ; P=1:
+    ;
+    ;       P/N = 10
+    ;
+    ; corresponde a CMD/STATUS.
+    ; --------------------------------------------------------
+
+    jmp pin cmd_detected
+
+
+    ; P=0 y N=0.
+    ; Todavía no comenzó ninguna palabra.
+    jmp wait_activity
+
+
+
+cmd_detected:
 
     set x, 1
+
+
+
+; ============================================================
+; ENTREGAR EVENTO
+;
+; X:
+;
+;       1 -> CMD/STATUS
+;       2 -> DATA
+; ============================================================
+
+emit_event:
+
     mov isr, x
     push block
 
-    jmp dead_time
 
 
-false_sync:
-
-    jmp dead_time
-
-
-dead_time:
+; ============================================================
+; TIEMPO MUERTO TEMPORAL
+;
+; Ignorar el resto de la palabra hasta que implementemos
+; la recepción Manchester completa.
+; ============================================================
 
     set y, 4
 
-dead_loop:
+dead_time:
 
     nop [31]
-    jmp y-- dead_loop
+    jmp y-- dead_time
 
-    jmp wait_start
+    jmp wait_idle
+
 
 .wrap

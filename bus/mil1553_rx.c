@@ -12,34 +12,15 @@
 
 
 // ============================================================
-// Configuración del receptor PIO
+// Configuración
 // ============================================================
 
 static PIO rx_pio = pio1;
-
-/*
- * Para esta prueba utilizamos solamente SM0.
- *
- * SM0 observa:
- *
- *      GP2 = P
- *
- * y detecta únicamente sincronismos CMD/STATUS.
- */
-static const uint rx_sm_cmd = 0u;
-
+static const uint rx_sm = 0u;
 
 static uint rx_offset = 0u;
 static bool rx_initialized = false;
 
-
-/*
- * Reloj interno del PIO:
- *
- *      8 MHz
- *
- * 1 ciclo = 125 ns
- */
 #define MIL1553_RX_PIO_CLOCK_HZ 8000000.0f
 
 
@@ -67,10 +48,6 @@ void mil1553_rx_init(void)
         );
 
 
-    // --------------------------------------------------------
-    // Obtener configuración base del programa
-    // --------------------------------------------------------
-
     pio_sm_config c =
         mil1553_rx_program_get_default_config(
             rx_offset
@@ -78,33 +55,31 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Entrada
+    // IN base
     //
-    // Para esta prueba:
+    // IN PINS,1 leerá solamente:
     //
-    //      pin 0 del programa PIO = GP2 / P
-    //
-    // Por eso:
-    //
-    //      WAIT ... PIN 0
-    //
-    // observa directamente GP2.
+    //      GP3 = N
     // --------------------------------------------------------
 
     sm_config_set_in_pins(
         &c,
-        BUS_PIN_P
+        BUS_PIN_N
+    );
+
+
+    sm_config_set_in_pin_count(
+        &c,
+        1u
     );
 
 
     // --------------------------------------------------------
     // JMP PIN
     //
-    // Todas las instrucciones:
+    // JMP PIN observará:
     //
-    //      JMP PIN ...
-    //
-    // observarán también GP2 / P.
+    //      GP2 = P
     // --------------------------------------------------------
 
     sm_config_set_jmp_pin(
@@ -114,24 +89,7 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // RX FIFO
-    // --------------------------------------------------------
-
-    sm_config_set_fifo_join(
-        &c,
-        PIO_FIFO_JOIN_RX
-    );
-
-
-    // --------------------------------------------------------
     // ISR
-    //
-    // Todavía no reconstruimos la palabra completa.
-    // Solamente colocamos:
-    //
-    //      1 = CMD/STATUS detectado
-    //
-    // en la RX FIFO.
     // --------------------------------------------------------
 
     sm_config_set_in_shift(
@@ -143,9 +101,17 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Clock de la State Machine
-    //
-    // fPIO = 8 MHz
+    // FIFO RX
+    // --------------------------------------------------------
+
+    sm_config_set_fifo_join(
+        &c,
+        PIO_FIFO_JOIN_RX
+    );
+
+
+    // --------------------------------------------------------
+    // PIO = 8 MHz
     // --------------------------------------------------------
 
     const float clkdiv =
@@ -160,7 +126,7 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Inicialización GPIO
+    // GPIO
     // --------------------------------------------------------
 
     pio_gpio_init(
@@ -175,14 +141,11 @@ void mil1553_rx_init(void)
 
 
     /*
-     * El receptor nunca conduce el bus.
-     *
-     * GP2/P = entrada
-     * GP3/N = entrada
+     * Ambos GPIO son siempre entradas.
      */
     pio_sm_set_consecutive_pindirs(
         rx_pio,
-        rx_sm_cmd,
+        rx_sm,
         BUS_PIN_P,
         2u,
         false
@@ -190,11 +153,9 @@ void mil1553_rx_init(void)
 
 
     /*
-     * Pull-downs débiles para obtener:
+     * Reposo del banco de prueba:
      *
-     *      P/N = 00
-     *
-     * cuando el transmisor libera el bus.
+     * P/N = 00
      */
     gpio_pull_down(
         BUS_PIN_P
@@ -206,40 +167,32 @@ void mil1553_rx_init(void)
 
 
     // --------------------------------------------------------
-    // Inicializar SM0
+    // Inicializar State Machine
     // --------------------------------------------------------
 
     pio_sm_init(
         rx_pio,
-        rx_sm_cmd,
+        rx_sm,
         rx_offset,
         &c
     );
 
 
-    // Vaciar FIFO anterior
     pio_sm_clear_fifos(
         rx_pio,
-        rx_sm_cmd
+        rx_sm
     );
 
 
-    // Reiniciar la SM
     pio_sm_restart(
         rx_pio,
-        rx_sm_cmd
+        rx_sm
     );
 
-
-    // --------------------------------------------------------
-    // Habilitar SOLAMENTE SM0
-    //
-    // SM1 no participa en esta prueba.
-    // --------------------------------------------------------
 
     pio_sm_set_enabled(
         rx_pio,
-        rx_sm_cmd,
+        rx_sm,
         true
     );
 
@@ -250,7 +203,7 @@ void mil1553_rx_init(void)
 
 
 // ============================================================
-// ¿Hay un evento disponible?
+// Evento disponible
 // ============================================================
 
 bool mil1553_rx_available(void)
@@ -263,14 +216,14 @@ bool mil1553_rx_available(void)
 
     return !pio_sm_is_rx_fifo_empty(
         rx_pio,
-        rx_sm_cmd
+        rx_sm
     );
 }
 
 
 
 // ============================================================
-// Obtener evento
+// Leer evento
 // ============================================================
 
 uint32_t mil1553_rx_get(void)
@@ -283,21 +236,14 @@ uint32_t mil1553_rx_get(void)
 
     if (pio_sm_is_rx_fifo_empty(
             rx_pio,
-            rx_sm_cmd))
+            rx_sm))
     {
         return 0u;
     }
 
 
-    /*
-     * El PIO coloca:
-     *
-     *      1 = CMD/STATUS detectado
-     *
-     * directamente en la RX FIFO.
-     */
     return pio_sm_get(
         rx_pio,
-        rx_sm_cmd
+        rx_sm
     );
 }
