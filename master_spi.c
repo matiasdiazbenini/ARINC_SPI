@@ -50,16 +50,8 @@ int main(void)
     {
         mil1553_tx_send_word(
             BUS_1553_SYNC_DATA,
-            data_test
+            0xA5A5
         );
-
-        tx_count++;
-
-        if ((tx_count % 10) == 0)
-        {
-            printf("TX enviados = %lu\n",
-                (unsigned long)tx_count);
-        }
 
         sleep_ms(500);
     }
