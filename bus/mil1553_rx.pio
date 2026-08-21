@@ -1,220 +1,66 @@
 .program mil1553_rx
 
-; ============================================================
-; Detector CMD/STATUS + DATA WORD
-;
-; PIO = 8 MHz
-;
-; GP2 = P = bit 0
-; GP3 = N = bit 1
-;
-; Evento:
-;   1 -> CMD/STATUS
-;   2 -> DATA WORD
-;
-; IMPORTANTE:
-; Después de un falso candidato obligamos a observar primero
-; el estado de reposo 00 antes de volver a buscar actividad.
-; ============================================================
-
-
 .wrap_target
 
+wait_start:
 
-; ============================================================
-; REARMADO
-;
-; No podemos aceptar un nuevo candidato hasta observar
-; el bus en reposo:
-;
-;           P/N = 00
-;
-; Esto evita buscar falsos sincronismos dentro de los
-; bits Manchester de una palabra que ya está en curso.
-; ============================================================
+    ; Para esta prueba:
+    ; pin 0 = GP2 / P
 
-wait_idle:
-
-    mov x, pins
-
-    ; X = 0 -> P/N = 00
-    jmp !x wait_activity
-
-    ; Todavía hay actividad.
-    jmp wait_idle
+    wait 0 pin 0
+    wait 1 pin 0
 
 
+    ; Primera muestra:
+    ; P debe continuar HIGH.
 
-; ============================================================
-; ESPERAR PRIMERA ACTIVIDAD DESPUÉS DEL REPOSO
-; ============================================================
+    nop [4]
 
-wait_activity:
-
-    mov x, pins
-
-    ; Sigue en 00.
-    jmp !x wait_activity
-
-    ; Si P=1:
-    ;
-    ;     P/N = 10
-    ;
-    ; candidato CMD/STATUS.
-    ;
-    ; Si P=0:
-    ;
-    ;     P/N = 01
-    ;
-    ; candidato DATA.
-    ;
-    ; Para este prototipo asumimos P y N complementarios
-    ; durante la transmisión.
-
-    jmp pin cmd_candidate
+    jmp pin first_ok
+    jmp false_sync
 
 
+first_ok:
 
-; ============================================================
-; DATA WORD
-;
-; P:
-;
-;     LOW  durante ~1.5 us
-;     HIGH durante ~1.5 us
-; ============================================================
+    ; Segunda muestra:
+    ; P ya debe estar LOW.
 
-data_candidate:
+    nop [10]
 
-    ; Primera zona:
-    ; todavía debe estar LOW.
+    jmp pin false_sync
+
+
+    ; Tercera muestra:
+    ; P debe continuar LOW.
 
     nop [2]
 
-    ; HIGH demasiado pronto -> candidato inválido.
     jmp pin false_sync
 
 
-    ; Segunda zona:
-    ; ahora debe estar HIGH.
+    ; CMD/STATUS detectado.
 
-    nop [6]
-
-    jmp pin data_high_ok
-
-    ; Sigue LOW -> inválido.
-    jmp false_sync
-
-
-data_high_ok:
-
-    ; Debe continuar HIGH.
-
-    nop [3]
-
-    jmp pin data_detected
-
-    ; Volvió a LOW demasiado pronto.
-    jmp false_sync
-
-
-data_detected:
-
-    ; Evento DATA = 2.
-    set x, 2
-    jmp emit_event
-
-
-
-; ============================================================
-; CMD / STATUS
-;
-; P:
-;
-;     HIGH durante ~1.5 us
-;     LOW  durante ~1.5 us
-; ============================================================
-
-cmd_candidate:
-
-    ; Primera zona:
-    ; todavía debe estar HIGH.
-
-    nop [2]
-
-    jmp pin cmd_high_ok
-
-    ; LOW demasiado pronto.
-    jmp false_sync
-
-
-cmd_high_ok:
-
-    ; Segunda zona:
-    ; ahora debe estar LOW.
-
-    nop [6]
-
-    ; Si sigue HIGH -> inválido.
-    jmp pin false_sync
-
-
-    ; Debe continuar LOW.
-
-    nop [3]
-
-    ; Si volvió a HIGH -> inválido.
-    jmp pin false_sync
-
-
-    ; Evento CMD/STATUS = 1.
     set x, 1
-
-
-
-; ============================================================
-; ENTREGAR EVENTO
-; ============================================================
-
-emit_event:
-
     mov isr, x
     push block
 
+    jmp dead_time
 
-
-; ============================================================
-; TIEMPO MUERTO TEMPORAL
-;
-; Aproximadamente 20.6 us.
-;
-; Después de este tiempo igualmente exigimos observar
-; nuevamente 00 antes de aceptar otra palabra.
-; ============================================================
-
-    set y, 4
-
-dead_time:
-
-    nop [31]
-    jmp y-- dead_time
-
-    jmp wait_idle
-
-
-
-; ============================================================
-; CANDIDATO INVÁLIDO
-;
-; CLAVE:
-;
-; NO volvemos directamente a wait_activity.
-; Esperamos primero el estado 00.
-; ============================================================
 
 false_sync:
 
-    jmp wait_idle
+    jmp dead_time
 
+
+dead_time:
+
+    set y, 4
+
+dead_loop:
+
+    nop [31]
+    jmp y-- dead_loop
+
+    jmp wait_start
 
 .wrap
