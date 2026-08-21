@@ -1,51 +1,33 @@
 .program mil1553_rx
 
 ; ============================================================
-; MIL-STD-1553 RX - DIAGNOSTICO 16 BITS
+; DIAGNOSTICO DATA - 16 BITS RAW
 ;
-; SM0 -> GP2 / P
-; SM1 -> GP3 / N
+; SM1 observa N.
 ;
-; PIO = 8 MHz
+; TX:
+;       DATA 0x1CE3
 ;
-; OBJETIVO:
+; RAW esperado sobre N:
+;       0xE31C
 ;
-; Si ocurre un error Manchester:
-;
-;       FIFO <- X
-;
-; X indica cuantos bits quedaban:
-;
-;       X=15 -> error en bit 1
-;       X=14 -> error en bit 2
-;       ...
-;       X=0  -> error en bit 16
-;
-; Si se reciben los 16 bits correctamente:
-;
-;       FIFO <- palabra RAW
-;
-; IMPORTANTE:
-; en esta versión de diagnóstico NO se invierte DATA.
+; No se usa Y.
+; No se invierte ISR.
 ; ============================================================
 
 .wrap_target
 
 
-; ============================================================
-; ESPERAR SINCRONISMO
-; ============================================================
-
 wait_start:
 
-    wait 0 pin 0
-
+    ; Preparar antes de esperar la palabra.
     mov isr, null
 
+    ; 16 bits: X = 15 ... 0
     set x, 15
 
+    wait 0 pin 0
     wait 1 pin 0
-
 
 
 ; ============================================================
@@ -55,120 +37,122 @@ wait_start:
     nop [4]
 
     jmp pin sync_high_ok
-
-    jmp false_word
+    jmp discard
 
 
 sync_high_ok:
 
     nop [6]
-
-    jmp pin false_word
-
+    jmp pin discard
 
     nop [2]
-
-    jmp pin false_word
-
+    jmp pin discard
 
     nop [2]
-
-    jmp pin false_word
-
+    jmp pin discard
 
 
 ; ============================================================
 ; ALINEAR PRIMER BIT
-;
-; Volvemos a NOP [2], que es la alineación con la cual
-; ya habíamos validado correctamente el primer bit.
 ; ============================================================
 
     nop [2]
 
 
-
 ; ============================================================
-; RECIBIR BIT
+; BUCLE DE 16 BITS
+;
+; Se guarda la PRIMERA mitad observada sobre N.
+;
+; LOW -> HIGH  válido
+; HIGH -> LOW  válido
+;
+; Cada camino válido:
+;
+;   JMP PIN       1
+;   IN PINS,1     1
+;   NOP [1]       2
+;   JMP PIN       1
+;   JMP X-- [2]   3
+;                ---
+;                  8 ciclos = 1 us
 ; ============================================================
 
 bit_loop:
 
-    ; Primera mitad.
-    jmp pin raw_high
+    jmp pin first_high
 
 
+; ------------------------------------------------------------
+; Primera mitad LOW
+; ------------------------------------------------------------
 
-; ============================================================
-; LOW -> HIGH
-; ============================================================
+first_low:
 
-raw_low:
-
-    ; Guardar LOW.
     in pins, 1
 
-    ; Llegar a segunda mitad.
     nop [1]
 
-    ; Debe ser HIGH.
-    jmp pin bit_done
+    ; LOW -> HIGH debe terminar en HIGH.
+    jmp pin bit_ok
 
-    ; LOW -> LOW = error Manchester.
-    jmp manchester_error
-
+    jmp discard
 
 
-; ============================================================
-; HIGH -> LOW
-; ============================================================
+; ------------------------------------------------------------
+; Primera mitad HIGH
+; ------------------------------------------------------------
 
-raw_high:
+first_high:
 
-    ; Guardar HIGH.
     in pins, 1
 
-    ; Llegar a segunda mitad.
     nop [1]
 
-    ; Si continúa HIGH:
-    ; HIGH -> HIGH = error Manchester.
-    jmp pin manchester_error
+    ; HIGH -> LOW:
+    ; si sigue HIGH es inválido.
+    jmp pin discard
 
-    ; Si está LOW, bit válido.
-
+    ; Si está LOW cae a bit_ok.
 
 
 ; ============================================================
 ; BIT CORRECTO
 ; ============================================================
 
-bit_done:
+bit_ok:
 
-    ; 8 ciclos totales por bit.
     jmp x-- bit_loop [2]
 
 
+; ============================================================
+; NORMALIZAR POLARIDAD
+;
+; Y = 0 -> SM0 / P -> CMD/STATUS
+;         ya contiene la palabra lógica correcta
+;
+; Y = 1 -> SM1 / N -> DATA
+;         contiene la palabra complementada
+; ============================================================
 
-; ============================================================
-; LOS 16 BITS LLEGARON CORRECTAMENTE
-;
-; Se entrega la palabra RAW.
-;
-; Para CMD/P sería la palabra normal.
-;
-; Para DATA/N será complementaria.
-; Ejemplo:
-;
-;       TX DATA = 0x1CE3
-;
-;       RAW N = 0xE31C
-; ============================================================
+    jmp !y emit_word
+
+    ; Solo DATA necesita inversión.
+    mov isr, !isr
+
+
+emit_word:
 
     push block
 
-    set x, 5
 
+; ============================================================
+; IGNORAR RESTO DE PALABRA
+; ============================================================
+
+discard:
+
+    set x, 5
 
 
 dead_loop:
@@ -176,34 +160,6 @@ dead_loop:
     jmp x-- dead_loop [31]
 
     jmp wait_start
-
-
-
-; ============================================================
-; ERROR MANCHESTER
-;
-; Mandamos X a la FIFO antes de descartar.
-; ============================================================
-
-manchester_error:
-
-    mov isr, x
-
-    push block
-
-    jmp false_word
-
-
-
-; ============================================================
-; DESCARTAR PALABRA
-; ============================================================
-
-false_word:
-
-    set x, 5
-
-    jmp dead_loop
 
 
 .wrap
