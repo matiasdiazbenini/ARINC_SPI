@@ -1,32 +1,34 @@
 .program mil1553_rx
 
 ; ============================================================
-; Detector de sincronismo MIL-STD-1553
-;
-; Mismo programa para dos State Machines:
+; MIL-STD-1553 RX
 ;
 ; SM0:
-;   IN base  = GP2 / P
-;   JMP PIN  = GP2 / P
-;   FIFO     -> CMD/STATUS
+;   pin 0 = GP2 / P
+;   Y = 0
+;   -> CMD / STATUS
 ;
 ; SM1:
-;   IN base  = GP3 / N
-;   JMP PIN  = GP3 / N
-;   FIFO     -> DATA WORD
-;
-; Un sincronismo válido, visto sobre la línea que comienza
-; activa, tiene:
-;
-;       HIGH ~1.5 us
-;       LOW  ~1.5 us
+;   pin 0 = GP3 / N
+;   Y = 1
+;   -> DATA WORD
 ;
 ; PIO = 8 MHz
 ; 1 ciclo = 125 ns
 ;
-; La segunda mitad se comprueba varias veces.
-; Esto permite rechazar el flanco de mitad de sync de la
-; otra polaridad, porque después de él comienza Manchester.
+; Primero:
+;   valida SYNC HIGH -> LOW
+;
+; Luego:
+;   valida solamente el PRIMER bit Manchester.
+;
+; Manchester sobre P:
+;
+;   bit 1 -> HIGH / LOW
+;   bit 0 -> LOW  / HIGH
+;
+; Como SM1 observa N, que es complementaria,
+; se utiliza Y para invertir la interpretación.
 ; ============================================================
 
 .wrap_target
@@ -37,117 +39,170 @@ wait_start:
     ; Partir desde LOW.
     wait 0 pin 0
 
+    ; X=5 queda preparado por si tenemos que
+    ; descartar la palabra.
+    set x, 5
+
     ; Esperar comienzo del candidato.
     wait 1 pin 0
 
 
     ; ========================================================
-    ; MUESTRA 1
+    ; VALIDACIÓN DEL SYNC
     ;
-    ; Aproximadamente 0.75 us.
-    ;
-    ; Debe seguir HIGH.
+    ; Muestra 1: aproximadamente 0.75 us
+    ; debe seguir HIGH.
     ; ========================================================
 
     nop [4]
 
-    jmp pin first_high_ok
+    jmp pin sync_high_ok
 
-    jmp false_sync
+    jmp dead_loop
 
 
-first_high_ok:
+sync_high_ok:
 
     ; ========================================================
-    ; MUESTRA 2
-    ;
-    ; Aproximadamente 1.75 us.
-    ;
-    ; Ya debe estar LOW.
+    ; Muestra 2: aproximadamente 1.75 us
+    ; ya debe estar LOW.
     ; ========================================================
 
     nop [6]
 
-    ; HIGH -> inválido.
-    jmp pin false_sync
+    jmp pin dead_loop
 
 
     ; ========================================================
-    ; MUESTRA 3
-    ;
-    ; Aproximadamente 2.25 us.
-    ;
-    ; Debe continuar LOW.
-    ;
-    ; IMPORTANTE:
-    ; si este candidato era en realidad el flanco central
-    ; del sync contrario, las muestras de 1.75 y 2.25 us
-    ; caen en mitades opuestas de un bit Manchester.
+    ; Muestra 3: aproximadamente 2.25 us
+    ; debe continuar LOW.
     ; ========================================================
 
     nop [2]
 
-    jmp pin false_sync
+    jmp pin dead_loop
 
 
     ; ========================================================
-    ; MUESTRA 4
-    ;
-    ; Aproximadamente 2.75 us.
-    ;
-    ; Todavía debe seguir LOW.
+    ; Muestra 4: aproximadamente 2.75 us
+    ; debe continuar LOW.
     ; ========================================================
 
     nop [2]
 
-    jmp pin false_sync
+    jmp pin dead_loop
 
 
     ; ========================================================
-    ; Sincronismo válido
+    ; PRIMER BIT MANCHESTER
     ;
-    ; Ambas SM escriben 1.
+    ; El SYNC termina en aproximadamente 3 us.
     ;
-    ; El Cortex identifica el tipo por la FIFO:
-    ;
-    ; SM0 -> CMD/STATUS
-    ; SM1 -> DATA
+    ; Esperamos hacia el centro de la primera mitad
+    ; del primer bit.
     ; ========================================================
+
+    nop [2]
+
+    ; HIGH en primera mitad.
+    jmp pin first_half_high
+
+
+    ; ========================================================
+    ; PRIMERA MITAD = LOW
+    ;
+    ; Esperar 0.5 us hasta la segunda mitad.
+    ; ========================================================
+
+    nop [2]
+
+    ; Segunda mitad debe ser HIGH.
+    jmp pin low_high_valid
+
+    ; LOW / LOW -> Manchester inválido.
+    jmp dead_loop
+
+
+low_high_valid:
+
+    ; Tenemos LOW -> HIGH.
+    ;
+    ; Sobre P  (Y=0): bit 0
+    ; Sobre N  (Y=1): bit 1
+
+    jmp !y bit_zero
+
+    jmp bit_one
+
+
+
+first_half_high:
+
+    ; ========================================================
+    ; PRIMERA MITAD = HIGH
+    ;
+    ; Esperar 0.5 us hasta la segunda mitad.
+    ; ========================================================
+
+    nop [2]
+
+    ; Si sigue HIGH:
+    ; HIGH / HIGH -> Manchester inválido.
+    jmp pin dead_loop
+
+
+    ; Tenemos HIGH -> LOW.
+    ;
+    ; Sobre P  (Y=0): bit 1
+    ; Sobre N  (Y=1): bit 0
+
+    jmp !y bit_one
+
+    jmp bit_zero
+
+
+
+; ============================================================
+; BIT DECODIFICADO
+; ============================================================
+
+bit_zero:
+
+    set x, 0
+    jmp emit_bit
+
+
+bit_one:
 
     set x, 1
+
+
+emit_bit:
+
+    ; FIFO recibe únicamente:
+    ;
+    ; 0 -> primer bit = 0
+    ; 1 -> primer bit = 1
+    ;
+    ; El tipo CMD/DATA lo sabemos por la SM.
+
     mov isr, x
     push block
 
-    jmp dead_time
 
+    ; --------------------------------------------------------
+    ; Tiempo muerto TEMPORAL.
+    ;
+    ; Todavía no recibimos el resto de la palabra.
+    ; --------------------------------------------------------
 
+    set x, 5
 
-; ============================================================
-; CANDIDATO INVÁLIDO
-;
-; No seguimos buscando dentro de la misma palabra.
-; ============================================================
-
-false_sync:
-
-    jmp dead_time
-
-
-
-; ============================================================
-; TIEMPO MUERTO TEMPORAL
-;
-; ~25 us para ignorar el resto de la palabra.
-; ============================================================
-
-dead_time:
-
-    set y, 5
 
 dead_loop:
 
     nop [31]
-    jmp y-- dead_loop
+    jmp x-- dead_loop
 
     jmp wait_start
 
