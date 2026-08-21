@@ -1,76 +1,56 @@
 .program mil1553_rx
 
 ; ============================================================
-; MIL-STD-1553 RX - 16 bits
+; MIL-STD-1553 RX - DIAGNOSTICO 16 BITS
 ;
-; SM0:
-;   pin observado = GP2 / P
-;   Y = 0
-;   -> CMD / STATUS
-;
-; SM1:
-;   pin observado = GP3 / N
-;   Y = 1
-;   -> DATA WORD
+; SM0 -> GP2 / P
+; SM1 -> GP3 / N
 ;
 ; PIO = 8 MHz
-; 1 ciclo = 125 ns
 ;
-; Esta etapa:
+; OBJETIVO:
 ;
-;   - valida SYNC
-;   - recibe 16 bits
-;   - valida Manchester
-;   - construye la palabra en ISR
-;   - NO recibe todavía la paridad
+; Si ocurre un error Manchester:
 ;
-; Manchester sobre P:
+;       FIFO <- X
 ;
-;   bit 1 -> HIGH / LOW
-;   bit 0 -> LOW  / HIGH
+; X indica cuantos bits quedaban:
 ;
-; Sobre N la polaridad es inversa.
+;       X=15 -> error en bit 1
+;       X=14 -> error en bit 2
+;       ...
+;       X=0  -> error en bit 16
+;
+; Si se reciben los 16 bits correctamente:
+;
+;       FIFO <- palabra RAW
+;
+; IMPORTANTE:
+; en esta versión de diagnóstico NO se invierte DATA.
 ; ============================================================
 
 .wrap_target
 
 
 ; ============================================================
-; BUSCAR SINCRONISMO
+; ESPERAR SINCRONISMO
 ; ============================================================
 
 wait_start:
 
-    ; Esperar línea propia en LOW.
     wait 0 pin 0
-
-
-    ; --------------------------------------------------------
-    ; Preparar recepción ANTES del comienzo del sync.
-    ;
-    ; Esto es importante:
-    ; no agregamos ciclos entre el final del sync y
-    ; el primer bit Manchester.
-    ; --------------------------------------------------------
 
     mov isr, null
 
-    ; X=15 -> 16 bits.
     set x, 15
 
-
-    ; Esperar comienzo del candidato.
     wait 1 pin 0
 
 
 
 ; ============================================================
-; VALIDAR SINCRONISMO
+; VALIDAR SYNC
 ; ============================================================
-
-    ; Primera muestra:
-    ; aproximadamente dentro de la primera mitad.
-    ; Debe seguir HIGH.
 
     nop [4]
 
@@ -79,27 +59,17 @@ wait_start:
     jmp false_word
 
 
-
 sync_high_ok:
-
-    ; Segunda muestra:
-    ; ya debe estar LOW.
 
     nop [6]
 
     jmp pin false_word
 
 
-    ; Tercera muestra:
-    ; debe continuar LOW.
-
     nop [2]
 
     jmp pin false_word
 
-
-    ; Cuarta muestra:
-    ; debe continuar LOW.
 
     nop [2]
 
@@ -108,10 +78,10 @@ sync_high_ok:
 
 
 ; ============================================================
-; ALINEACIÓN CON EL PRIMER BIT
+; ALINEAR PRIMER BIT
 ;
-; MISMA alineación temporal que utilizamos en la versión
-; donde decodificábamos correctamente un solo bit.
+; Volvemos a NOP [2], que es la alineación con la cual
+; ya habíamos validado correctamente el primer bit.
 ; ============================================================
 
     nop [2]
@@ -119,164 +89,83 @@ sync_high_ok:
 
 
 ; ============================================================
-; RECIBIR 16 BITS
-;
-; Cada iteración válida dura:
-;
-;       8 ciclos PIO
-;
-;       8 x 125 ns = 1 us
-;
-; Por lo tanto no acumulamos desplazamiento temporal.
+; RECIBIR BIT
 ; ============================================================
 
 bit_loop:
 
-    ; --------------------------------------------------------
-    ; Muestra de la primera mitad.
-    ;
-    ; HIGH -> raw_high
-    ; LOW  -> raw_low
-    ; --------------------------------------------------------
-
+    ; Primera mitad.
     jmp pin raw_high
 
 
 
 ; ============================================================
-; PRIMERA MITAD LOW
-;
-; Manchester válido:
-;
-;       LOW -> HIGH
+; LOW -> HIGH
 ; ============================================================
 
 raw_low:
 
-    ; Guardar el nivel de la primera mitad.
-    ;
-    ; Acá será 0.
+    ; Guardar LOW.
     in pins, 1
 
-
-    ; Dos ciclos.
-    ;
-    ; Sumados a las instrucciones anteriores nos
-    ; posicionamos aproximadamente 500 ns después.
+    ; Llegar a segunda mitad.
     nop [1]
 
-
-    ; Segunda mitad:
-    ;
-    ; debe ser HIGH.
+    ; Debe ser HIGH.
     jmp pin bit_done
 
-
-    ; LOW -> LOW
-    ;
-    ; inválido.
-    jmp false_word
+    ; LOW -> LOW = error Manchester.
+    jmp manchester_error
 
 
 
 ; ============================================================
-; PRIMERA MITAD HIGH
-;
-; Manchester válido:
-;
-;       HIGH -> LOW
+; HIGH -> LOW
 ; ============================================================
 
 raw_high:
 
-    ; Guardar primera mitad.
-    ;
-    ; Acá será 1.
+    ; Guardar HIGH.
     in pins, 1
 
-
-    ; Esperar hacia segunda mitad.
+    ; Llegar a segunda mitad.
     nop [1]
 
+    ; Si continúa HIGH:
+    ; HIGH -> HIGH = error Manchester.
+    jmp pin manchester_error
 
-    ; Si sigue HIGH:
-    ;
-    ; HIGH -> HIGH
-    ;
-    ; inválido.
-    jmp pin false_word
-
-
-    ; Si quedó LOW, caemos directamente a bit_done.
+    ; Si está LOW, bit válido.
 
 
 
 ; ============================================================
-; BIT MANCHESTER VÁLIDO
-;
-; Camino LOW->HIGH:
-;
-;   JMP PIN          1
-;   IN               1
-;   NOP [1]          2
-;   JMP PIN          1
-;   JMP X-- [2]      3
-;                   ---
-;                     8 ciclos
-;
-; Camino HIGH->LOW:
-;
-;   exactamente lo mismo.
+; BIT CORRECTO
 ; ============================================================
 
 bit_done:
 
+    ; 8 ciclos totales por bit.
     jmp x-- bit_loop [2]
 
 
 
 ; ============================================================
-; 16 BITS RECIBIDOS
+; LOS 16 BITS LLEGARON CORRECTAMENTE
 ;
-; Para SM0/P:
+; Se entrega la palabra RAW.
 ;
-;       ISR = palabra real
+; Para CMD/P sería la palabra normal.
 ;
-; Para SM1/N:
+; Para DATA/N será complementaria.
+; Ejemplo:
 ;
-;       ISR = palabra invertida
+;       TX DATA = 0x1CE3
 ;
-; Y:
-;
-;       0 = CMD/STATUS
-;       1 = DATA
+;       RAW N = 0xE31C
 ; ============================================================
-
-    ; SM0 / CMD:
-    ; no invertir.
-    jmp !y emit_word
-
-
-    ; SM1 / DATA:
-    ; invertir para recuperar el valor lógico.
-    mov isr, !isr
-
-
-
-; ============================================================
-; ENTREGAR PALABRA
-; ============================================================
-
-emit_word:
 
     push block
-
-
-    ; --------------------------------------------------------
-    ; Tiempo muerto temporal.
-    ;
-    ; Todavía no capturamos la paridad.
-    ; --------------------------------------------------------
 
     set x, 5
 
@@ -291,11 +180,23 @@ dead_loop:
 
 
 ; ============================================================
-; ERROR
+; ERROR MANCHESTER
 ;
-; Sync inválido o Manchester inválido.
-;
-; Se descarta el resto de la palabra.
+; Mandamos X a la FIFO antes de descartar.
+; ============================================================
+
+manchester_error:
+
+    mov isr, x
+
+    push block
+
+    jmp false_word
+
+
+
+; ============================================================
+; DESCARTAR PALABRA
 ; ============================================================
 
 false_word:

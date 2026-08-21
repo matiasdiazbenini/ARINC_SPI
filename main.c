@@ -67,7 +67,7 @@ int main(void)
             else if (type ==
                      MIL1553_RX_TYPE_DATA)
             {
-                if (word == 0xA5A5u)
+                if (word == 0x1CE3u)
                 {
                     data_ok++;
                 }
