@@ -1,31 +1,20 @@
 .program mil1553_rx
 
 ; ============================================================
-; Detector de sincronismo CMD/STATUS y DATA WORD
+; Detector CMD/STATUS + DATA WORD
 ;
-; Reloj PIO = 8 MHz
-; 1 ciclo   = 125 ns
+; PIO = 8 MHz
 ;
-; IN base = GP2
+; GP2 = P = bit 0
+; GP3 = N = bit 1
 ;
-; bit 0 = GP2 = P
-; bit 1 = GP3 = N
+; Evento:
+;   1 -> CMD/STATUS
+;   2 -> DATA WORD
 ;
-; Valores leídos mediante MOV X, PINS:
-;
-;   0 = 00 -> reposo
-;   1 = 01 -> P=1, N=0 -> nivel H
-;   2 = 10 -> P=0, N=1 -> nivel L
-;   3 = 11 -> estado inválido
-;
-; Eventos enviados a RX FIFO:
-;
-;   1 -> SYNC CMD/STATUS detectado
-;   2 -> SYNC DATA WORD detectado
-;
-; NOTA:
-; Esta versión solamente detecta y clasifica sincronismos.
-; Todavía no decodifica los bits Manchester.
+; IMPORTANTE:
+; Después de un falso candidato obligamos a observar primero
+; el estado de reposo 00 antes de volver a buscar actividad.
 ; ============================================================
 
 
@@ -33,101 +22,93 @@
 
 
 ; ============================================================
-; ESPERAR ACTIVIDAD
+; REARMADO
+;
+; No podemos aceptar un nuevo candidato hasta observar
+; el bus en reposo:
+;
+;           P/N = 00
+;
+; Esto evita buscar falsos sincronismos dentro de los
+; bits Manchester de una palabra que ya está en curso.
+; ============================================================
+
+wait_idle:
+
+    mov x, pins
+
+    ; X = 0 -> P/N = 00
+    jmp !x wait_activity
+
+    ; Todavía hay actividad.
+    jmp wait_idle
+
+
+
+; ============================================================
+; ESPERAR PRIMERA ACTIVIDAD DESPUÉS DEL REPOSO
 ; ============================================================
 
 wait_activity:
 
-    ; Leer simultáneamente P y N.
     mov x, pins
 
-    ; 00 = bus en reposo.
+    ; Sigue en 00.
     jmp !x wait_activity
 
-
-    ; --------------------------------------------------------
-    ; Descartar 11.
+    ; Si P=1:
     ;
-    ; Los únicos estados activos válidos para nuestro
-    ; prototipo diferencial son:
+    ;     P/N = 10
     ;
-    ;   01 -> P=1, N=0
-    ;   10 -> P=0, N=1
-    ; --------------------------------------------------------
-
-    set y, 3
-    jmp x!=y classify
-
-    ; X = 3 -> 11 -> inválido.
-    jmp false_sync
-
-
-classify:
-
-    ; --------------------------------------------------------
-    ; JMP PIN observa GP2/P.
+    ; candidato CMD/STATUS.
     ;
-    ; P = 1 -> CMD/STATUS
-    ; P = 0 -> DATA WORD
+    ; Si P=0:
     ;
-    ; Como ya sabemos que X != 0 y X != 3:
+    ;     P/N = 01
     ;
-    ; P=1 implica P/N = 10
-    ; P=0 implica P/N = 01
-    ; --------------------------------------------------------
+    ; candidato DATA.
+    ;
+    ; Para este prototipo asumimos P y N complementarios
+    ; durante la transmisión.
 
     jmp pin cmd_candidate
 
 
+
 ; ============================================================
-; CANDIDATO DATA WORD
+; DATA WORD
 ;
-; DATA:
+; P:
 ;
-; primera mitad : P=0, N=1
-; segunda mitad : P=1, N=0
-;
-; Sobre P:
-;
-;      LOW  -> HIGH
-;
-; Primera muestra  : ~1.0 us
-; Segunda muestra  : ~2.0 us
-; Tercera muestra  : ~2.625 us
+;     LOW  durante ~1.5 us
+;     HIGH durante ~1.5 us
 ; ============================================================
 
 data_candidate:
 
-    ; ------------------------------------
-    ; Primera muestra:
-    ; P todavía debe estar LOW.
-    ; ------------------------------------
+    ; Primera zona:
+    ; todavía debe estar LOW.
 
     nop [2]
 
-    ; Si P=1 demasiado pronto -> error.
+    ; HIGH demasiado pronto -> candidato inválido.
     jmp pin false_sync
 
 
-    ; ------------------------------------
-    ; Segunda muestra:
-    ; P ya debe estar HIGH.
-    ; ------------------------------------
+    ; Segunda zona:
+    ; ahora debe estar HIGH.
 
     nop [6]
 
     jmp pin data_high_ok
 
-    ; Sigue LOW -> error.
+    ; Sigue LOW -> inválido.
     jmp false_sync
 
 
 data_high_ok:
 
-    ; ------------------------------------
-    ; Tercera muestra:
-    ; P debe continuar HIGH.
-    ; ------------------------------------
+    ; Debe continuar HIGH.
 
     nop [3]
 
@@ -139,82 +120,60 @@ data_high_ok:
 
 data_detected:
 
-    ; Evento 2 = DATA WORD.
+    ; Evento DATA = 2.
     set x, 2
-
-    ; DATA necesita saltar al bloque común.
     jmp emit_event
 
 
 
 ; ============================================================
-; CANDIDATO CMD / STATUS
+; CMD / STATUS
 ;
-; CMD/STATUS:
+; P:
 ;
-; primera mitad : P=1, N=0
-; segunda mitad : P=0, N=1
-;
-; Sobre P:
-;
-;      HIGH -> LOW
-;
-; Primera muestra  : ~1.0 us
-; Segunda muestra  : ~2.0 us
-; Tercera muestra  : ~2.625 us
+;     HIGH durante ~1.5 us
+;     LOW  durante ~1.5 us
 ; ============================================================
 
 cmd_candidate:
 
-    ; ------------------------------------
-    ; Primera muestra:
-    ; P todavía debe estar HIGH.
-    ; ------------------------------------
+    ; Primera zona:
+    ; todavía debe estar HIGH.
 
     nop [2]
 
     jmp pin cmd_high_ok
 
-    ; Ya está LOW -> error.
+    ; LOW demasiado pronto.
     jmp false_sync
 
 
 cmd_high_ok:
 
-    ; ------------------------------------
-    ; Segunda muestra:
-    ; P ya debe estar LOW.
-    ; ------------------------------------
+    ; Segunda zona:
+    ; ahora debe estar LOW.
 
     nop [6]
 
-    ; Si todavía está HIGH -> error.
+    ; Si sigue HIGH -> inválido.
     jmp pin false_sync
 
 
-    ; ------------------------------------
-    ; Tercera muestra:
-    ; P debe continuar LOW.
-    ; ------------------------------------
+    ; Debe continuar LOW.
 
     nop [3]
 
-    ; Si volvió a HIGH -> error.
+    ; Si volvió a HIGH -> inválido.
     jmp pin false_sync
 
 
-    ; Evento 1 = CMD/STATUS.
+    ; Evento CMD/STATUS = 1.
     set x, 1
 
 
 
 ; ============================================================
-; BLOQUE COMÚN DE ENTREGA
-;
-; X contiene:
-;
-;   1 -> CMD/STATUS
-;   2 -> DATA WORD
+; ENTREGAR EVENTO
 ; ============================================================
 
 emit_event:
@@ -227,25 +186,10 @@ emit_event:
 ; ============================================================
 ; TIEMPO MUERTO TEMPORAL
 ;
-; No queremos que los bits Manchester de la misma palabra
-; sean interpretados como nuevos sincronismos.
+; Aproximadamente 20.6 us.
 ;
-; En lugar de usar cinco NOP distintos, usamos un bucle.
-;
-; Y = 4 produce cinco pasadas por el bucle.
-;
-; Cada pasada:
-;
-;   nop [31]       = 32 ciclos
-;   jmp y--        = 1 ciclo
-;
-; Aproximadamente:
-;
-;   5 x 33 ciclos = 165 ciclos
-;   165 x 125 ns  = 20.625 us
-;
-; Este tiempo muerto desaparecerá cuando implementemos
-; la recepción completa de la palabra.
+; Después de este tiempo igualmente exigimos observar
+; nuevamente 00 antes de aceptar otra palabra.
 ; ============================================================
 
     set y, 4
@@ -255,17 +199,22 @@ dead_time:
     nop [31]
     jmp y-- dead_time
 
-    jmp wait_activity
+    jmp wait_idle
 
 
 
 ; ============================================================
-; SINCRONISMO INVÁLIDO
+; CANDIDATO INVÁLIDO
+;
+; CLAVE:
+;
+; NO volvemos directamente a wait_activity.
+; Esperamos primero el estado 00.
 ; ============================================================
 
 false_sync:
 
-    jmp wait_activity
+    jmp wait_idle
 
 
 .wrap
