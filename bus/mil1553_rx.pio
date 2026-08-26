@@ -1,167 +1,359 @@
 .program mil1553_rx
 
-; ============================================================
-; DIAGNOSTICO DATA - 16 BITS RAW
+; ============================================================================
+; MIL-STD-1553 RX - Raspberry Pi Pico 2 / RP2350
+; ============================================================================
 ;
-; SM1 observa N.
+; PIO clock = 8 MHz
 ;
-; TX:
-;       DATA 0x1CE3
+;   1 ciclo   = 125 ns
+;   medio bit = 500 ns
+;   bit       = 1 us
 ;
-; RAW esperado sobre N:
-;       0xE31C
+; Dos State Machines ejecutan el mismo programa:
 ;
-; No se usa Y.
-; No se invierte ISR.
-; ============================================================
+;   SM0 -> GP2 / P -> CMD / STATUS
+;   SM1 -> GP3 / N -> DATA
+;
+; Cada palabra:
+;
+;   SYNC    = 3 us
+;   INFO    = 16 bits
+;   PARITY  = 1 bit
+;
+; SM0 / P:
+;   CMD/STATUS queda en polaridad lógica correcta.
+;
+; SM1 / N:
+;   DATA queda complementado.
+;   La inversión se realiza posteriormente en Cortex.
+;
+; ============================================================================
+
 
 .wrap_target
 
 
+; ============================================================================
+; ESPERAR CANDIDATO DE SINCRONISMO
+; ============================================================================
+;
+; Cada SM busca:
+;
+;       LOW -> HIGH
+;
+; sobre su propia línea.
+;
+; Para SM0/P esto corresponde al comienzo del sync CMD/STATUS.
+;
+; Para SM1/N esto corresponde al comienzo del sync DATA
+; visto desde la línea complementaria.
+;
+; ============================================================================
+
 wait_start:
-
-    ; Preparar antes de esperar la palabra.
-    mov isr, null
-
-    ; 16 bits: X = 15 ... 0
-    ; 16 bits de información + 1 bit de paridad
-    ; X=16 -> 17 iteraciones
-    set x, 16
 
     wait 0 pin 0
     wait 1 pin 0
 
 
-; ============================================================
-; VALIDAR SYNC
-; ============================================================
+; ============================================================================
+; PREPARAR CONTADOR
+; ============================================================================
+;
+; X = 16
+;
+; Produce 17 iteraciones:
+;
+;   16 bits de información
+;   1 bit de paridad
+;
+; SET [4] ocupa:
+;
+;   5 ciclos = 625 ns
+;
+; y sustituye al antiguo NOP [4].
+;
+; ============================================================================
 
-    nop [4]
-
-    jmp pin sync_high_ok
-    jmp discard
+    set x, 16 [4]
 
 
-sync_high_ok:
+; ============================================================================
+; VALIDACIÓN DEL SINCRONISMO
+; ============================================================================
+;
+; Un sync válido debe presentar aproximadamente:
+;
+;   t = 0.75 us -> HIGH
+;   t = 1.25 us -> HIGH
+;   t = 1.75 us -> LOW
+;   t = 2.25 us -> LOW
+;   t = 2.75 us -> LOW
+;
+; La comprobación de 1.25 us es nueva.
+;
+; Un patrón Manchester normal no debería poder mantener
+; HIGH durante toda esta ventana desde una transición
+; LOW -> HIGH candidata.
+;
+; ============================================================================
 
-    nop [6]
-    jmp pin discard
+
+; ----------------------------------------------------------------------------
+; MUESTRA 1
+;
+; ~0.75 us
+;
+; Debe seguir HIGH.
+; ----------------------------------------------------------------------------
+
+    jmp pin sync_high_1_ok
+
+    ; Ya cayó a LOW demasiado pronto.
+    jmp wait_start
+
+
+sync_high_1_ok:
+
+
+; ----------------------------------------------------------------------------
+; Entre 0.75 us y 1.25 us:
+;
+;   JMP anterior = 1 ciclo
+;   NOP [2]      = 3 ciclos
+;
+; Total:
+;
+;   4 ciclos = 500 ns
+; ----------------------------------------------------------------------------
 
     nop [2]
-    jmp pin discard
+
+
+; ----------------------------------------------------------------------------
+; MUESTRA 2
+;
+; ~1.25 us
+;
+; Debe seguir HIGH.
+;
+; Esta es la nueva comprobación.
+; ----------------------------------------------------------------------------
+
+    jmp pin sync_high_2_ok
+
+    ; Un Manchester normal que haya generado
+    ; el candidato debería haber cambiado ya.
+    jmp wait_start
+
+
+sync_high_2_ok:
+
+
+; ----------------------------------------------------------------------------
+; Entre 1.25 us y 1.75 us:
+;
+;   JMP anterior = 1 ciclo
+;   NOP [2]      = 3 ciclos
+;
+; Total:
+;
+;   4 ciclos = 500 ns
+; ----------------------------------------------------------------------------
 
     nop [2]
-    jmp pin discard
 
 
-; ============================================================
+; ----------------------------------------------------------------------------
+; MUESTRA 3
+;
+; ~1.75 us
+;
+; Ahora debe estar LOW.
+; ----------------------------------------------------------------------------
+
+    jmp pin wait_start
+
+
+; ----------------------------------------------------------------------------
+; MUESTRA 4
+;
+; ~2.25 us
+;
+; Debe seguir LOW.
+; ----------------------------------------------------------------------------
+
+    nop [2]
+
+    jmp pin wait_start
+
+
+; ----------------------------------------------------------------------------
+; MUESTRA 5
+;
+; ~2.75 us
+;
+; Debe seguir LOW.
+; ----------------------------------------------------------------------------
+
+    nop [2]
+
+    jmp pin wait_start
+
+
+; ============================================================================
 ; ALINEAR PRIMER BIT
-; ============================================================
+; ============================================================================
+;
+; Se conserva el mismo tiempo que en la versión anterior.
+;
+; No modificamos el punto de muestreo del Manchester.
+;
+; ============================================================================
 
     nop [2]
 
 
-; ============================================================
-; BUCLE DE 16 BITS
+; ============================================================================
+; RECEPCIÓN DE LOS 17 BITS
+; ============================================================================
 ;
-; Se guarda la PRIMERA mitad observada sobre N.
+; Capturamos:
 ;
-; LOW -> HIGH  válido
-; HIGH -> LOW  válido
+;   16 bits de información
+;   1 bit de paridad
 ;
-; Cada camino válido:
+; Se toma la primera mitad de cada bit Manchester.
 ;
-;   JMP PIN       1
-;   IN PINS,1     1
-;   NOP [1]       2
-;   JMP PIN       1
-;   JMP X-- [2]   3
-;                ---
-;                  8 ciclos = 1 us
-; ============================================================
+; Transiciones válidas:
+;
+;   LOW  -> HIGH
+;   HIGH -> LOW
+;
+; Cada iteración válida:
+;
+;   JMP PIN       1 ciclo
+;   IN            1 ciclo
+;   NOP [1]       2 ciclos
+;   JMP PIN       1 ciclo
+;   JMP X-- [2]   3 ciclos
+;                --------
+;                 8 ciclos
+;
+;   8 ciclos = 1 us
+;
+; ============================================================================
 
 bit_loop:
 
     jmp pin first_high
 
 
-; ------------------------------------------------------------
-; Primera mitad LOW
-; ------------------------------------------------------------
+; ============================================================================
+; PRIMERA MITAD LOW
+; ============================================================================
 
 first_low:
 
+    ; Guardar el nivel recibido.
     in pins, 1
 
+
+    ; Avanzar hacia la segunda mitad.
     nop [1]
 
-    ; LOW -> HIGH debe terminar en HIGH.
+
+    ; LOW -> HIGH:
+    ;
+    ; Manchester válido.
     jmp pin bit_ok
 
-    jmp discard
+
+    ; LOW -> LOW:
+    ;
+    ; Manchester inválido.
+    ;
+    ; Volvemos inmediatamente a buscar
+    ; un sincronismo verdadero.
+    jmp wait_start
 
 
-; ------------------------------------------------------------
-; Primera mitad HIGH
-; ------------------------------------------------------------
+; ============================================================================
+; PRIMERA MITAD HIGH
+; ============================================================================
 
 first_high:
 
+    ; Guardar el nivel recibido.
     in pins, 1
 
+
+    ; Avanzar hacia la segunda mitad.
     nop [1]
 
-    ; HIGH -> LOW:
-    ; si sigue HIGH es inválido.
-    jmp pin discard
 
-    ; Si está LOW cae a bit_ok.
+    ; HIGH -> LOW es válido.
+    ;
+    ; Si sigue HIGH:
+    ; Manchester inválido.
+    jmp pin wait_start
 
 
-; ============================================================
-; BIT CORRECTO
-; ============================================================
+    ; Si ahora está LOW:
+    ;
+    ; cae directamente a bit_ok.
+
+
+; ============================================================================
+; BIT VÁLIDO
+; ============================================================================
 
 bit_ok:
 
     jmp x-- bit_loop [2]
 
 
-; ============================================================
-; NORMALIZAR POLARIDAD
+; ============================================================================
+; PALABRA COMPLETA
+; ============================================================================
 ;
-; Y = 0 -> SM0 / P -> CMD/STATUS
-;         ya contiene la palabra lógica correcta
+; Ya tenemos:
 ;
-; Y = 1 -> SM1 / N -> DATA
-;         contiene la palabra complementada
-; ============================================================
-
-    jmp !y emit_word
-
-    ; Solo DATA necesita inversión.
-    mov isr, !isr
-
-
-emit_word:
+;   bits 16..1 -> información
+;   bit 0      -> paridad
+;
+; No invertimos DATA dentro del PIO.
+;
+; SM1/N entrega RAW complementado y la normalización
+; se realiza en mil1553_rx.c.
+;
+; Esto mantiene mínimo el camino crítico entre palabras.
+;
+; ============================================================================
 
     push block
 
 
-; ============================================================
-; IGNORAR RESTO DE PALABRA
-; ============================================================
-
-discard:
-
-    set x, 5
-
-
-dead_loop:
-
-    jmp x-- dead_loop [31]
-
-    jmp wait_start
-
+; ============================================================================
+; REARME
+; ============================================================================
+;
+; .wrap vuelve directamente a wait_start.
+;
+; Después de una palabra válida:
+;
+;       PUSH
+;        ↓
+;       WAIT 0
+;        ↓
+;       WAIT 1
+;
+; Sin dead_loop.
+; Sin MOV.
+; Sin SET adicional.
+; Sin JMP adicional.
+;
+; ============================================================================
 
 .wrap
