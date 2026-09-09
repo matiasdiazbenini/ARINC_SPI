@@ -8,50 +8,178 @@
 #include "bus/mil1553_rx.h"
 
 
-#define MY_RT_ADDR 3u
+#define MY_RT_ADDR             3u
+#define EXPECTED_SUBADDR       7u
+#define EXPECTED_WORD_COUNT    4u
+
+#define TEST_MESSAGES          1000u
+
+
+/*
+ * Si ya comenzó el test y pasan 1.5 segundos
+ * sin recibir ninguna palabra, consideramos
+ * que el BC terminó.
+ */
+#define TEST_END_SILENCE_US    1500000ull
+
+
+/*
+ * Orden esperado:
+ *
+ * DATA1 = 0x4444
+ * DATA2 = 0x2222
+ * DATA3 = 0x3333
+ * DATA4 = 0x1111
+ */
+static const uint16_t expected_data[
+    EXPECTED_WORD_COUNT
+] =
+{
+    0x4444u,
+    0x2222u,
+    0x3333u,
+    0x1111u
+};
+
+
+/*
+ * Imprime una tasa porcentual con
+ * tres cifras decimales.
+ *
+ * No requiere printf con float.
+ */
+static void print_rate(
+    const char *name,
+    uint32_t correct,
+    uint32_t expected)
+{
+    uint32_t scaled = 0u;
+
+    if (expected != 0u)
+    {
+        scaled =
+            (uint32_t)(
+                ((uint64_t)correct * 100000ull)
+                /
+                expected
+            );
+    }
+
+    printf(
+        "%s: %lu.%03lu %%\n",
+        name,
+        (unsigned long)(scaled / 1000u),
+        (unsigned long)(scaled % 1000u)
+    );
+}
 
 
 int main(void)
 {
     stdio_init_all();
 
-    sleep_ms(2000);
 
+    /*
+     * Dar tiempo al sistema USB/UART,
+     * pero todavía no hay tráfico del BC
+     * porque este espera 10 segundos.
+     */
+    sleep_ms(1000);
+
+
+    /*
+     * Inicializar RX PIO.
+     */
     mil1553_rx_init();
 
-    printf("MIL-STD-1553 RT - COMMAND + DATA RX\n");
-    printf("Direccion RT local: %u\n\n", MY_RT_ADDR);
-
 
     /*
-     * Contadores del periodo de 5 segundos.
-     */
-    uint32_t cmd_for_me     = 0;
-    uint32_t cmd_other_rt   = 0;
-    uint32_t cmd_parity_err = 0;
-
-    uint32_t data_ok        = 0;
-    uint32_t data_par_err   = 0;
-
-
-    /*
-     * Contadores acumulativos.
+     * Command esperado:
      *
-     * Estos NO se reinician cada 5 segundos.
+     * RT  = 3
+     * TR  = 0
+     * SUB = 7
+     * WC  = 4
+     *
+     * CMD = 0x18E4
      */
-    uint32_t total_1111 = 0;
-    uint32_t total_2222 = 0;
-    uint32_t total_3333 = 0;
+    const uint16_t expected_cmd =
+        BUS_1553_CMD_MAKE(
+            MY_RT_ADDR,
+            BUS_1553_TR_BC_TO_RT,
+            EXPECTED_SUBADDR,
+            EXPECTED_WORD_COUNT
+        );
 
-    uint32_t total_data_other = 0;
+
+    // ========================================================
+    // COMMAND
+    // ========================================================
+
+    uint32_t cmd_total      = 0u;
+    uint32_t cmd_ok         = 0u;
+    uint32_t cmd_par_err    = 0u;
+    uint32_t cmd_unexpected = 0u;
 
 
-    absolute_time_t next_report =
-        make_timeout_time_ms(5000);
+    // ========================================================
+    // DATA
+    // ========================================================
+
+    uint32_t data_total      = 0u;
+    uint32_t data_par_ok     = 0u;
+    uint32_t data_par_err    = 0u;
+
+    uint32_t data_slot_ok    = 0u;
+    uint32_t data_mismatch   = 0u;
+    uint32_t data_orphan     = 0u;
+
+
+    /*
+     * Conteo bruto por valor.
+     */
+    uint32_t data_1111 = 0u;
+    uint32_t data_2222 = 0u;
+    uint32_t data_3333 = 0u;
+    uint32_t data_4444 = 0u;
+
+    uint32_t data_other = 0u;
+
+
+    // ========================================================
+    // MENSAJES
+    // ========================================================
+
+    uint32_t messages_started = 0u;
+    uint32_t messages_ok      = 0u;
+    uint32_t messages_bad     = 0u;
+
+
+    /*
+     * Estado del mensaje actualmente recibido.
+     */
+    bool message_active = false;
+    bool message_ok     = true;
+
+    uint8_t data_position = 0u;
+
+
+    // ========================================================
+    // CONTROL DEL TEST
+    // ========================================================
+
+    bool test_started = false;
+    bool report_done  = false;
+
+    uint64_t last_rx_us = 0u;
 
 
     while (true)
     {
+        // ====================================================
+        // RECEPCIÓN
+        // ====================================================
+
         if (mil1553_rx_available())
         {
             uint32_t event =
@@ -59,259 +187,528 @@ int main(void)
 
 
             /*
-             * Tipo de palabra.
+             * El test comienza en cuanto aparece
+             * la primera palabra.
              */
-            uint32_t type =
-                event & MIL1553_RX_TYPE_MASK;
+            test_started = true;
+
+            last_rx_us =
+                time_us_64();
 
 
             /*
-             * Payload:
+             * Extraer tipo.
+             */
+            uint32_t type =
+                event &
+                MIL1553_RX_TYPE_MASK;
+
+
+            /*
+             * Extraer payload de 17 bits:
              *
-             * bits 16..1 -> palabra
-             * bit 0      -> paridad
+             * bits 16..1 = WORD
+             * bit 0      = PARITY
              */
             uint32_t payload =
-                event & MIL1553_RX_PAYLOAD_MASK;
+                event &
+                MIL1553_RX_PAYLOAD_MASK;
 
 
             uint16_t word =
                 (uint16_t)(
-                    (payload >> MIL1553_RX_WORD_SHIFT)
-                    & MIL1553_RX_WORD_MASK
+                    (payload >>
+                     MIL1553_RX_WORD_SHIFT)
+                    &
+                    MIL1553_RX_WORD_MASK
                 );
 
 
             uint8_t received_parity =
                 (uint8_t)(
-                    payload
-                    & MIL1553_RX_PARITY_MASK
+                    payload &
+                    MIL1553_RX_PARITY_MASK
                 );
 
 
             uint8_t expected_parity =
-                bus_compute_odd_parity(word);
+                bus_compute_odd_parity(
+                    word
+                );
 
 
             bool parity_ok =
-                (received_parity ==
-                 expected_parity);
+                (
+                    received_parity
+                    ==
+                    expected_parity
+                );
 
 
-            // ====================================================
+            // =================================================
             // COMMAND / STATUS
-            // ====================================================
+            // =================================================
 
             if (type ==
                 MIL1553_RX_TYPE_CMD_STATUS)
             {
+                cmd_total++;
+
+
+                /*
+                 * Si llega un nuevo CMD y todavía
+                 * había un mensaje anterior abierto,
+                 * el anterior estaba incompleto.
+                 */
+                if (message_active)
+                {
+                    messages_bad++;
+
+                    message_active = false;
+                }
+
+
+                /*
+                 * Paridad incorrecta.
+                 */
                 if (!parity_ok)
                 {
-                    cmd_parity_err++;
+                    cmd_par_err++;
 
-                    printf(
-                        "CMD ERROR PARIDAD: "
-                        "word=0x%04X "
-                        "parity=%u esperada=%u\n\n",
-                        word,
-                        received_parity,
-                        expected_parity
-                    );
+                    continue;
+                }
+
+
+                /*
+                 * Para este ensayo esperamos
+                 * exactamente CMD 0x18E4.
+                 */
+                if (word == expected_cmd)
+                {
+                    cmd_ok++;
+
+                    messages_started++;
+
+                    message_active = true;
+                    message_ok     = true;
+
+                    data_position = 0u;
                 }
                 else
                 {
-                    /*
-                     * Decodificar Command Word.
-                     */
-                    uint8_t rt =
-                        BUS_1553_CMD_RT(word);
-
-                    uint8_t tr =
-                        BUS_1553_CMD_TR(word);
-
-                    uint8_t sub =
-                        BUS_1553_CMD_SUB(word);
-
-                    uint8_t wc =
-                        BUS_1553_CMD_WC(word);
-
-
-                    printf(
-                        "CMD recibido: 0x%04X PARITY=OK\n",
-                        word
-                    );
-
-                    printf(
-                        "RT=%u TR=%u SUB=%u WC=%u\n",
-                        rt,
-                        tr,
-                        sub,
-                        wc
-                    );
-
-
-                    /*
-                     * Verificar direccionamiento.
-                     */
-                    if (rt == MY_RT_ADDR)
-                    {
-                        cmd_for_me++;
-
-                        printf(
-                            "CMD dirigido a este RT\n"
-                        );
-
-
-                        if (tr ==
-                            BUS_1553_TR_RT_TO_BC)
-                        {
-                            printf(
-                                "Operacion: RT -> BC "
-                                "(Transmit Command)\n"
-                            );
-                        }
-                        else
-                        {
-                            printf(
-                                "Operacion: BC -> RT "
-                                "(Receive Command)\n"
-                            );
-                        }
-                    }
-                    else
-                    {
-                        cmd_other_rt++;
-
-                        printf(
-                            "CMD para otro RT - ignorado\n"
-                        );
-                    }
-
-
-                    printf("\n");
+                    cmd_unexpected++;
                 }
             }
 
 
-            // ====================================================
-            // DATA WORD
-            // ====================================================
+            // =================================================
+            // DATA
+            // =================================================
 
             else if (type ==
                      MIL1553_RX_TYPE_DATA)
             {
+                data_total++;
+
+
+                /*
+                 * Contar primero según paridad
+                 * y valor bruto recibido.
+                 */
                 if (parity_ok)
                 {
-                    data_ok++;
+                    data_par_ok++;
 
 
-                    /*
-                     * Contadores acumulativos por valor.
-                     */
                     if (word == 0x1111u)
                     {
-                        total_1111++;
+                        data_1111++;
                     }
                     else if (word == 0x2222u)
                     {
-                        total_2222++;
+                        data_2222++;
                     }
                     else if (word == 0x3333u)
                     {
-                        total_3333++;
+                        data_3333++;
+                    }
+                    else if (word == 0x4444u)
+                    {
+                        data_4444++;
                     }
                     else
                     {
-                        total_data_other++;
-
-                        printf(
-                            ">>> DATA INESPERADO: 0x%04X "
-                            "parity=%u OK <<<\n\n",
-                            word,
-                            received_parity
-                        );
+                        data_other++;
                     }
-
-
-                    printf(
-                        "DATA recibido: "
-                        "0x%04X PARITY=OK\n\n",
-                        word
-                    );
                 }
                 else
                 {
                     data_par_err++;
+                }
 
-                    printf(
-                        "DATA ERROR PARIDAD: "
-                        "word=0x%04X "
-                        "parity=%u esperada=%u\n\n",
-                        word,
-                        received_parity,
-                        expected_parity
-                    );
+
+                /*
+                 * DATA recibido sin que exista
+                 * un Command válido activo.
+                 */
+                if (!message_active)
+                {
+                    data_orphan++;
+
+                    continue;
+                }
+
+
+                /*
+                 * Comprobar la posición esperada.
+                 */
+                if (!parity_ok)
+                {
+                    message_ok = false;
+                }
+                else
+                {
+                    uint16_t expected_word =
+                        expected_data[
+                            data_position
+                        ];
+
+
+                    if (word ==
+                        expected_word)
+                    {
+                        data_slot_ok++;
+                    }
+                    else
+                    {
+                        data_mismatch++;
+
+                        message_ok = false;
+                    }
+                }
+
+
+                /*
+                 * La posición se consume aunque
+                 * esa palabra tenga un error.
+                 */
+                data_position++;
+
+
+                /*
+                 * Ya recibimos las cuatro posiciones
+                 * del mensaje.
+                 */
+                if (data_position >=
+                    EXPECTED_WORD_COUNT)
+                {
+                    if (message_ok)
+                    {
+                        messages_ok++;
+                    }
+                    else
+                    {
+                        messages_bad++;
+                    }
+
+
+                    message_active = false;
                 }
             }
         }
 
 
-        // ========================================================
-        // REPORTE CADA 5 SEGUNDOS
-        // ========================================================
+        // ====================================================
+        // FIN DEL TEST
+        // ====================================================
 
-        if (absolute_time_diff_us(
-                get_absolute_time(),
-                next_report) <= 0)
+        if (test_started &&
+            !report_done)
         {
-            printf(
-                "En 5 s: "
-                "CMD[MI_RT=%lu OTRO_RT=%lu PAR_ERR=%lu] "
-                "DATA[OK=%lu PAR_ERR=%lu]\n",
-
-                (unsigned long)cmd_for_me,
-                (unsigned long)cmd_other_rt,
-                (unsigned long)cmd_parity_err,
-
-                (unsigned long)data_ok,
-                (unsigned long)data_par_err
-            );
+            uint64_t now_us =
+                time_us_64();
 
 
-            /*
-             * Acumulados desde que arrancó el RT.
-             */
-            printf(
-                "TOTAL DATA: "
-                "1111=%lu "
-                "2222=%lu "
-                "3333=%lu "
-                "OTROS=%lu\n\n",
+            if ((now_us - last_rx_us)
+                >= TEST_END_SILENCE_US)
+            {
+                /*
+                 * Si quedó un mensaje abierto cuando
+                 * terminó el tráfico, también cuenta
+                 * como mensaje incompleto.
+                 */
+                if (message_active)
+                {
+                    messages_bad++;
 
-                (unsigned long)total_1111,
-                (unsigned long)total_2222,
-                (unsigned long)total_3333,
-                (unsigned long)total_data_other
-            );
-
-
-            /*
-             * Solo se reinician los contadores
-             * correspondientes a la ventana de 5 segundos.
-             */
-            cmd_for_me     = 0;
-            cmd_other_rt   = 0;
-            cmd_parity_err = 0;
-
-            data_ok      = 0;
-            data_par_err = 0;
+                    message_active = false;
+                }
 
 
-            next_report =
-                make_timeout_time_ms(5000);
+                report_done = true;
+
+
+                /*
+                 * =================================================
+                 * DESDE ACÁ RECIÉN USAMOS PRINTF
+                 * =================================================
+                 */
+
+
+                const uint32_t expected_cmds =
+                    TEST_MESSAGES;
+
+
+                const uint32_t expected_data_words =
+                    TEST_MESSAGES *
+                    EXPECTED_WORD_COUNT;
+
+
+                const uint32_t expected_total_words =
+                    expected_cmds +
+                    expected_data_words;
+
+
+                const uint32_t correct_total_words =
+                    cmd_ok +
+                    data_slot_ok;
+
+
+                printf("\n\n");
+
+                printf(
+                    "========================================\n"
+                );
+
+                printf(
+                    "RESULTADO TEST MIL-STD-1553\n"
+                );
+
+                printf(
+                    "========================================\n\n"
+                );
+
+
+                printf(
+                    "MENSAJES ESPERADOS : %lu\n\n",
+                    (unsigned long)
+                        TEST_MESSAGES
+                );
+
+
+                // --------------------------------------------
+                // COMMAND
+                // --------------------------------------------
+
+                printf(
+                    "--- COMMAND ---\n"
+                );
+
+                printf(
+                    "CMD esperados       : %lu\n",
+                    (unsigned long)
+                        expected_cmds
+                );
+
+                printf(
+                    "CMD recibidos total : %lu\n",
+                    (unsigned long)
+                        cmd_total
+                );
+
+                printf(
+                    "CMD correctos       : %lu\n",
+                    (unsigned long)
+                        cmd_ok
+                );
+
+                printf(
+                    "CMD error paridad   : %lu\n",
+                    (unsigned long)
+                        cmd_par_err
+                );
+
+                printf(
+                    "CMD inesperados     : %lu\n\n",
+                    (unsigned long)
+                        cmd_unexpected
+                );
+
+
+                // --------------------------------------------
+                // DATA
+                // --------------------------------------------
+
+                printf(
+                    "--- DATA ---\n"
+                );
+
+                printf(
+                    "DATA esperados       : %lu\n",
+                    (unsigned long)
+                        expected_data_words
+                );
+
+                printf(
+                    "DATA recibidos total : %lu\n",
+                    (unsigned long)
+                        data_total
+                );
+
+                printf(
+                    "DATA paridad OK      : %lu\n",
+                    (unsigned long)
+                        data_par_ok
+                );
+
+                printf(
+                    "DATA error paridad   : %lu\n",
+                    (unsigned long)
+                        data_par_err
+                );
+
+                printf(
+                    "DATA posicion OK     : %lu\n",
+                    (unsigned long)
+                        data_slot_ok
+                );
+
+                printf(
+                    "DATA valor incorrecto: %lu\n",
+                    (unsigned long)
+                        data_mismatch
+                );
+
+                printf(
+                    "DATA sin CMD activo  : %lu\n\n",
+                    (unsigned long)
+                        data_orphan
+                );
+
+
+                // --------------------------------------------
+                // VALORES
+                // --------------------------------------------
+
+                printf(
+                    "--- VALORES DATA RECIBIDOS ---\n"
+                );
+
+                printf(
+                    "0x4444 : %lu\n",
+                    (unsigned long)
+                        data_4444
+                );
+
+                printf(
+                    "0x2222 : %lu\n",
+                    (unsigned long)
+                        data_2222
+                );
+
+                printf(
+                    "0x3333 : %lu\n",
+                    (unsigned long)
+                        data_3333
+                );
+
+                printf(
+                    "0x1111 : %lu\n",
+                    (unsigned long)
+                        data_1111
+                );
+
+                printf(
+                    "OTROS  : %lu\n\n",
+                    (unsigned long)
+                        data_other
+                );
+
+
+                // --------------------------------------------
+                // MENSAJES
+                // --------------------------------------------
+
+                printf(
+                    "--- MENSAJES ---\n"
+                );
+
+                printf(
+                    "Mensajes iniciados  : %lu\n",
+                    (unsigned long)
+                        messages_started
+                );
+
+                printf(
+                    "Mensajes completos OK: %lu\n",
+                    (unsigned long)
+                        messages_ok
+                );
+
+                printf(
+                    "Mensajes detectados BAD: %lu\n\n",
+                    (unsigned long)
+                        messages_bad
+                );
+
+
+                // --------------------------------------------
+                // TASAS
+                // --------------------------------------------
+
+                printf(
+                    "--- TASAS DE EXITO ---\n"
+                );
+
+
+                print_rate(
+                    "Exito CMD",
+                    cmd_ok,
+                    expected_cmds
+                );
+
+
+                print_rate(
+                    "Exito DATA por posicion",
+                    data_slot_ok,
+                    expected_data_words
+                );
+
+
+                print_rate(
+                    "Exito palabras total",
+                    correct_total_words,
+                    expected_total_words
+                );
+
+
+                print_rate(
+                    "Exito mensajes completos",
+                    messages_ok,
+                    TEST_MESSAGES
+                );
+
+
+                printf("\n");
+
+                printf(
+                    "========================================\n"
+                );
+
+                printf(
+                    "FIN DEL INFORME\n"
+                );
+
+                printf(
+                    "========================================\n"
+                );
+            }
         }
 
 
+        /*
+         * Sin printf durante la recepción.
+         */
         tight_loop_contents();
     }
 }
