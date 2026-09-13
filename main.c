@@ -19,21 +19,21 @@
 #define EXPECTED_SUBADDR       18u
 #define EXPECTED_WORD_COUNT    4u
 
-#define TEST_MESSAGES          1000u
+#define TEST_TRANSACTIONS      1000u
 
 /*
- * Después de este tiempo sin recibir nada
+ * Después de este tiempo sin recibir comandos
  * consideramos terminado el ensayo.
  */
 #define TEST_END_SILENCE_US    1500000ull
 
 
 /* ============================================================
- * DATA ESPERADOS
+ * DATA QUE TRANSMITIRÁ EL RT
  * ============================================================
  */
 
-static const uint16_t expected_data[EXPECTED_WORD_COUNT] =
+static const uint16_t data_to_bc[EXPECTED_WORD_COUNT] =
 {
     0x4444u,
     0x2222u,
@@ -43,7 +43,7 @@ static const uint16_t expected_data[EXPECTED_WORD_COUNT] =
 
 
 /* ============================================================
- * IMPRIMIR PORCENTAJE
+ * PORCENTAJES
  * ============================================================
  */
 
@@ -58,7 +58,8 @@ static void print_rate(
     {
         scaled =
             (uint32_t)(
-                ((uint64_t)correct * 100000ull)
+                ((uint64_t)correct *
+                 100000ull)
                 /
                 expected
             );
@@ -81,9 +82,12 @@ static void print_rate(
 int main(void)
 {
     /*
-     * 120 MHz / 8 MHz = divisor 15 exacto.
+     * 120 MHz / 8 MHz = divisor PIO 15 exacto.
      */
-    set_sys_clock_khz(120000, true);
+    set_sys_clock_khz(
+        120000,
+        true
+    );
 
     stdio_init_all();
 
@@ -91,10 +95,8 @@ int main(void)
 
 
     /*
-     * IMPORTANTE:
-     *
-     * RX primero.
-     * TX después.
+     * Primero RX.
+     * Después TX.
      */
     mil1553_rx_init();
     mil1553_tx_init();
@@ -103,19 +105,19 @@ int main(void)
     printf("\n");
     printf("========================================\n");
     printf("RT INICIALIZADO\n");
-    printf("Esperando 1000 transacciones\n");
+    printf("Esperando 1000 TRANSMIT COMMAND\n");
     printf("========================================\n");
 
 
     /* ========================================================
-     * PALABRAS ESPERADAS
+     * PALABRAS
      * ========================================================
      */
 
     const uint16_t expected_cmd =
         BUS_1553_CMD_MAKE(
             MY_RT_ADDR,
-            BUS_1553_TR_BC_TO_RT,
+            BUS_1553_TR_RT_TO_BC,
             EXPECTED_SUBADDR,
             EXPECTED_WORD_COUNT
         );
@@ -138,32 +140,13 @@ int main(void)
     uint32_t cmd_parity_err  = 0u;
     uint32_t cmd_unexpected  = 0u;
 
-    uint32_t data_total      = 0u;
-    uint32_t data_correct    = 0u;
-    uint32_t data_parity_err = 0u;
-    uint32_t data_mismatch   = 0u;
-    uint32_t data_orphan     = 0u;
-
-    uint32_t messages_started = 0u;
-    uint32_t messages_valid   = 0u;
-    uint32_t messages_invalid = 0u;
-
-    uint32_t status_sent      = 0u;
+    uint32_t responses_sent  = 0u;
+    uint32_t status_sent     = 0u;
+    uint32_t data_sent       = 0u;
 
 
     /* ========================================================
-     * ESTADO MENSAJE ACTUAL
-     * ========================================================
-     */
-
-    bool message_active = false;
-    bool message_valid  = false;
-
-    uint8_t data_position = 0u;
-
-
-    /* ========================================================
-     * CONTROL DEL ENSAYO
+     * CONTROL DEL TEST
      * ========================================================
      */
 
@@ -180,11 +163,6 @@ int main(void)
 
     while (true)
     {
-        /* ====================================================
-         * RECEPCIÓN
-         * ====================================================
-         */
-
         if (mil1553_rx_available())
         {
             uint32_t event =
@@ -200,6 +178,20 @@ int main(void)
             uint32_t type =
                 event &
                 MIL1553_RX_TYPE_MASK;
+
+
+            /*
+             * El RT está esperando solamente
+             * Command / Status sync.
+             */
+            if (type !=
+                MIL1553_RX_TYPE_CMD_STATUS)
+            {
+                continue;
+            }
+
+
+            cmd_total++;
 
 
             uint32_t payload =
@@ -237,183 +229,96 @@ int main(void)
 
 
             /* =================================================
-             * COMMAND
+             * PARIDAD INCORRECTA
              * =================================================
              */
 
-            if (type ==
-                MIL1553_RX_TYPE_CMD_STATUS)
+            if (!parity_ok)
             {
-                cmd_total++;
+                cmd_parity_err++;
 
-
-                /*
-                 * Si aparece otro CMD y todavía
-                 * había un mensaje abierto,
-                 * ese mensaje quedó incompleto.
-                 */
-                if (message_active)
-                {
-                    messages_invalid++;
-
-                    message_active = false;
-                }
-
-
-                if (!parity_ok)
-                {
-                    cmd_parity_err++;
-
-                    continue;
-                }
-
-
-                if (word ==
-                    expected_cmd)
-                {
-                    cmd_correct++;
-
-                    messages_started++;
-
-                    message_active = true;
-                    message_valid  = true;
-
-                    data_position = 0u;
-                }
-                else
-                {
-                    cmd_unexpected++;
-                }
+                continue;
             }
 
 
             /* =================================================
-             * DATA
+             * COMMAND INCORRECTO
              * =================================================
              */
 
-            else if (type ==
-                     MIL1553_RX_TYPE_DATA)
+            if (word !=
+                expected_cmd)
             {
-                data_total++;
+                cmd_unexpected++;
 
-
-                if (!message_active)
-                {
-                    data_orphan++;
-
-                    continue;
-                }
-
-
-                if (!parity_ok)
-                {
-                    data_parity_err++;
-
-                    message_valid = false;
-                }
-                else
-                {
-                    if (data_position <
-                        EXPECTED_WORD_COUNT)
-                    {
-                        if (word ==
-                            expected_data[
-                                data_position
-                            ])
-                        {
-                            data_correct++;
-                        }
-                        else
-                        {
-                            data_mismatch++;
-
-                            message_valid =
-                                false;
-                        }
-                    }
-                    else
-                    {
-                        data_mismatch++;
-
-                        message_valid =
-                            false;
-                    }
-                }
-
-
-                data_position++;
-
-
-                /* =============================================
-                 * MENSAJE COMPLETO
-                 * =============================================
-                 */
-
-                if (data_position >=
-                    EXPECTED_WORD_COUNT)
-                {
-                    message_active =
-                        false;
-
-
-                    if (message_valid)
-                    {
-                        messages_valid++;
-
-
-                        /*
-                         * Tiempo de respuesta experimental.
-                         *
-                         * Queremos mantenernos dentro
-                         * del intervalo 4...12 us.
-                         */
-                        busy_wait_us_32(8u);
-
-
-                        /*
-                         * STATUS:
-                         *
-                         * RT = 20
-                         * Message Error = 0
-                         *
-                         * STATUS = 0xA000
-                         */
-                        mil1553_tx_send_word(
-                            BUS_1553_SYNC_CMD_STATUS,
-                            status_word
-                        );
-
-
-                        /*
-                         * Esperar hasta finalizar
-                         * físicamente el STATUS.
-                         */
-                        mil1553_tx_wait_idle();
-
-
-                        /*
-                         * El RX también puede haber
-                         * observado nuestro propio STATUS.
-                         *
-                         * Lo descartamos.
-                         */
-                        mil1553_rx_clear();
-
-
-                        status_sent++;
-                    }
-                    else
-                    {
-                        messages_invalid++;
-                    }
-                }
+                continue;
             }
+
+
+            /* =================================================
+             * COMMAND CORRECTO
+             * =================================================
+             */
+
+            cmd_correct++;
+
+
+            /*
+             * Tiempo de respuesta experimental
+             * ya validado anteriormente.
+             */
+            busy_wait_us_32(8u);
+
+
+            /*
+             * Primero STATUS.
+             */
+            mil1553_tx_send_word(
+                BUS_1553_SYNC_CMD_STATUS,
+                status_word
+            );
+
+
+            /*
+             * Después los cuatro DATA
+             * consecutivos.
+             */
+            for (uint8_t i = 0u;
+                 i < EXPECTED_WORD_COUNT;
+                 i++)
+            {
+                mil1553_tx_send_word(
+                    BUS_1553_SYNC_DATA,
+                    data_to_bc[i]
+                );
+            }
+
+
+            /*
+             * Esperar finalización física
+             * de DATA4.
+             */
+            mil1553_tx_wait_idle();
+
+
+            /*
+             * Descartar la auto-recepción
+             * de STATUS + DATA.
+             */
+            mil1553_rx_clear();
+
+
+            responses_sent++;
+
+            status_sent++;
+
+            data_sent +=
+                EXPECTED_WORD_COUNT;
         }
 
 
         /* ====================================================
-         * FIN DEL ENSAYO
+         * FIN DEL TEST
          * ====================================================
          */
 
@@ -429,25 +334,8 @@ int main(void)
                 >=
                 TEST_END_SILENCE_US)
             {
-                /*
-                 * Si quedó un mensaje incompleto
-                 * al finalizar.
-                 */
-                if (message_active)
-                {
-                    messages_invalid++;
-
-                    message_active = false;
-                }
-
-
                 report_done = true;
 
-
-                /* =============================================
-                 * REPORTE
-                 * =============================================
-                 */
 
                 printf("\n\n");
 
@@ -456,7 +344,7 @@ int main(void)
                 );
 
                 printf(
-                    "RT - RESULTADO TEST BC -> RT -> STATUS\n"
+                    "RT - RESULTADO TEST RT -> BC\n"
                 );
 
                 printf(
@@ -465,9 +353,9 @@ int main(void)
 
 
                 printf(
-                    "MENSAJES ESPERADOS : %lu\n\n",
+                    "TRANSACCIONES ESPERADAS : %lu\n\n",
                     (unsigned long)
-                        TEST_MESSAGES
+                        TEST_TRANSACTIONS
                 );
 
 
@@ -501,84 +389,25 @@ int main(void)
 
 
                 printf(
-                    "--- DATA ---\n"
+                    "--- RESPUESTAS ---\n"
                 );
 
                 printf(
-                    "DATA esperados       : %lu\n",
-                    (unsigned long)(
-                        TEST_MESSAGES *
-                        EXPECTED_WORD_COUNT
-                    )
-                );
-
-                printf(
-                    "DATA recibidos total : %lu\n",
+                    "Respuestas enviadas : %lu\n",
                     (unsigned long)
-                        data_total
+                        responses_sent
                 );
 
                 printf(
-                    "DATA correctos       : %lu\n",
-                    (unsigned long)
-                        data_correct
-                );
-
-                printf(
-                    "DATA error paridad   : %lu\n",
-                    (unsigned long)
-                        data_parity_err
-                );
-
-                printf(
-                    "DATA valor incorrecto: %lu\n",
-                    (unsigned long)
-                        data_mismatch
-                );
-
-                printf(
-                    "DATA sin CMD activo  : %lu\n\n",
-                    (unsigned long)
-                        data_orphan
-                );
-
-
-                printf(
-                    "--- MENSAJES ---\n"
-                );
-
-                printf(
-                    "Mensajes iniciados   : %lu\n",
-                    (unsigned long)
-                        messages_started
-                );
-
-                printf(
-                    "Mensajes validos     : %lu\n",
-                    (unsigned long)
-                        messages_valid
-                );
-
-                printf(
-                    "Mensajes invalidos   : %lu\n\n",
-                    (unsigned long)
-                        messages_invalid
-                );
-
-
-                printf(
-                    "--- STATUS ---\n"
-                );
-
-                printf(
-                    "STATUS enviados      : %lu\n",
+                    "STATUS enviados     : %lu\n",
                     (unsigned long)
                         status_sent
                 );
 
                 printf(
-                    "STATUS esperado      : 0x%04X\n\n",
-                    status_word
+                    "DATA enviados       : %lu\n\n",
+                    (unsigned long)
+                        data_sent
                 );
 
 
@@ -590,29 +419,27 @@ int main(void)
                 print_rate(
                     "Exito CMD",
                     cmd_correct,
-                    TEST_MESSAGES
+                    TEST_TRANSACTIONS
                 );
 
 
                 print_rate(
-                    "Exito DATA",
-                    data_correct,
-                    TEST_MESSAGES *
-                    EXPECTED_WORD_COUNT
+                    "Respuestas completas",
+                    responses_sent,
+                    TEST_TRANSACTIONS
                 );
 
 
-                print_rate(
-                    "Mensajes validos",
-                    messages_valid,
-                    TEST_MESSAGES
+                printf("\n");
+
+                printf(
+                    "CMD esperado         : 0x%04X\n",
+                    expected_cmd
                 );
 
-
-                print_rate(
-                    "STATUS enviados",
-                    status_sent,
-                    TEST_MESSAGES
+                printf(
+                    "STATUS enviado       : 0x%04X\n",
+                    status_word
                 );
 
 
