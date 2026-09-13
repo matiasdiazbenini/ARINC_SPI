@@ -5,13 +5,14 @@
 
 #include "bus/bus.h"
 #include "bus/mil1553_tx.h"
+#include "hardware/clocks.h"
 
 
-#define RT_ADDR        3u
-#define SUBADDR        7u
+#define RT_ADDR        20u
+#define SUBADDR        18u
 #define WORD_COUNT     4u
 
-#define TEST_MESSAGES  1000u
+#define TEST_MESSAGES  10000u
 
 
 /*
@@ -33,14 +34,15 @@ static const uint16_t data_test[WORD_COUNT] =
 
 int main(void)
 {
+    set_sys_clock_khz(120000, true);
     stdio_init_all();
 
 
     /*
-     * Espera inicial para dar tiempo a que:
+     * Espera inicial para permitir que:
      *
      * - arranque el RT
-     * - se inicialice su PIO RX
+     * - se inicialice el PIO RX
      * - quede listo antes de comenzar el ensayo
      */
     sleep_ms(10000);
@@ -56,7 +58,7 @@ int main(void)
      * Receive Command:
      *
      * RT  = 3
-     * TR  = 0
+     * TR  = 0  -> BC transmite hacia RT
      * SUB = 7
      * WC  = 4
      *
@@ -87,13 +89,15 @@ int main(void)
      * DATA 0x1111
      *
      * Todas las palabras se entregan consecutivamente
-     * al transmisor PIO.
+     * al PIO.
      *
-     * No se utiliza sleep_us() entre palabras.
+     * NO se introducen delays entre palabras.
      *
-     * Entre mensajes completos esperamos 500 ms.
+     * Entre mensajes completos:
      *
-     * Durante el ensayo no se usa printf.
+     *      500 ms
+     *
+     * Durante la recepción no se utiliza printf.
      * ========================================================
      */
 
@@ -147,16 +151,18 @@ int main(void)
 
 
         /*
-         * Separación entre mensajes.
+         * Separación entre mensajes completos.
          */
-        sleep_ms(500);
+        sleep_ms(100);
     }
 
 
     /*
-     * Recién cuando termina el ensayo
-     * mostramos el resumen del BC.
+     * ========================================================
+     * REPORTE FINAL DEL BC
+     * ========================================================
      */
+
     printf("\n");
     printf("========================================\n");
     printf("BC - TEST FINALIZADO\n");
@@ -175,7 +181,8 @@ int main(void)
     printf(
         "DATA enviados     : %lu\n",
         (unsigned long)(
-            TEST_MESSAGES * WORD_COUNT
+            TEST_MESSAGES *
+            WORD_COUNT
         )
     );
 
@@ -192,7 +199,7 @@ int main(void)
 
     /*
      * El BC queda detenido y no vuelve
-     * a transmitir ninguna palabra.
+     * a transmitir.
      */
     while (true)
     {

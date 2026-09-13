@@ -322,3 +322,28 @@ void mil1553_tx_send_word(
         tx_sm,
         frame);
 }
+/* ============================================================
+ * Transmitir una palabra y esperar finalización física
+ * ============================================================
+ */
+
+void mil1553_tx_send_word_blocking(
+    bus_1553_sync_t sync_type,
+    uint16_t word)
+{
+    mil1553_tx_send_word(
+        sync_type,
+        word
+    );
+
+    /*
+     * Una palabra MIL-STD-1553 dura:
+     *
+     * 3 us  SYNC
+     * 16 us DATA
+     * 1 us  PARITY
+     *
+     * Total = 20 us.
+     */
+    busy_wait_us_32(20u);
+}
