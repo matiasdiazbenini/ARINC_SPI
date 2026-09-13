@@ -347,3 +347,43 @@ void mil1553_tx_send_word_blocking(
      */
     busy_wait_us_32(20u);
 }
+/* ============================================================
+ * ESPERAR FINALIZACIÓN FÍSICA DEL TX
+ * ============================================================
+ */
+
+void mil1553_tx_wait_idle(void)
+{
+    if (!tx_initialized)
+    {
+        return;
+    }
+
+    /*
+     * Esperar hasta que el PIO haya retirado
+     * de la FIFO la última palabra pendiente.
+     */
+    while (!pio_sm_is_tx_fifo_empty(
+                tx_pio,
+                tx_sm))
+    {
+        tight_loop_contents();
+    }
+
+    /*
+     * FIFO vacía significa que la última
+     * palabra ya fue cargada al OSR.
+     *
+     * Desde ese punto todavía queda aproximadamente
+     * una palabra completa por transmitir.
+     *
+     * 21 us cubre:
+     *
+     * - preparación interna
+     * - SYNC
+     * - 16 bits
+     * - paridad
+     * - liberación del bus
+     */
+    busy_wait_us_32(21u);
+}

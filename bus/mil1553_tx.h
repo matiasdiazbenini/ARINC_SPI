@@ -29,6 +29,12 @@ void mil1553_tx_send_word_blocking(bus_1553_sync_t sync_type,
                                    uint16_t word);
 void mil1553_tx_release_bus(void);
 
+/*
+ * Esperar hasta que finalice físicamente
+ * la última palabra entregada al PIO.
+ */
+void mil1553_tx_wait_idle(void);
+
 #ifdef __cplusplus
 }
 #endif
