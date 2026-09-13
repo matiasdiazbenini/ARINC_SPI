@@ -6,17 +6,23 @@
 
 #include "bus/bus.h"
 #include "bus/mil1553_rx.h"
+#include "hardware/clocks.h"
 
 
-#define MY_RT_ADDR             3u
-#define EXPECTED_SUBADDR       7u
+/* ============================================================
+ * CONFIGURACIÓN DEL ENSAYO
+ * ============================================================
+ */
+
+#define MY_RT_ADDR             20u
+#define EXPECTED_SUBADDR       18u
 #define EXPECTED_WORD_COUNT    4u
 
-#define TEST_MESSAGES          1000u
+#define TEST_MESSAGES          10000u
 
 
 /*
- * Si ya comenzó el test y pasan 1.5 segundos
+ * Si el test ya comenzó y pasan 1.5 segundos
  * sin recibir ninguna palabra, consideramos
  * que el BC terminó.
  */
@@ -24,13 +30,22 @@
 
 
 /*
- * Orden esperado:
+ * Cantidad máxima de mensajes defectuosos
+ * que podemos registrar.
+ */
+#define MAX_BAD_RECORDS        TEST_MESSAGES
+
+
+/* ============================================================
+ * DATA ESPERADOS
+ * ============================================================
  *
  * DATA1 = 0x4444
  * DATA2 = 0x2222
  * DATA3 = 0x3333
  * DATA4 = 0x1111
  */
+
 static const uint16_t expected_data[
     EXPECTED_WORD_COUNT
 ] =
@@ -42,12 +57,103 @@ static const uint16_t expected_data[
 };
 
 
-/*
- * Imprime una tasa porcentual con
- * tres cifras decimales.
+/* ============================================================
+ * REGISTRO DE MENSAJE DEFECTUOSO
+ * ============================================================
  *
- * No requiere printf con float.
+ * seen_mask:
+ *
+ * bit 0 -> DATA1 = 0x4444
+ * bit 1 -> DATA2 = 0x2222
+ * bit 2 -> DATA3 = 0x3333
+ * bit 3 -> DATA4 = 0x1111
  */
+
+typedef struct
+{
+    uint16_t message_number;
+    uint8_t  seen_mask;
+
+} bad_message_record_t;
+
+
+static bad_message_record_t
+    bad_records[MAX_BAD_RECORDS];
+
+static uint32_t bad_record_count = 0u;
+
+
+/* ============================================================
+ * GUARDAR MENSAJE BAD
+ * ============================================================
+ */
+
+static void save_bad_message(
+    uint16_t message_number,
+    uint8_t seen_mask)
+{
+    if (bad_record_count <
+        MAX_BAD_RECORDS)
+    {
+        bad_records[
+            bad_record_count
+        ].message_number =
+            message_number;
+
+        bad_records[
+            bad_record_count
+        ].seen_mask =
+            seen_mask;
+
+        bad_record_count++;
+    }
+}
+
+
+/* ============================================================
+ * IDENTIFICAR SLOT SEGÚN VALOR
+ * ============================================================
+ *
+ * 0 -> 0x4444
+ * 1 -> 0x2222
+ * 2 -> 0x3333
+ * 3 -> 0x1111
+ *
+ * -1 -> otro valor
+ */
+
+static int data_slot_from_word(
+    uint16_t word)
+{
+    if (word == 0x4444u)
+    {
+        return 0;
+    }
+
+    if (word == 0x2222u)
+    {
+        return 1;
+    }
+
+    if (word == 0x3333u)
+    {
+        return 2;
+    }
+
+    if (word == 0x1111u)
+    {
+        return 3;
+    }
+
+    return -1;
+}
+
+
+/* ============================================================
+ * IMPRIMIR TASA
+ * ============================================================
+ */
+
 static void print_rate(
     const char *name,
     uint32_t correct,
@@ -59,7 +165,8 @@ static void print_rate(
     {
         scaled =
             (uint32_t)(
-                ((uint64_t)correct * 100000ull)
+                ((uint64_t)correct *
+                 100000ull)
                 /
                 expected
             );
@@ -68,41 +175,124 @@ static void print_rate(
     printf(
         "%s: %lu.%03lu %%\n",
         name,
-        (unsigned long)(scaled / 1000u),
-        (unsigned long)(scaled % 1000u)
+        (unsigned long)(
+            scaled / 1000u
+        ),
+        (unsigned long)(
+            scaled % 1000u
+        )
     );
 }
 
 
+/* ============================================================
+ * IMPRIMIR DATA FALTANTES
+ * ============================================================
+ */
+
+static void print_missing_data(
+    uint8_t seen_mask)
+{
+    if ((seen_mask &
+         (1u << 0)) == 0u)
+    {
+        printf(
+            " DATA1(0x4444)"
+        );
+    }
+
+    if ((seen_mask &
+         (1u << 1)) == 0u)
+    {
+        printf(
+            " DATA2(0x2222)"
+        );
+    }
+
+    if ((seen_mask &
+         (1u << 2)) == 0u)
+    {
+        printf(
+            " DATA3(0x3333)"
+        );
+    }
+
+    if ((seen_mask &
+         (1u << 3)) == 0u)
+    {
+        printf(
+            " DATA4(0x1111)"
+        );
+    }
+}
+
+
+/* ============================================================
+ * MAIN
+ * ============================================================
+ */
+
 int main(void)
 {
+    set_sys_clock_khz(120000, true);
     stdio_init_all();
 
 
     /*
-     * Dar tiempo al sistema USB/UART,
-     * pero todavía no hay tráfico del BC
-     * porque este espera 10 segundos.
+     * Dar tiempo a que se inicialice
+     * USB / terminal serie.
+     *
+     * El BC espera 10 segundos antes
+     * de comenzar a transmitir.
      */
     sleep_ms(1000);
 
 
     /*
-     * Inicializar RX PIO.
+     * Inicializar receptor PIO.
      */
     mil1553_rx_init();
 
 
     /*
-     * Command esperado:
+     * ========================================================
+     * MENSAJE DE DIAGNÓSTICO
+     * ========================================================
      *
-     * RT  = 3
+     * Este printf ocurre ANTES de que el BC
+     * comience a transmitir.
+     *
+     * Sirve para comprobar que:
+     *
+     * - la Pico RT arrancó
+     * - main() está funcionando
+     * - el USB/UART está funcionando
+     * - mil1553_rx_init() terminó
+     *
+     * Después de este mensaje NO se vuelve
+     * a utilizar printf hasta terminar el test.
+     */
+
+    printf("\n");
+    printf("========================================\n");
+    printf("RT INICIALIZADO - ESPERANDO TRAFICO\n");
+    printf("========================================\n");
+    printf("\n");
+
+
+    /*
+     * ========================================================
+     * COMMAND ESPERADO
+     * ========================================================
+     *
+     * RT  = 20
      * TR  = 0
-     * SUB = 7
+     * SUB = 18
      * WC  = 4
      *
-     * CMD = 0x18E4
+     * CMD esperado = 0xA244
      */
+
     const uint16_t expected_cmd =
         BUS_1553_CMD_MAKE(
             MY_RT_ADDR,
@@ -112,9 +302,10 @@ int main(void)
         );
 
 
-    // ========================================================
-    // COMMAND
-    // ========================================================
+    /* ========================================================
+     * CONTADORES COMMAND
+     * ========================================================
+     */
 
     uint32_t cmd_total      = 0u;
     uint32_t cmd_ok         = 0u;
@@ -122,17 +313,18 @@ int main(void)
     uint32_t cmd_unexpected = 0u;
 
 
-    // ========================================================
-    // DATA
-    // ========================================================
+    /* ========================================================
+     * CONTADORES DATA
+     * ========================================================
+     */
 
-    uint32_t data_total      = 0u;
-    uint32_t data_par_ok     = 0u;
-    uint32_t data_par_err    = 0u;
+    uint32_t data_total    = 0u;
+    uint32_t data_par_ok   = 0u;
+    uint32_t data_par_err  = 0u;
 
-    uint32_t data_slot_ok    = 0u;
-    uint32_t data_mismatch   = 0u;
-    uint32_t data_orphan     = 0u;
+    uint32_t data_slot_ok  = 0u;
+    uint32_t data_mismatch = 0u;
+    uint32_t data_orphan   = 0u;
 
 
     /*
@@ -146,27 +338,50 @@ int main(void)
     uint32_t data_other = 0u;
 
 
-    // ========================================================
-    // MENSAJES
-    // ========================================================
+    /* ========================================================
+     * CONTADORES DE MENSAJES
+     * ========================================================
+     */
 
     uint32_t messages_started = 0u;
     uint32_t messages_ok      = 0u;
     uint32_t messages_bad     = 0u;
 
 
-    /*
-     * Estado del mensaje actualmente recibido.
+    /* ========================================================
+     * ESTADO DEL MENSAJE ACTUAL
+     * ========================================================
      */
+
     bool message_active = false;
     bool message_ok     = true;
 
     uint8_t data_position = 0u;
 
 
-    // ========================================================
-    // CONTROL DEL TEST
-    // ========================================================
+    /*
+     * Máscara de DATA realmente vistos.
+     *
+     * bit 0 = 4444
+     * bit 1 = 2222
+     * bit 2 = 3333
+     * bit 3 = 1111
+     */
+    uint8_t seen_mask = 0u;
+
+
+    /*
+     * Número del mensaje actualmente
+     * en recepción.
+     */
+    uint16_t current_message_number =
+        0u;
+
+
+    /* ========================================================
+     * CONTROL DEL TEST
+     * ========================================================
+     */
 
     bool test_started = false;
     bool report_done  = false;
@@ -174,11 +389,17 @@ int main(void)
     uint64_t last_rx_us = 0u;
 
 
+    /* ========================================================
+     * LOOP PRINCIPAL
+     * ========================================================
+     */
+
     while (true)
     {
-        // ====================================================
-        // RECEPCIÓN
-        // ====================================================
+        /* ====================================================
+         * RECEPCIÓN
+         * ====================================================
+         */
 
         if (mil1553_rx_available())
         {
@@ -187,10 +408,11 @@ int main(void)
 
 
             /*
-             * El test comienza en cuanto aparece
-             * la primera palabra.
+             * El test comienza cuando aparece
+             * la primera palabra recibida.
              */
             test_started = true;
+
 
             last_rx_us =
                 time_us_64();
@@ -205,7 +427,7 @@ int main(void)
 
 
             /*
-             * Extraer payload de 17 bits:
+             * Extraer payload.
              *
              * bits 16..1 = WORD
              * bit 0      = PARITY
@@ -217,8 +439,10 @@ int main(void)
 
             uint16_t word =
                 (uint16_t)(
-                    (payload >>
-                     MIL1553_RX_WORD_SHIFT)
+                    (
+                        payload >>
+                        MIL1553_RX_WORD_SHIFT
+                    )
                     &
                     MIL1553_RX_WORD_MASK
                 );
@@ -239,15 +463,15 @@ int main(void)
 
             bool parity_ok =
                 (
-                    received_parity
-                    ==
+                    received_parity ==
                     expected_parity
                 );
 
 
-            // =================================================
-            // COMMAND / STATUS
-            // =================================================
+            /* =================================================
+             * COMMAND / STATUS
+             * =================================================
+             */
 
             if (type ==
                 MIL1553_RX_TYPE_CMD_STATUS)
@@ -256,7 +480,7 @@ int main(void)
 
 
                 /*
-                 * Si llega un nuevo CMD y todavía
+                 * Si aparece un nuevo CMD mientras
                  * había un mensaje anterior abierto,
                  * el anterior estaba incompleto.
                  */
@@ -264,12 +488,19 @@ int main(void)
                 {
                     messages_bad++;
 
+
+                    save_bad_message(
+                        current_message_number,
+                        seen_mask
+                    );
+
+
                     message_active = false;
                 }
 
 
                 /*
-                 * Paridad incorrecta.
+                 * CMD con error de paridad.
                  */
                 if (!parity_ok)
                 {
@@ -280,19 +511,26 @@ int main(void)
 
 
                 /*
-                 * Para este ensayo esperamos
-                 * exactamente CMD 0x18E4.
+                 * CMD correcto.
                  */
-                if (word == expected_cmd)
+                if (word ==
+                    expected_cmd)
                 {
                     cmd_ok++;
 
                     messages_started++;
 
+
+                    current_message_number =
+                        (uint16_t)
+                            messages_started;
+
+
                     message_active = true;
                     message_ok     = true;
 
                     data_position = 0u;
+                    seen_mask     = 0u;
                 }
                 else
                 {
@@ -301,9 +539,10 @@ int main(void)
             }
 
 
-            // =================================================
-            // DATA
-            // =================================================
+            /* =================================================
+             * DATA
+             * =================================================
+             */
 
             else if (type ==
                      MIL1553_RX_TYPE_DATA)
@@ -312,27 +551,33 @@ int main(void)
 
 
                 /*
-                 * Contar primero según paridad
-                 * y valor bruto recibido.
+                 * ------------------------------------------------
+                 * CONTADORES BRUTOS
+                 * ------------------------------------------------
                  */
+
                 if (parity_ok)
                 {
                     data_par_ok++;
 
 
-                    if (word == 0x1111u)
+                    if (word ==
+                        0x1111u)
                     {
                         data_1111++;
                     }
-                    else if (word == 0x2222u)
+                    else if (word ==
+                             0x2222u)
                     {
                         data_2222++;
                     }
-                    else if (word == 0x3333u)
+                    else if (word ==
+                             0x3333u)
                     {
                         data_3333++;
                     }
-                    else if (word == 0x4444u)
+                    else if (word ==
+                             0x4444u)
                     {
                         data_4444++;
                     }
@@ -348,8 +593,7 @@ int main(void)
 
 
                 /*
-                 * DATA recibido sin que exista
-                 * un Command válido activo.
+                 * DATA sin Command activo.
                  */
                 if (!message_active)
                 {
@@ -360,11 +604,40 @@ int main(void)
 
 
                 /*
-                 * Comprobar la posición esperada.
+                 * ------------------------------------------------
+                 * REGISTRAR QUÉ DATA APARECIÓ
+                 * ------------------------------------------------
                  */
+
+                if (parity_ok)
+                {
+                    int slot =
+                        data_slot_from_word(
+                            word
+                        );
+
+
+                    if (slot >= 0)
+                    {
+                        seen_mask |=
+                            (uint8_t)(
+                                1u <<
+                                (uint)slot
+                            );
+                    }
+                }
+
+
+                /*
+                 * ------------------------------------------------
+                 * COMPROBACIÓN SECUENCIAL
+                 * ------------------------------------------------
+                 */
+
                 if (!parity_ok)
                 {
-                    message_ok = false;
+                    message_ok =
+                        false;
                 }
                 else
                 {
@@ -383,44 +656,53 @@ int main(void)
                     {
                         data_mismatch++;
 
-                        message_ok = false;
+                        message_ok =
+                            false;
                     }
                 }
 
 
                 /*
-                 * La posición se consume aunque
-                 * esa palabra tenga un error.
+                 * Consumir posición.
                  */
                 data_position++;
 
 
                 /*
-                 * Ya recibimos las cuatro posiciones
-                 * del mensaje.
+                 * Si recibimos cuatro DATA,
+                 * cerrar mensaje.
                  */
                 if (data_position >=
                     EXPECTED_WORD_COUNT)
                 {
-                    if (message_ok)
+                    if (message_ok &&
+                        seen_mask == 0x0Fu)
                     {
                         messages_ok++;
                     }
                     else
                     {
                         messages_bad++;
+
+
+                        save_bad_message(
+                            current_message_number,
+                            seen_mask
+                        );
                     }
 
 
-                    message_active = false;
+                    message_active =
+                        false;
                 }
             }
         }
 
 
-        // ====================================================
-        // FIN DEL TEST
-        // ====================================================
+        /* ====================================================
+         * FIN DEL TEST
+         * ====================================================
+         */
 
         if (test_started &&
             !report_done)
@@ -429,28 +711,36 @@ int main(void)
                 time_us_64();
 
 
-            if ((now_us - last_rx_us)
-                >= TEST_END_SILENCE_US)
+            if ((now_us -
+                 last_rx_us)
+                >=
+                TEST_END_SILENCE_US)
             {
                 /*
-                 * Si quedó un mensaje abierto cuando
-                 * terminó el tráfico, también cuenta
-                 * como mensaje incompleto.
+                 * Mensaje incompleto al finalizar.
                  */
                 if (message_active)
                 {
                     messages_bad++;
 
-                    message_active = false;
+
+                    save_bad_message(
+                        current_message_number,
+                        seen_mask
+                    );
+
+
+                    message_active =
+                        false;
                 }
 
 
-                report_done = true;
+                report_done =
+                    true;
 
 
-                /*
-                 * =================================================
-                 * DESDE ACÁ RECIÉN USAMOS PRINTF
+                /* =================================================
+                 * DESDE ACÁ RECIÉN SE UTILIZA PRINTF
                  * =================================================
                  */
 
@@ -459,19 +749,28 @@ int main(void)
                     TEST_MESSAGES;
 
 
-                const uint32_t expected_data_words =
-                    TEST_MESSAGES *
-                    EXPECTED_WORD_COUNT;
+                const uint32_t
+                    expected_data_words =
+                        TEST_MESSAGES *
+                        EXPECTED_WORD_COUNT;
 
 
-                const uint32_t expected_total_words =
-                    expected_cmds +
-                    expected_data_words;
+                const uint32_t
+                    expected_total_words =
+                        expected_cmds +
+                        expected_data_words;
 
 
-                const uint32_t correct_total_words =
-                    cmd_ok +
-                    data_slot_ok;
+                const uint32_t
+                    correct_total_words =
+                        cmd_ok +
+                        data_slot_ok;
+
+
+                const uint32_t
+                    captured_total_words =
+                        cmd_total +
+                        data_total;
 
 
                 printf("\n\n");
@@ -496,9 +795,10 @@ int main(void)
                 );
 
 
-                // --------------------------------------------
-                // COMMAND
-                // --------------------------------------------
+                /* --------------------------------------------
+                 * COMMAND
+                 * --------------------------------------------
+                 */
 
                 printf(
                     "--- COMMAND ---\n"
@@ -535,9 +835,10 @@ int main(void)
                 );
 
 
-                // --------------------------------------------
-                // DATA
-                // --------------------------------------------
+                /* --------------------------------------------
+                 * DATA
+                 * --------------------------------------------
+                 */
 
                 printf(
                     "--- DATA ---\n"
@@ -586,9 +887,10 @@ int main(void)
                 );
 
 
-                // --------------------------------------------
-                // VALORES
-                // --------------------------------------------
+                /* --------------------------------------------
+                 * VALORES DATA
+                 * --------------------------------------------
+                 */
 
                 printf(
                     "--- VALORES DATA RECIBIDOS ---\n"
@@ -625,16 +927,17 @@ int main(void)
                 );
 
 
-                // --------------------------------------------
-                // MENSAJES
-                // --------------------------------------------
+                /* --------------------------------------------
+                 * MENSAJES
+                 * --------------------------------------------
+                 */
 
                 printf(
                     "--- MENSAJES ---\n"
                 );
 
                 printf(
-                    "Mensajes iniciados  : %lu\n",
+                    "Mensajes iniciados   : %lu\n",
                     (unsigned long)
                         messages_started
                 );
@@ -652,9 +955,10 @@ int main(void)
                 );
 
 
-                // --------------------------------------------
-                // TASAS
-                // --------------------------------------------
+                /* --------------------------------------------
+                 * TASAS
+                 * --------------------------------------------
+                 */
 
                 printf(
                     "--- TASAS DE EXITO ---\n"
@@ -683,9 +987,66 @@ int main(void)
 
 
                 print_rate(
+                    "Captura fisica total",
+                    captured_total_words,
+                    expected_total_words
+                );
+
+
+                print_rate(
                     "Exito mensajes completos",
                     messages_ok,
                     TEST_MESSAGES
+                );
+
+
+                /* --------------------------------------------
+                 * DETALLE MENSAJES BAD
+                 * --------------------------------------------
+                 */
+
+                printf("\n");
+
+                printf(
+                    "--- DETALLE MENSAJES BAD ---\n"
+                );
+
+
+                if (bad_record_count == 0u)
+                {
+                    printf(
+                        "No se detectaron mensajes defectuosos.\n"
+                    );
+                }
+                else
+                {
+                    for (uint32_t i = 0u;
+                         i < bad_record_count;
+                         i++)
+                    {
+                        printf(
+                            "Mensaje %u : faltan",
+                            (unsigned int)
+                                bad_records[i].
+                                message_number
+                        );
+
+
+                        print_missing_data(
+                            bad_records[i].
+                            seen_mask
+                        );
+
+
+                        printf("\n");
+                    }
+                }
+
+
+                printf(
+                    "\nTotal mensajes BAD registrados: %lu\n",
+                    (unsigned long)
+                        bad_record_count
                 );
 
 
