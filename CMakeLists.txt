@@ -4,14 +4,18 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
+
 set(sdkVersion 2.2.0)
 set(toolchainVersion 14_2_Rel1)
 set(picotoolVersion 2.2.0-a4)
+
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+
 if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
+
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -19,37 +23,100 @@ set(PICO_BOARD pico2_w)
 
 include(pico_sdk_import.cmake)
 
+
 project(slave_spi C CXX ASM)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+
 pico_sdk_init()
 
+
+# ============================================================
+# ARCHIVOS DEL PROYECTO
+# ============================================================
+
 add_executable(slave_spi
+
     main.c
+
     bus/bus.c
+
     bus/mil1553_rx.c
+    bus/mil1553_tx.c
 )
 
-pico_generate_pio_header(slave_spi
-    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
-)
+
+# ============================================================
+# PIO RX MIL-STD-1553
+# ============================================================
+
 pico_generate_pio_header(
     slave_spi
     ${CMAKE_CURRENT_LIST_DIR}/bus/mil1553_rx.pio
 )
-pico_generate_pio_header(slave_spi
+
+
+# ============================================================
+# PIO TX MIL-STD-1553
+# ============================================================
+
+pico_generate_pio_header(
+    slave_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/mil1553_tx.pio
+)
+
+
+# ============================================================
+# PROGRAMAS PIO ANTERIORES
+# ============================================================
+
+pico_generate_pio_header(
+    slave_spi
+    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
+)
+
+pico_generate_pio_header(
+    slave_spi
     ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
 )
 
-target_link_libraries(slave_spi
+
+# ============================================================
+# LIBRERÍAS
+# ============================================================
+
+target_link_libraries(
+    slave_spi
+
     pico_stdlib
+
     hardware_clocks
     hardware_pio
     hardware_gpio
 )
 
-pico_enable_stdio_usb(slave_spi 1)
-pico_enable_stdio_uart(slave_spi 0)
 
-pico_add_extra_outputs(slave_spi)
+# ============================================================
+# STDIO
+# ============================================================
+
+pico_enable_stdio_usb(
+    slave_spi
+    1
+)
+
+pico_enable_stdio_uart(
+    slave_spi
+    0
+)
+
+
+# ============================================================
+# UF2 / BIN / HEX
+# ============================================================
+
+pico_add_extra_outputs(
+    slave_spi
+)

@@ -469,3 +469,84 @@ uint32_t mil1553_rx_get(void)
 
     return 0u;
 }
+/* ============================================================
+ * VACIAR FIFO RX
+ * ============================================================
+ */
+
+/* ============================================================
+ * LIMPIAR Y REARMAR RECEPTOR
+ * ============================================================
+ *
+ * No alcanza con vaciar las FIFO:
+ *
+ * una State Machine puede encontrarse todavía
+ * procesando una palabra propia transmitida
+ * por este mismo nodo.
+ *
+ * Por eso:
+ *
+ * 1. detenemos ambas SM,
+ * 2. las reinicializamos,
+ * 3. vaciamos su estado interno/FIFO,
+ * 4. las arrancamos nuevamente sincronizadas.
+ *
+ * ============================================================
+ */
+
+void mil1553_rx_clear(void)
+{
+    if (!rx_initialized)
+    {
+        return;
+    }
+
+
+    const uint32_t sm_mask =
+        (1u << rx_sm_cmd) |
+        (1u << rx_sm_data);
+
+
+    /*
+     * Detener ambas State Machines.
+     */
+    pio_set_sm_mask_enabled(
+        rx_pio,
+        sm_mask,
+        false
+    );
+
+
+    /*
+     * Reinicializar SM0:
+     *
+     * GP2 / P
+     * CMD / STATUS
+     */
+    configure_rx_sm(
+        rx_sm_cmd,
+        BUS_PIN_P
+    );
+
+
+    /*
+     * Reinicializar SM1:
+     *
+     * GP3 / N
+     * DATA
+     */
+    configure_rx_sm(
+        rx_sm_data,
+        BUS_PIN_N
+    );
+
+
+    /*
+     * Arrancar nuevamente ambas
+     * State Machines sincronizadas.
+     */
+    pio_enable_sm_mask_in_sync(
+        rx_pio,
+        sm_mask
+    );
+}

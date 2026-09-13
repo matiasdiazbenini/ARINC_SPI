@@ -41,5 +41,12 @@ bool mil1553_rx_available(void);
 
 uint32_t mil1553_rx_get(void);
 
+/*
+ * Vaciar las FIFO de recepción.
+ *
+ * Se utiliza para descartar palabras propias
+ * observadas durante una transmisión.
+ */
+void mil1553_rx_clear(void);
 
 #endif
