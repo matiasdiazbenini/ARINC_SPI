@@ -9,15 +9,20 @@ extern "C" {
 #endif
 
 /*
- * Pines del bus.
+ * Pines diferenciales del bus.
  */
 #define BUS_PIN_P 2u
 #define BUS_PIN_N 3u
 
 /*
- * Base estable actual BC/RT.
+ * Tiempo de bit actual.
  */
 #define BIT_PERIOD_US 500u
+
+/*
+ * TX por PIO.
+ */
+#define BUS_USE_PIO_TX 1
 
 /*
  * Sync simplificados tipo 1553-like.
@@ -66,37 +71,57 @@ extern "C" {
     (uint8_t)(((status) >> 10) & 0x01u)
 
 typedef enum {
-    SNIFFER_EVENT_NONE = 0,
-    SNIFFER_EVENT_BC_TO_RT,
-    SNIFFER_EVENT_RT_TO_BC
-} sniffer_event_type_t;
-
-typedef struct {
-    sniffer_event_type_t type;
-
-    uint32_t timestamp_us;
-
-    uint16_t cmd;
-    uint16_t status;
-    uint16_t data[BUS_1553_MAX_DATA_WORDS];
-
-    uint8_t rt;
-    uint8_t tr;
-    uint8_t sub;
-    uint8_t wc;
-
-    uint8_t data_count;
-    uint8_t msg_error;
-} sniffer_event_t;
+    BUS_1553_SYNC_CMD_STATUS = 0,
+    BUS_1553_SYNC_DATA       = 1
+} bus_1553_sync_t;
 
 /*
- * API pública del sniffer.
+ * Inicialización y modos del bus.
  */
 void bus_init(void);
+void bus_set_tx_mode(void);
+void bus_set_rx_mode(void);
+void bus_idle(void);
 
-bool sniffer_capture_event_data(sniffer_event_t *event);
-void sniffer_print_event(const sniffer_event_t *event);
-void sniffer_resync(void);
+/*
+ * TX básico / paridad.
+ */
+void bus_send_bit(bool bit);
+void bus_send_byte(uint8_t byte);
+void bus_send_word16(uint16_t word);
+
+uint8_t bus_compute_odd_parity(uint16_t word);
+void bus_send_word16_parity(uint16_t word);
+
+/*
+ * TX 1553-like.
+ */
+void bus_send_1553_word(bus_1553_sync_t sync_type, uint16_t word);
+void bus_send_1553_status(uint8_t rt_addr, bool msg_error);
+void bus_send_1553_data_word(uint16_t data);
+
+void bus_send_status_word_parity(uint8_t rt_addr,
+                                 bool msg_error);
+
+void bus_send_status_data_parity(uint8_t rt_addr,
+                                 bool msg_error,
+                                 const uint16_t data[],
+                                 uint8_t wc);
+
+/*
+ * RX usado por el RT.
+ */
+bool bus_read_packet_parity_pio(uint16_t *cmd,
+                                uint16_t data[],
+                                uint8_t max_wc,
+                                uint8_t *out_wc);
+
+bool bus_read_command_word_parity_pio(uint16_t *cmd);
+
+/*
+ * API de alto nivel del Remote Terminal.
+ */
+bool rt_process_once(uint8_t my_rt_addr);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,5 @@
-C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/sniffer_mil.dir
-C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/sniffer_mil_manchester_rx_pio_h.dir
-C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/sniffer_mil_manchester_tx_pio_h.dir
+C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/bus_monitor.dir
+C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/bus_monitor_mil1553_rx_pio_h.dir
 C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/edit_cache.dir
 C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/CMakeFiles/rebuild_cache.dir
 C:/Users/User/OneDrive/Escritorio/PampaIII/Sniffer/ARINC_SPI/build/pico-sdk/CMakeFiles/edit_cache.dir
