@@ -64,4 +64,6 @@ uint32_t mil1553_rx_get_data(void);
 
 void mil1553_rx_data_rearm(void);
 
+void mil1553_rx_data_disable(void);
+
 #endif

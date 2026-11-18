@@ -1,0 +1,305 @@
+.program mil1553_bm_rx
+
+; ============================================================================
+; MIL-STD-1553 BUS MONITOR RX
+;
+; UNA State Machine
+; UNA FIFO
+;
+; GP2 = P -> bit 0
+; GP3 = N -> bit 1
+;
+; Estado diferencial:
+;
+;   P N
+;   0 0 -> IDLE
+;   1 0 -> inicio CMD / STATUS Sync
+;   0 1 -> inicio DATA Sync
+;
+; Evento enviado al Cortex:
+;
+; bits 19..18:
+;       01 = CMD / STATUS
+;       10 = DATA
+;
+; bit 17:
+;       0
+;
+; bits 16..1:
+;       WORD[15:0]
+;
+; bit 0:
+;       PARITY
+;
+; PIO = 8 MHz
+; ciclo = 125 ns
+; ============================================================================
+
+
+.wrap_target
+
+
+; ============================================================================
+; ESPERAR IDLE REAL
+; ============================================================================
+;
+; Esto es importante:
+;
+; no intentamos adquirir una palabra desde cualquier punto del Manchester.
+; Primero esperamos que:
+;
+;       P = 0
+;       N = 0
+;
+; ============================================================================
+
+wait_idle:
+
+    mov x, pins
+
+    jmp !x wait_start
+
+    jmp wait_idle
+
+
+; ============================================================================
+; DESPUES DEL IDLE, ESPERAR PRIMER ESTADO DIFERENCIAL
+; ============================================================================
+
+wait_start:
+
+    mov x, pins
+
+    ; Mientras P=N=0 seguimos esperando.
+
+    jmp !x wait_start
+
+
+; ============================================================================
+; VALIDAR ESTADO DIFERENCIAL
+; ============================================================================
+;
+; X válido:
+;
+;       1 = 01 binario = P=1 N=0 -> CMD/STATUS
+;       2 = 10 binario = P=0 N=1 -> DATA
+;
+;       3 = P=1 N=1 -> inválido
+;
+; ============================================================================
+
+    set y, 3
+
+    jmp x!=y active_valid
+
+    jmp wait_idle
+
+
+; ============================================================================
+; GUARDAR TIPO DE PALABRA
+; ============================================================================
+
+active_valid:
+
+    ; Y conserva el tipo:
+    ;
+    ; 1 = CMD/STATUS
+    ; 2 = DATA
+
+    mov y, x
+
+
+    ; Limpiar ISR.
+    ;
+    ; MOV ISR,NULL también reinicia
+    ; el contador del ISR.
+
+    mov isr, null
+
+
+    ; Guardamos dos bits de tipo.
+    ;
+    ; Después de recibir el resto de la palabra
+    ; terminarán ubicados en bits 19..18.
+
+    in x, 2
+
+
+; ============================================================================
+; DETERMINAR TIPO DE SYNC
+; ============================================================================
+;
+; Comparamos Y contra 1.
+;
+; Y = 1 -> CMD/STATUS
+; Y = 2 -> DATA
+;
+; ============================================================================
+
+    set x, 1
+
+    jmp x!=y data_sync
+
+
+; ============================================================================
+; COMMAND / STATUS SYNC
+;
+; En P:
+;
+;       HIGH 1.5 us
+;       LOW  1.5 us
+;
+; Ya estamos dentro del HIGH inicial.
+; Esperamos el centro.
+; ============================================================================
+
+cmd_status_sync:
+
+    wait 0 pin 0
+
+    jmp sync_second_half
+
+
+; ============================================================================
+; DATA SYNC
+;
+; En P:
+;
+;       LOW  1.5 us
+;       HIGH 1.5 us
+;
+; Ya estamos dentro del LOW inicial.
+; Esperamos el centro.
+; ============================================================================
+
+data_sync:
+
+    wait 1 pin 0
+
+    ; Igualar timing con el JMP utilizado
+    ; por la rama CMD/STATUS.
+
+    nop
+
+
+; ============================================================================
+; SEGUNDA MITAD DEL SYNC
+; ============================================================================
+
+sync_second_half:
+
+    ; Insertar bit reservado 17 = 0.
+    ;
+    ; Layout final:
+    ;
+    ; [TYPE 2 bits][0][17 bits recibidos]
+
+    in null, 1
+
+
+    ; Recibiremos:
+    ;
+    ; 16 bits + paridad = 17 bits
+    ;
+    ; Y = 16 con JMP Y-- produce
+    ; 17 iteraciones.
+
+    set y, 16 [6]
+
+
+    ; Completar los 12 ciclos utilizados
+    ; en la segunda mitad del Sync.
+    ;
+    ; 1 ciclo  IN NULL
+    ; 7 ciclos SET [6]
+    ; 3 ciclos JMP [2]
+    ; 1 ciclo JMP/NOP previo de cada rama
+    ;
+    ; total = 12 ciclos = 1.5 us
+
+    jmp bit_loop [2]
+
+
+; ============================================================================
+; RECEPCION MANCHESTER
+;
+; Leemos siempre P.
+;
+; bit 1:
+;
+;       HIGH -> LOW
+;
+; bit 0:
+;
+;       LOW -> HIGH
+;
+; ============================================================================
+
+bit_loop:
+
+    jmp pin first_high
+
+
+; ============================================================================
+; PRIMERA MITAD LOW
+; ============================================================================
+
+first_low:
+
+    in pins, 1
+
+    nop [1]
+
+
+    ; LOW -> HIGH = bit válido 0
+
+    jmp pin bit_ok
+
+
+    ; LOW -> LOW = Manchester inválido
+
+    jmp wait_idle
+
+
+; ============================================================================
+; PRIMERA MITAD HIGH
+; ============================================================================
+
+first_high:
+
+    in pins, 1
+
+    nop [1]
+
+
+    ; HIGH -> HIGH = Manchester inválido.
+    ;
+    ; HIGH -> LOW cae a bit_ok.
+
+    jmp pin wait_idle
+
+
+; ============================================================================
+; BIT VALIDO
+; ============================================================================
+
+bit_ok:
+
+    jmp y-- bit_loop [2]
+
+
+; ============================================================================
+; PALABRA COMPLETA
+; ============================================================================
+
+    push block
+
+
+; ============================================================================
+; BUSCAR EL IDLE ENTRE PALABRAS
+; ============================================================================
+
+    jmp wait_idle
+
+
+.wrap

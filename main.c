@@ -15,13 +15,27 @@
  */
 
 #define BM_MAX_DATA_WORDS       32u
+
+/*
+ * Primero probamos 1000.
+ *
+ * Si da 100 %, despues:
+ *
+ *      10000u
+ *
+ * y finalmente:
+ *
+ *      100000u
+ */
 #define TEST_TRANSACTIONS       1000u
+
 
 /*
  * Tiempo maximo para esperar la siguiente palabra
  * dentro de una transaccion.
  */
 #define BM_WORD_TIMEOUT_US      1000ull
+
 
 /*
  * Tiempo sin actividad para considerar terminado
@@ -93,7 +107,9 @@ static uint8_t compute_odd_parity(uint16_t word)
             );
     }
 
-    return (uint8_t)(parity ^ 0x01u);
+    return (uint8_t)(
+        parity ^ 0x01u
+    );
 }
 
 
@@ -104,7 +120,9 @@ static uint8_t compute_odd_parity(uint16_t word)
 
 static uint8_t decode_word_count(uint8_t wc)
 {
-    return (wc == 0u) ? 32u : wc;
+    return (wc == 0u)
+        ? 32u
+        : wc;
 }
 
 
@@ -116,27 +134,50 @@ static uint8_t decode_word_count(uint8_t wc)
 static void transaction_reset(
     bm_transaction_t *t)
 {
-    t->command = 0u;
-    t->status  = 0u;
+    t->command =
+        0u;
 
-    t->rt_address = 0u;
-    t->tr         = 0u;
-    t->subaddress = 0u;
-    t->word_count = 0u;
+    t->status =
+        0u;
 
-    t->data_received = 0u;
 
-    t->command_parity_ok = false;
-    t->status_parity_ok  = false;
-    t->data_parity_ok    = true;
+    t->rt_address =
+        0u;
 
-    t->valid = true;
+    t->tr =
+        0u;
+
+    t->subaddress =
+        0u;
+
+    t->word_count =
+        0u;
+
+
+    t->data_received =
+        0u;
+
+
+    t->command_parity_ok =
+        false;
+
+    t->status_parity_ok =
+        false;
+
+    t->data_parity_ok =
+        true;
+
+
+    t->valid =
+        true;
+
 
     for (uint8_t i = 0u;
          i < BM_MAX_DATA_WORDS;
          i++)
     {
-        t->data[i] = 0u;
+        t->data[i] =
+            0u;
     }
 }
 
@@ -196,7 +237,9 @@ static void print_rate(
     uint32_t correct,
     uint32_t expected)
 {
-    uint32_t scaled = 0u;
+    uint32_t scaled =
+        0u;
+
 
     if (expected != 0u)
     {
@@ -231,7 +274,7 @@ static void print_rate(
 int main(void)
 {
     /* ========================================================
-     * CLOCK
+     * CLOCK DEL RP2350
      * ========================================================
      */
 
@@ -267,6 +310,10 @@ int main(void)
     );
 
     printf(
+        "RX PIO = 8 MHz\n"
+    );
+
+    printf(
         "Lectura independiente de FIFO\n"
     );
 
@@ -285,6 +332,7 @@ int main(void)
 
 
     bm_transaction_t transaction;
+
 
     transaction_reset(
         &transaction
@@ -408,13 +456,12 @@ int main(void)
 
 
                 /*
-                 * En esta implementacion no
-                 * procesamos Mode Codes.
+                 * No procesamos Mode Codes.
                  *
-                 * Subaddress 0 y 31 se descartan.
+                 * Subaddress = 0 o 31 se descarta.
                  *
-                 * Esto tambien evita interpretar
-                 * STATUS = 0xA000 como Command.
+                 * Esto tambien impide interpretar
+                 * STATUS = 0xA000 como nuevo Command.
                  */
                 uint8_t subaddress =
                     BUS_1553_CMD_SUB(
@@ -486,7 +533,16 @@ int main(void)
 
 
                 /*
-                 * Elegir secuencia segun T/R.
+                 * IMPORTANTE PARA ESTA PRUEBA:
+                 *
+                 * NO:
+                 *
+                 * - apagamos SM1,
+                 * - esperamos 16/24 us,
+                 * - rearmamos SM1.
+                 *
+                 * Dejamos ambas State Machines
+                 * trabajando continuamente.
                  */
                 if (transaction.tr ==
                     BUS_1553_TR_BC_TO_RT)
@@ -567,12 +623,10 @@ int main(void)
 
 
                 /*
-                 * IMPORTANTE:
+                 * No tocar SM1 aqui.
                  *
-                 * No limpiar ni rearmar SM DATA aca.
-                 *
-                 * El primer DATA puede estar llegando
-                 * inmediatamente despues del STATUS.
+                 * DATA1 puede comenzar inmediatamente
+                 * despues del STATUS.
                  */
                 state =
                     BM_RT_TO_BC_DATA;
@@ -637,7 +691,7 @@ int main(void)
 
 
                 /*
-                 * Fin de RT -> BC.
+                 * FIN DE RT -> BC
                  */
                 if (transaction.data_received >=
                     transaction.word_count)
@@ -655,11 +709,20 @@ int main(void)
 
 
                     /*
-                     * NO limpiamos el receptor aqui.
+                     * CLAVE:
                      *
-                     * Simplemente volvemos a esperar
-                     * el siguiente Command.
+                     * Los cuatro DATA ya terminaron.
+                     *
+                     * Ahora si podemos reinicializar
+                     * solamente SM1 sin riesgo de borrar
+                     * DATA1 de esta transaccion.
+                     *
+                     * Hay un largo periodo ocioso antes
+                     * del siguiente Command.
                      */
+                    mil1553_rx_data_rearm();
+
+
                     transaction_reset(
                         &transaction
                     );
@@ -802,7 +865,7 @@ int main(void)
 
 
                 /*
-                 * Fin de BC -> RT.
+                 * FIN DE BC -> RT
                  */
                 if (transaction.valid)
                 {
@@ -814,6 +877,15 @@ int main(void)
                 {
                     transactions_invalid++;
                 }
+
+
+                /*
+                 * Tambien es seguro rearmar SM1 aqui:
+                 *
+                 * la transaccion BC -> RT ya termino
+                 * completamente.
+                 */
+                mil1553_rx_data_rearm();
 
 
                 transaction_reset(
@@ -844,11 +916,6 @@ int main(void)
 
             sequence_errors++;
 
-
-            /* ================================================
-             * DIAGNOSTICO
-             * ================================================
-             */
 
             printf("\n");
 
@@ -930,11 +997,8 @@ int main(void)
 
 
             /*
-             * En caso de error si limpiamos
-             * completamente el receptor.
-             *
-             * Hay ~100 ms antes de la siguiente
-             * transaccion en este ensayo.
+             * En caso de error reiniciamos
+             * completamente ambas SM.
              */
             mil1553_rx_clear();
 
@@ -950,6 +1014,7 @@ int main(void)
 
             last_word_us =
                 time_us_64();
+
 
             last_bus_activity_us =
                 last_word_us;
@@ -987,6 +1052,10 @@ int main(void)
 
                 printf(
                     "BM - RESULTADO TEST PASIVO\n"
+                );
+
+                printf(
+                    "RX PIO = 16 MHz\n"
                 );
 
                 printf(

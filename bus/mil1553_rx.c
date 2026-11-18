@@ -693,9 +693,8 @@ void mil1553_rx_data_rearm(void)
         return;
     }
 
-
     /*
-     * Detener únicamente SM1.
+     * Detener solamente SM1 / DATA.
      */
     pio_sm_set_enabled(
         rx_pio,
@@ -703,53 +702,38 @@ void mil1553_rx_data_rearm(void)
         false
     );
 
-
     /*
-     * Eliminar posibles palabras o estados
-     * anteriores.
+     * Reinicializar completamente SM1
+     * utilizando exactamente la misma
+     * configuracion validada en rx_init().
      */
-    pio_sm_clear_fifos(
-        rx_pio,
-        rx_sm_data
-    );
-
-
-    /*
-     * Reiniciar lógica interna:
-     *
-     * ISR
-     * contador de bits
-     * delays
-     * estado de espera
-     */
-    pio_sm_restart(
-        rx_pio,
-        rx_sm_data
-    );
-
-
-    /*
-     * El programa mil1553_rx comienza
-     * directamente en acquisition.
-     *
-     * rx_offset apunta a la primera
-     * instrucción del programa.
-     */
-    pio_sm_exec(
-        rx_pio,
+    configure_rx_sm(
         rx_sm_data,
-        pio_encode_jmp(
-            rx_offset
-        )
+        BUS_PIN_N
     );
 
-
     /*
-     * Volver a habilitar DATA RX.
+     * Volver a arrancarla.
+     *
+     * Hay aproximadamente 100 ms antes
+     * de la proxima transaccion.
      */
     pio_sm_set_enabled(
         rx_pio,
         rx_sm_data,
         true
+    );
+}
+void mil1553_rx_data_disable(void)
+{
+    if (!rx_initialized)
+    {
+        return;
+    }
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_data,
+        false
     );
 }

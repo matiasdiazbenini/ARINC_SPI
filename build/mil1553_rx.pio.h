@@ -37,7 +37,7 @@ static const uint16_t mil1553_rx_program_instructions[] = {
     0x0000, // 16: jmp    0
     0x4001, // 17: in     pins, 1
     0xa142, // 18: nop                           [1]
-    0x00c0, // 19: jmp    pin, 0
+    0x0000, // 19: jmp    0
     0x024c, // 20: jmp    x--, 12                [2]
     0x8020, // 21: push   block
     0x0000, // 22: jmp    0
