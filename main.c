@@ -3,7 +3,10 @@
 #include <stdbool.h>
 
 #include "pico/stdlib.h"
+
 #include "hardware/clocks.h"
+#include "hardware/pio.h"
+#include "hardware/gpio.h"
 
 #include "bus/bus.h"
 #include "bus/mil1553_rx.h"
@@ -16,32 +19,25 @@
 
 #define BM_MAX_DATA_WORDS       32u
 
-/*
- * Primero probamos 1000.
- *
- * Si da 100 %, despues:
- *
- *      10000u
- *
- * y finalmente:
- *
- *      100000u
- */
-#define TEST_TRANSACTIONS       1000u
+#define TEST_TRANSACTIONS       10000u
 
-
-/*
- * Tiempo maximo para esperar la siguiente palabra
- * dentro de una transaccion.
- */
 #define BM_WORD_TIMEOUT_US      1000ull
 
-
-/*
- * Tiempo sin actividad para considerar terminado
- * el ensayo completo.
- */
 #define TEST_END_SILENCE_US     1500000ull
+
+
+/* ============================================================
+ * PIO DEL BM
+ *
+ * PIO1
+ *
+ * SM0 -> P -> CMD / STATUS
+ * SM1 -> N -> DATA
+ * ============================================================
+ */
+
+#define BM_RX_PIO               pio1
+#define BM_RX_SM_DATA           1u
 
 
 /* ============================================================
@@ -63,7 +59,7 @@ typedef enum
 
 
 /* ============================================================
- * ESTRUCTURA DE TRANSACCION
+ * TRANSACCION
  * ============================================================
  */
 
@@ -91,24 +87,229 @@ typedef struct
 
 
 /* ============================================================
+ * DIAGNOSTICO SM1
+ * ============================================================
+ */
+
+typedef struct
+{
+    uint8_t pc_after_status;
+
+    uint8_t fifo_after_status;
+
+    uint8_t gpio_n_after_status;
+
+
+    uint8_t last_pc;
+
+    uint32_t pc_changes;
+
+    uint32_t pc_seen_mask;
+
+
+    bool active;
+
+} bm_sm1_diag_t;
+
+
+/* ============================================================
+ * RESET DIAGNOSTICO
+ * ============================================================
+ */
+
+static void sm1_diag_reset(
+    bm_sm1_diag_t *d)
+{
+    d->pc_after_status = 0u;
+
+    d->fifo_after_status = 0u;
+
+    d->gpio_n_after_status = 0u;
+
+
+    d->last_pc = 0u;
+
+    d->pc_changes = 0u;
+
+    d->pc_seen_mask = 0u;
+
+
+    d->active = false;
+}
+
+
+/* ============================================================
+ * FOTO DE SM1 DESPUES DEL STATUS
+ * ============================================================
+ */
+
+static void sm1_diag_start(
+    bm_sm1_diag_t *d)
+{
+    uint8_t pc =
+        (uint8_t)
+        pio_sm_get_pc(
+            BM_RX_PIO,
+            BM_RX_SM_DATA
+        );
+
+
+    d->pc_after_status =
+        pc;
+
+
+    d->fifo_after_status =
+        (uint8_t)
+        pio_sm_get_rx_fifo_level(
+            BM_RX_PIO,
+            BM_RX_SM_DATA
+        );
+
+
+    d->gpio_n_after_status =
+        gpio_get(
+            BUS_PIN_N
+        )
+            ? 1u
+            : 0u;
+
+
+    d->last_pc =
+        pc;
+
+
+    d->pc_changes =
+        0u;
+
+
+    d->pc_seen_mask =
+        (1u << pc);
+
+
+    d->active =
+        true;
+}
+
+
+/* ============================================================
+ * SEGUIMIENTO PC SM1
+ * ============================================================
+ */
+
+static void sm1_diag_update(
+    bm_sm1_diag_t *d)
+{
+    if (!d->active)
+    {
+        return;
+    }
+
+
+    uint8_t pc =
+        (uint8_t)
+        pio_sm_get_pc(
+            BM_RX_PIO,
+            BM_RX_SM_DATA
+        );
+
+
+    d->pc_seen_mask |=
+        (1u << pc);
+
+
+    if (pc != d->last_pc)
+    {
+        d->pc_changes++;
+
+        d->last_pc =
+            pc;
+    }
+}
+
+
+/* ============================================================
+ * MOSTRAR PCs VISTOS
+ * ============================================================
+ */
+
+static void print_seen_pcs(
+    uint32_t mask)
+{
+    printf(
+        "SM1 PCs vistos      : "
+    );
+
+
+    bool first =
+        true;
+
+
+    for (uint8_t pc = 0u;
+         pc < 32u;
+         pc++)
+    {
+        if (mask &
+            (1u << pc))
+        {
+            if (!first)
+            {
+                printf(",");
+            }
+
+
+            printf(
+                "%u",
+                pc
+            );
+
+
+            first =
+                false;
+        }
+    }
+
+
+    if (first)
+    {
+        printf(
+            "ninguno"
+        );
+    }
+
+
+    printf(
+        "\n"
+    );
+}
+
+
+/* ============================================================
  * PARIDAD IMPAR
  * ============================================================
  */
 
-static uint8_t compute_odd_parity(uint16_t word)
+static uint8_t compute_odd_parity(
+    uint16_t word)
 {
-    uint8_t parity = 0u;
+    uint8_t parity =
+        0u;
 
-    for (uint8_t i = 0u; i < 16u; i++)
+
+    for (uint8_t i = 0u;
+         i < 16u;
+         i++)
     {
         parity ^=
             (uint8_t)(
-                (word >> i) & 0x01u
+                (word >> i) &
+                0x01u
             );
     }
 
+
     return (uint8_t)(
-        parity ^ 0x01u
+        parity ^
+        0x01u
     );
 }
 
@@ -118,7 +319,8 @@ static uint8_t compute_odd_parity(uint16_t word)
  * ============================================================
  */
 
-static uint8_t decode_word_count(uint8_t wc)
+static uint8_t decode_word_count(
+    uint8_t wc)
 {
     return (wc == 0u)
         ? 32u
@@ -127,7 +329,7 @@ static uint8_t decode_word_count(uint8_t wc)
 
 
 /* ============================================================
- * RESET DE TRANSACCION
+ * RESET TRANSACCION
  * ============================================================
  */
 
@@ -183,7 +385,7 @@ static void transaction_reset(
 
 
 /* ============================================================
- * DECODIFICAR EVENTO RX
+ * DECODIFICAR RX
  * ============================================================
  */
 
@@ -228,7 +430,7 @@ static void decode_rx_event(
 
 
 /* ============================================================
- * MOSTRAR PORCENTAJE
+ * PORCENTAJE
  * ============================================================
  */
 
@@ -274,7 +476,7 @@ static void print_rate(
 int main(void)
 {
     /* ========================================================
-     * CLOCK DEL RP2350
+     * CLOCK
      * ========================================================
      */
 
@@ -290,7 +492,7 @@ int main(void)
 
 
     /* ========================================================
-     * RECEPTOR MIL-STD-1553
+     * RECEPTOR
      * ========================================================
      */
 
@@ -299,26 +501,15 @@ int main(void)
     mil1553_rx_clear();
 
 
-    printf("\n");
-
     printf(
+        "\n"
         "========================================\n"
-    );
-
-    printf(
-        "BUS MONITOR - TEST PASIVO\n"
-    );
-
-    printf(
+        "BUS MONITOR - RX DATA GATE POR IRQ\n"
         "RX PIO = 8 MHz\n"
-    );
-
-    printf(
-        "Lectura independiente de FIFO\n"
-    );
-
-    printf(
-        "========================================\n"
+        "TEST = %lu transacciones\n"
+        "========================================\n",
+        (unsigned long)
+            TEST_TRANSACTIONS
     );
 
 
@@ -333,10 +524,29 @@ int main(void)
 
     bm_transaction_t transaction;
 
-
     transaction_reset(
         &transaction
     );
+
+
+    bm_sm1_diag_t sm1_diag;
+
+    sm1_diag_reset(
+        &sm1_diag
+    );
+
+
+    /* ========================================================
+     * HISTOGRAMAS PC
+     * ========================================================
+     */
+
+    uint32_t pc_valid[32] =
+        {0u};
+
+
+    uint32_t pc_failed[32] =
+        {0u};
 
 
     /* ========================================================
@@ -386,7 +596,7 @@ int main(void)
 
 
     /* ========================================================
-     * CONTROL DEL ENSAYO
+     * CONTROL DEL TEST
      * ========================================================
      */
 
@@ -399,6 +609,7 @@ int main(void)
 
     uint64_t last_word_us =
         time_us_64();
+
 
     uint64_t last_bus_activity_us =
         time_us_64();
@@ -445,6 +656,7 @@ int main(void)
 
 
                 uint16_t word;
+
                 bool parity_ok;
 
 
@@ -458,10 +670,8 @@ int main(void)
                 /*
                  * No procesamos Mode Codes.
                  *
-                 * Subaddress = 0 o 31 se descarta.
-                 *
-                 * Esto tambien impide interpretar
-                 * STATUS = 0xA000 como nuevo Command.
+                 * STATUS = 0xA000 tambien queda
+                 * descartado gracias a SUB = 0.
                  */
                 uint8_t subaddress =
                     BUS_1553_CMD_SUB(
@@ -478,6 +688,11 @@ int main(void)
 
                 transaction_reset(
                     &transaction
+                );
+
+
+                sm1_diag_reset(
+                    &sm1_diag
                 );
 
 
@@ -499,6 +714,14 @@ int main(void)
                     cmd_parity_errors++;
 
                     transactions_invalid++;
+
+
+                    /*
+                     * Dejar nuevamente SM1 esperando
+                     * la proxima IRQ valida.
+                     */
+                    mil1553_rx_data_rearm();
+
 
                     continue;
                 }
@@ -532,26 +755,62 @@ int main(void)
                     now_us;
 
 
-                /*
-                 * IMPORTANTE PARA ESTA PRUEBA:
+                /* ============================================
+                 * BC -> RT
+                 * ============================================
                  *
-                 * NO:
+                 * Al terminar COMMAND, SM0 genera IRQ 0.
                  *
-                 * - apagamos SM1,
-                 * - esperamos 16/24 us,
-                 * - rearmamos SM1.
+                 * Esa IRQ es justamente la que queremos:
                  *
-                 * Dejamos ambas State Machines
-                 * trabajando continuamente.
+                 *      COMMAND
+                 *      DATA
+                 *      STATUS
+                 *
+                 * Por lo tanto NO rearmamos SM1.
+                 * ============================================
                  */
+
                 if (transaction.tr ==
                     BUS_1553_TR_BC_TO_RT)
                 {
                     state =
                         BM_BC_TO_RT_DATA;
                 }
+
+
+                /* ============================================
+                 * RT -> BC
+                 * ============================================
+                 *
+                 * Secuencia:
+                 *
+                 *      COMMAND
+                 *      espera RT
+                 *      STATUS
+                 *      DATA
+                 *
+                 * La IRQ generada por COMMAND NO nos sirve.
+                 *
+                 * Rearmamos SM1 ahora:
+                 *
+                 *      - descarta IRQ de COMMAND,
+                 *      - limpia cualquier falsa adquisicion,
+                 *      - queda esperando IRQ de STATUS.
+                 *
+                 * Cuando SM0 complete STATUS:
+                 *
+                 *      IRQ 0
+                 *
+                 * despierta SM1 directamente desde PIO.
+                 * ============================================
+                 */
+
                 else
                 {
+                    mil1553_rx_data_rearm();
+
+
                     state =
                         BM_RT_TO_BC_STATUS;
                 }
@@ -574,6 +833,7 @@ int main(void)
 
 
                 uint16_t word;
+
                 bool parity_ok;
 
 
@@ -604,10 +864,6 @@ int main(void)
                 }
 
 
-                /*
-                 * El Status debe corresponder
-                 * al mismo RT del Command.
-                 */
                 if (BUS_1553_STATUS_RT(
                         word)
                     !=
@@ -623,11 +879,30 @@ int main(void)
 
 
                 /*
-                 * No tocar SM1 aqui.
+                 * IMPORTANTE:
                  *
-                 * DATA1 puede comenzar inmediatamente
-                 * despues del STATUS.
+                 * NO rearmar SM1 aqui.
+                 *
+                 * SM0 ya genero IRQ 0 al completar STATUS.
+                 *
+                 * Esa IRQ despierta directamente a SM1.
                  */
+
+
+                /*
+                 * Foto diagnostica.
+                 *
+                 * NOTA:
+                 *
+                 * Los numeros de PC ya NO son comparables
+                 * directamente con el PIO anterior porque
+                 * ahora el programa tiene instrucciones extra.
+                 */
+                sm1_diag_start(
+                    &sm1_diag
+                );
+
+
                 state =
                     BM_RT_TO_BC_DATA;
             }
@@ -642,6 +917,11 @@ int main(void)
         else if (state ==
                  BM_RT_TO_BC_DATA)
         {
+            sm1_diag_update(
+                &sm1_diag
+            );
+
+
             if (mil1553_rx_data_available())
             {
                 uint32_t event =
@@ -649,6 +929,7 @@ int main(void)
 
 
                 uint16_t word;
+
                 bool parity_ok;
 
 
@@ -691,11 +972,31 @@ int main(void)
 
 
                 /*
-                 * FIN DE RT -> BC
+                 * FIN RT -> BC
                  */
                 if (transaction.data_received >=
                     transaction.word_count)
                 {
+                    /*
+                     * Histograma.
+                     */
+                    if (sm1_diag.active)
+                    {
+                        if (transaction.valid)
+                        {
+                            pc_valid[
+                                sm1_diag.pc_after_status
+                            ]++;
+                        }
+                        else
+                        {
+                            pc_failed[
+                                sm1_diag.pc_after_status
+                            ]++;
+                        }
+                    }
+
+
                     if (transaction.valid)
                     {
                         transactions_valid++;
@@ -709,22 +1010,19 @@ int main(void)
 
 
                     /*
-                     * CLAVE:
-                     *
-                     * Los cuatro DATA ya terminaron.
-                     *
-                     * Ahora si podemos reinicializar
-                     * solamente SM1 sin riesgo de borrar
-                     * DATA1 de esta transaccion.
-                     *
-                     * Hay un largo periodo ocioso antes
-                     * del siguiente Command.
+                     * Dejar SM1 esperando
+                     * la siguiente IRQ.
                      */
                     mil1553_rx_data_rearm();
 
 
                     transaction_reset(
                         &transaction
+                    );
+
+
+                    sm1_diag_reset(
+                        &sm1_diag
                     );
 
 
@@ -754,6 +1052,7 @@ int main(void)
 
 
                 uint16_t word;
+
                 bool parity_ok;
 
 
@@ -820,6 +1119,7 @@ int main(void)
 
 
                 uint16_t word;
+
                 bool parity_ok;
 
 
@@ -864,9 +1164,6 @@ int main(void)
                     now_us;
 
 
-                /*
-                 * FIN DE BC -> RT
-                 */
                 if (transaction.valid)
                 {
                     transactions_valid++;
@@ -880,16 +1177,24 @@ int main(void)
 
 
                 /*
-                 * Tambien es seguro rearmar SM1 aqui:
+                 * La transaccion termino.
                  *
-                 * la transaccion BC -> RT ya termino
-                 * completamente.
+                 * El STATUS acaba de generar IRQ 0,
+                 * pero en BC -> RT esa IRQ NO debe
+                 * comenzar un nuevo bloque DATA.
+                 *
+                 * Rearm limpia esa IRQ residual.
                  */
                 mil1553_rx_data_rearm();
 
 
                 transaction_reset(
                     &transaction
+                );
+
+
+                sm1_diag_reset(
+                    &sm1_diag
                 );
 
 
@@ -904,7 +1209,7 @@ int main(void)
 
 
         /* ====================================================
-         * TIMEOUT DE TRANSACCION
+         * TIMEOUT
          * ====================================================
          */
 
@@ -917,17 +1222,46 @@ int main(void)
             sequence_errors++;
 
 
-            printf("\n");
+            /*
+             * Clasificar PC como falla
+             * solamente si ya pasamos por STATUS.
+             */
+            if (sm1_diag.active)
+            {
+                pc_failed[
+                    sm1_diag.pc_after_status
+                ]++;
+            }
+
+
+            uint8_t pc_timeout =
+                (uint8_t)
+                pio_sm_get_pc(
+                    BM_RX_PIO,
+                    BM_RX_SM_DATA
+                );
+
+
+            uint8_t fifo_timeout =
+                (uint8_t)
+                pio_sm_get_rx_fifo_level(
+                    BM_RX_PIO,
+                    BM_RX_SM_DATA
+                );
+
+
+            uint8_t gpio_n_timeout =
+                gpio_get(
+                    BUS_PIN_N
+                )
+                    ? 1u
+                    : 0u;
+
 
             printf(
+                "\n"
                 "----------------------------------------\n"
-            );
-
-            printf(
                 "BM - TIMEOUT DE TRANSACCION\n"
-            );
-
-            printf(
                 "----------------------------------------\n"
             );
 
@@ -949,10 +1283,10 @@ int main(void)
                 "Direccion          : %s\n",
                 (transaction.tr ==
                  BUS_1553_TR_BC_TO_RT)
-                ?
-                "BC -> RT"
-                :
-                "RT -> BC"
+                    ?
+                    "BC -> RT"
+                    :
+                    "RT -> BC"
             );
 
 
@@ -975,7 +1309,7 @@ int main(void)
                  i++)
             {
                 printf(
-                    "DATA%-2u            : 0x%04X\n",
+                    "DATA%-2u             : 0x%04X\n",
                     (unsigned int)(
                         i + 1u
                     ),
@@ -985,9 +1319,92 @@ int main(void)
 
 
             printf(
-                "Estado al timeout  : %u\n",
+                "Estado BM          : %u\n",
                 (unsigned int)
                     state
+            );
+
+
+            /* ================================================
+             * DIAGNOSTICO SM1
+             * ================================================
+             */
+
+            if (sm1_diag.active)
+            {
+                printf(
+                    "\n"
+                    "--- SM1 DESPUES DEL STATUS ---\n"
+                );
+
+
+                printf(
+                    "SM1 PC post STATUS : %u\n",
+                    sm1_diag.pc_after_status
+                );
+
+
+                printf(
+                    "SM1 FIFO post STATUS: %u\n",
+                    sm1_diag.fifo_after_status
+                );
+
+
+                printf(
+                    "GPIO N post STATUS : %u\n",
+                    sm1_diag.gpio_n_after_status
+                );
+            }
+            else
+            {
+                printf(
+                    "\n"
+                    "--- SM1 DESPUES DEL STATUS ---\n"
+                    "No capturado\n"
+                );
+            }
+
+
+            printf(
+                "\n"
+                "--- SM1 AL TIMEOUT ---\n"
+            );
+
+
+            printf(
+                "SM1 PC timeout     : %u\n",
+                pc_timeout
+            );
+
+
+            printf(
+                "SM1 FIFO timeout   : %u\n",
+                fifo_timeout
+            );
+
+
+            printf(
+                "GPIO N timeout     : %u\n",
+                gpio_n_timeout
+            );
+
+
+            printf(
+                "SM1 cambios PC     : %lu\n",
+                (unsigned long)
+                    sm1_diag.pc_changes
+            );
+
+
+            printf(
+                "SM1 PC mask        : 0x%08lX\n",
+                (unsigned long)
+                    sm1_diag.pc_seen_mask
+            );
+
+
+            print_seen_pcs(
+                sm1_diag.pc_seen_mask
             );
 
 
@@ -997,14 +1414,20 @@ int main(void)
 
 
             /*
-             * En caso de error reiniciamos
-             * completamente ambas SM.
+             * Ante error:
+             *
+             * reset completo de ambas SM e IRQ.
              */
             mil1553_rx_clear();
 
 
             transaction_reset(
                 &transaction
+            );
+
+
+            sm1_diag_reset(
+                &sm1_diag
             );
 
 
@@ -1043,22 +1466,12 @@ int main(void)
                     true;
 
 
-                printf("\n\n");
-
-
                 printf(
+                    "\n\n"
                     "========================================\n"
-                );
-
-                printf(
                     "BM - RESULTADO TEST PASIVO\n"
-                );
-
-                printf(
-                    "RX PIO = 16 MHz\n"
-                );
-
-                printf(
+                    "RX PIO = 8 MHz\n"
+                    "DATA GATE = IRQ PIO\n"
                     "========================================\n\n"
                 );
 
@@ -1195,7 +1608,7 @@ int main(void)
 
 
                 /* ============================================
-                 * PORCENTAJE
+                 * TASAS
                  * ============================================
                  */
 
@@ -1211,18 +1624,58 @@ int main(void)
                 );
 
 
-                printf("\n");
-
+                /* ============================================
+                 * HISTOGRAMA PC
+                 * ============================================
+                 */
 
                 printf(
+                    "\n"
+                    "========================================\n"
+                    "PC SM1 INMEDIATAMENTE DESPUES DEL STATUS\n"
                     "========================================\n"
                 );
 
-                printf(
-                    "FIN DEL INFORME BM\n"
-                );
 
                 printf(
+                    "PC     VALIDAS     FALLIDAS\n"
+                );
+
+
+                printf(
+                    "---------------------------\n"
+                );
+
+
+                for (uint8_t pc = 0u;
+                     pc < 32u;
+                     pc++)
+                {
+                    if ((pc_valid[pc] != 0u) ||
+                        (pc_failed[pc] != 0u))
+                    {
+                        printf(
+                            "%2u     %7lu     %8lu\n",
+                            (unsigned int)
+                                pc,
+                            (unsigned long)
+                                pc_valid[pc],
+                            (unsigned long)
+                                pc_failed[pc]
+                        );
+                    }
+                }
+
+
+                printf(
+                    "===========================\n"
+                );
+
+
+                printf(
+                    "\n"
+                    "========================================\n"
+                    "FIN DEL INFORME BM\n"
                     "========================================\n"
                 );
             }

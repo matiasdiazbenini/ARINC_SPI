@@ -41,29 +41,43 @@ bool mil1553_rx_available(void);
 
 uint32_t mil1553_rx_get(void);
 
+
 /*
- * Vaciar las FIFO de recepción.
+ * Reinicia completamente SM0 y SM1.
  *
- * Se utiliza para descartar palabras propias
- * observadas durante una transmisión.
+ * SM0 queda en cmd_entry.
+ * SM1 queda en data_entry esperando IRQ 0.
  */
 void mil1553_rx_clear(void);
-/*
- * Acceso independiente a las dos FIFO.
- *
- * El Bus Monitor utiliza estas funciones
- * para conservar la secuencia lógica de
- * cada transacción.
- */
 
+
+/*
+ * Acceso independiente a FIFO.
+ */
 bool mil1553_rx_cmd_status_available(void);
+
 bool mil1553_rx_data_available(void);
 
+
 uint32_t mil1553_rx_get_cmd_status(void);
+
 uint32_t mil1553_rx_get_data(void);
 
+
+/*
+ * Rearma solamente SM1.
+ *
+ * Limpia IRQ 0 y coloca SM1 nuevamente
+ * en data_entry esperando el siguiente
+ * CMD / STATUS completado por SM0.
+ */
 void mil1553_rx_data_rearm(void);
 
+
+/*
+ * Diagnostico / pruebas.
+ */
 void mil1553_rx_data_disable(void);
+
 
 #endif
