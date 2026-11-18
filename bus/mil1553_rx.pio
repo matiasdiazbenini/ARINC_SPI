@@ -1,31 +1,36 @@
 .program mil1553_rx
 
 ; ============================================================================
-; MIL-STD-1553 RX - ACQUISITION + TRACKING
-; ============================================================================
+; MIL-STD-1553 RX
 ;
 ; PIO clock = 8 MHz
-;
-; 1 ciclo   = 125 ns
-; medio bit = 500 ns
-; bit       = 1 us
 ;
 ; SM0 -> P -> CMD / STATUS
 ; SM1 -> N -> DATA
 ;
-; Cada palabra:
+; NUEVA ESTRATEGIA:
 ;
-;   SYNC    = 3 us
-;   WORD    = 16 bits
-;   PARITY  = 1 bit
+; SM0:
+;   trabaja normalmente desde cmd_entry.
 ;
-; Se capturan 17 bits:
+; SM1:
+;   arranca en data_entry y espera IRQ 0.
 ;
-;   bits 16..1 = WORD
-;   bit 0      = PARITY
+; Cuando SM0 termina una palabra CMD/STATUS:
 ;
-; Para DATA, SM1 observa N.
-; La inversión se realiza posteriormente en Cortex.
+;       PUSH
+;       IRQ 0
+;
+; Para RT -> BC:
+;
+; Cortex rearma SM1 despues de leer el COMMAND.
+; De esta forma SM1 queda esperando la IRQ generada
+; al terminar STATUS.
+;
+; Cuando llega esa IRQ, DATA1 ya esta comenzando.
+; Como el Sync DATA observado desde N empieza HIGH,
+; SM1 entra directamente en la validacion de HIGH,
+; sin exigir LOW -> HIGH nuevamente.
 ;
 ; ============================================================================
 
@@ -34,22 +39,14 @@
 
 
 ; ============================================================================
-; ACQUISITION
+; ENTRADA SM0
 ; ============================================================================
-;
-; Se utiliza:
-;
-;   - al arrancar la State Machine
-;   - después de un sincronismo inválido
-;   - después de Manchester inválido
-;
-; En adquisición exigimos:
-;
-;       LOW -> HIGH
-;
-; De esta manera conocemos el comienzo de una nueva
-; meseta HIGH.
-;
+
+public cmd_entry:
+
+
+; ============================================================================
+; ACQUISITION NORMAL
 ; ============================================================================
 
 acquisition:
@@ -57,43 +54,16 @@ acquisition:
     wait 0 pin 0
 
 
-; ============================================================================
-; TRACKING
-; ============================================================================
-;
-; Después de recibir correctamente una palabra NO exigimos
-; volver a observar LOW antes de HIGH.
-;
-; Esto permite recibir palabras consecutivas aunque la línea
-; todavía se encuentre HIGH cuando termina la palabra anterior.
-;
-; ACQUISITION cae naturalmente en este mismo punto después
-; de haber observado LOW.
-;
-; ============================================================================
-
 tracking:
 
     wait 1 pin 0
 
 
 ; ============================================================================
-; VALIDAR PRIMERA MITAD DEL SYNC
+; VALIDACION PRIMERA MITAD HIGH DEL SYNC
 ; ============================================================================
-;
-; Buscamos una meseta HIGH suficientemente larga.
-;
-; Y = 2
-;
-; Se realizan tres comprobaciones del estado HIGH.
-;
-; Si la línea cae demasiado pronto:
-;
-;       candidato inválido
-;              ↓
-;       volver a ACQUISITION
-;
-; ============================================================================
+
+sync_high_begin:
 
     set y, 2
 
@@ -113,80 +83,33 @@ sync_high_still:
 ; ============================================================================
 ; CENTRO DEL SYNC
 ; ============================================================================
-;
-; Ya comprobamos una meseta HIGH larga.
-;
-; Ahora esperamos:
-;
-;       HIGH -> LOW
-;
-; correspondiente aproximadamente al centro del sincronismo.
-;
-; ============================================================================
 
     wait 0 pin 0
 
 
 ; ============================================================================
-; SEGUNDA MITAD DEL SYNC
-; ============================================================================
+; SEGUNDA MITAD LOW DEL SYNC
 ;
-; Preparar contador:
-;
-; X = 16
-;
-; El JMP X-- posterior produce 17 iteraciones:
-;
-;       16 bits + parity
-;
-; Mientras tanto aprovechamos para avanzar dentro
-; de la segunda mitad LOW del sincronismo.
-;
+; MISMA TEMPORIZACION DEL PIO ORIGINAL.
 ; ============================================================================
 
     set x, 16 [3]
 
 
-; ----------------------------------------------------------------------------
-; Debe continuar LOW.
-; ----------------------------------------------------------------------------
-
     jmp pin acquisition
 
-
-; ----------------------------------------------------------------------------
-; Avanzar dentro del LOW del sync.
-; ----------------------------------------------------------------------------
 
     nop [2]
 
 
-; ----------------------------------------------------------------------------
-; Debe continuar LOW.
-; ----------------------------------------------------------------------------
-
     jmp pin acquisition
 
-
-; ----------------------------------------------------------------------------
-; Alinear comienzo del primer bit Manchester.
-; ----------------------------------------------------------------------------
 
     nop [2]
 
 
 ; ============================================================================
-; RECEPCIÓN MANCHESTER
-; ============================================================================
-;
-; ESTE BLOQUE NO CAMBIA.
-;
-; Cada bit válido consume exactamente:
-;
-;       8 ciclos PIO
-;
-;       8 × 125 ns = 1 us
-;
+; RECEPCION MANCHESTER
 ; ============================================================================
 
 bit_loop:
@@ -207,16 +130,13 @@ first_low:
 
     ; LOW -> HIGH
     ;
-    ; Manchester válido.
+    ; Manchester valido.
     jmp pin bit_ok
 
 
     ; LOW -> LOW
     ;
-    ; Manchester inválido.
-    ;
-    ; Perdimos alineamiento:
-    ; volver a ACQUISITION.
+    ; Manchester invalido.
     jmp acquisition
 
 
@@ -233,15 +153,14 @@ first_high:
 
     ; HIGH -> HIGH
     ;
-    ; Manchester inválido.
+    ; Manchester invalido.
     ;
-    ; Si la línea está LOW, no salta
-    ; y cae directamente a bit_ok.
+    ; Si esta LOW cae en bit_ok.
     jmp pin acquisition
 
 
 ; ============================================================================
-; BIT VÁLIDO
+; BIT VALIDO
 ; ============================================================================
 
 bit_ok:
@@ -257,24 +176,58 @@ bit_ok:
 
 
 ; ============================================================================
-; TRACKING ENTRE PALABRAS
+; AVISO A SM1
+;
+; IRQ 0 se utiliza como evento interno PIO.
+;
+; En SM0:
+;   indica que termino un CMD / STATUS.
+;
+; Como este bloque es compartido, SM1 tambien puede
+; establecer IRQ 0 despues de un DATA. Esa IRQ residual
+; se limpia explicitamente cuando Cortex rearma SM1.
+; ============================================================================
+
+    irq 0
+
+
+    jmp acquisition
+
+
+; ============================================================================
+; ENTRADA ESPECIAL SM1 / DATA
 ; ============================================================================
 ;
-; IMPORTANTE:
+; SM1 queda bloqueada aqui hasta que SM0 termina
+; la palabra que debe preceder al bloque DATA.
 ;
-; Después de una palabra CORRECTA entramos directamente
-; en TRACKING.
+; WAIT 1 IRQ 0:
 ;
-; NO volvemos a:
+;   - espera IRQ 0,
+;   - al detectarla la limpia automaticamente.
+;
+; Luego NO hacemos:
 ;
 ;       wait 0
+;       wait 1
 ;
-; porque queremos poder capturar inmediatamente
-; otra palabra consecutiva.
+; porque al terminar STATUS, DATA Sync puede haber
+; comenzado inmediatamente.
+;
+; DATA Sync observado desde N comienza HIGH.
+;
+; Por eso simplemente esperamos/confirmamos HIGH
+; y entramos a la validacion original del Sync.
 ;
 ; ============================================================================
 
-    jmp acquisition
+public data_entry:
+
+    wait 1 irq 0
+
+    wait 1 pin 0
+
+    jmp sync_high_begin
 
 
 .wrap
