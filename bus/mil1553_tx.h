@@ -34,6 +34,7 @@ void mil1553_tx_release_bus(void);
  * la última palabra entregada al PIO.
  */
 void mil1553_tx_wait_idle(void);
+void mil1553_tx_wait_idle_exact(void);
 
 #ifdef __cplusplus
 }

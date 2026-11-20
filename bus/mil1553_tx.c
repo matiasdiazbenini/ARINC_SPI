@@ -387,3 +387,40 @@ void mil1553_tx_wait_idle(void)
      */
     busy_wait_us_32(21u);
 }
+void mil1553_tx_wait_idle_exact(void)
+{
+    if (!tx_initialized)
+    {
+        return;
+    }
+
+    /*
+     * Esperar a que el PIO haya retirado
+     * todas las palabras de la FIFO.
+     */
+    while (!pio_sm_is_tx_fifo_empty(
+                tx_pio,
+                tx_sm))
+    {
+        tight_loop_contents();
+    }
+
+    /*
+     * FIFO vacía no significa todavía que
+     * terminó físicamente la última palabra.
+     *
+     * Esperamos hasta que el PIO vuelva a
+     * la instrucción "pull block" de entry.
+     *
+     * entry es la primera instrucción del programa,
+     * por lo que su PC absoluto es tx_offset.
+     */
+    while (pio_sm_get_pc(
+               tx_pio,
+               tx_sm)
+           !=
+           tx_offset)
+    {
+        tight_loop_contents();
+    }
+}

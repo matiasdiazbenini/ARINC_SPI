@@ -7,6 +7,7 @@
 
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
+#include "hardware/pio_instructions.h"
 
 #include "bus.h"
 #include "mil1553_rx.pio.h"
@@ -756,5 +757,42 @@ void mil1553_rx_data_disable(void)
         rx_pio,
         rx_sm_data,
         false
+    );
+}
+void mil1553_rx_cmd_status_rearm(void)
+{
+    if (!rx_initialized)
+    {
+        return;
+    }
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_cmd,
+        false
+    );
+
+    pio_sm_clear_fifos(
+        rx_pio,
+        rx_sm_cmd
+    );
+
+    pio_sm_restart(
+        rx_pio,
+        rx_sm_cmd
+    );
+
+    pio_sm_exec(
+        rx_pio,
+        rx_sm_cmd,
+        pio_encode_jmp(
+            cmd_entry_pc()
+        )
+    );
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_cmd,
+        true
     );
 }
