@@ -1310,24 +1310,16 @@ static void process_data(
  */
 
 static edge_diag_t monitor_p_after_last_data(
-    uint8_t pc_before_rearm)
+    uint8_t pc_before_rearm,
+    uint8_t pc_after_rearm)
 {
     edge_diag_t d = {0};
 
     d.pc_before_rearm =
         pc_before_rearm;
 
-
-    /* Rearme rapido SM0. */
-
-    mil1553_rx_cmd_status_rearm();
-
     d.pc_after_rearm =
-        (uint8_t)
-        pio_sm_get_pc(
-            BM_RX_PIO,
-            BM_RX_SM_CMD
-        );
+        pc_after_rearm;
 
 
     /* Nivel inicial de GP2. */
@@ -1711,6 +1703,30 @@ int main(void)
                 uint32_t event =
                     mil1553_rx_get_data_bc_to_rt();
 
+                /* Identificar ultimo DATA antes de procesarlo. */
+                const bool last_data =
+                    ((unsigned)transaction.data_count + 1u >=
+                    transaction.word_count);
+
+                uint8_t pc_before = 0u;
+                uint8_t pc_after = 0u;
+
+                /* Priorizar rearme SM0. */
+                if (last_data)
+                {
+                    pc_before = (uint8_t)pio_sm_get_pc(
+                        BM_RX_PIO,
+                        BM_RX_SM_CMD
+                    );
+
+                    mil1553_rx_cmd_status_rearm();
+
+                    pc_after = (uint8_t)pio_sm_get_pc(
+                        BM_RX_PIO,
+                        BM_RX_SM_CMD
+                    );
+                }
+
                 uint16_t word = 0u;
 
                 bool parity_ok = false;
@@ -1754,19 +1770,12 @@ int main(void)
 
                     /* Estado SM0 antes del rearme. */
 
-                    uint8_t pc_before =
-                        (uint8_t)
-                        pio_sm_get_pc(
-                            BM_RX_PIO,
-                            BM_RX_SM_CMD
-                        );
-
-
-                    /* Diagnostico fisico existente. */
+                    /* Diagnostico fisico posterior al rearme. */
 
                     edge_diag_t d =
                         monitor_p_after_last_data(
-                            pc_before
+                            pc_before,
+                            pc_after
                         );
 
 
