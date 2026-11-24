@@ -15,12 +15,30 @@
 #define TEST_END_SILENCE_US 1500000ull
 #define DIAG_CAPACITY 128u
 #define RXSTALL_MASK (1u << (PIO_FDEBUG_RXSTALL_LSB+1u))
-static const uint16_t pattern[MAX_WC]={
-    0x4444,0x2222,0x3333,0x1111,0xAAAA,0x5555,0xFFFF,0x0000,
-    0x1234,0x5678,0xABCD,0xDCBA,0x0F0F,0xF0F0,0x8001,0x7FFE,
-    0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,
-    0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x4000,0x8000
-};
+/* Patron de ensayo reproducible por direccion, WC y posicion (base 0).
+ * Indices 0..1055 sin colisiones: multiplicador impar y xorshift de 16 bits.
+ * No usa el contador de transacciones ni el reloj.
+ */
+static inline uint16_t test_data_word(unsigned tr, unsigned wc, unsigned pos)
+{
+    uint32_t index = tr * 528u + (wc * (wc - 1u)) / 2u + pos;
+    uint16_t x = (uint16_t)(index * 40503u + 0xBEEFu);
+    x ^= (uint16_t)(x >> 7);
+    x ^= (uint16_t)(x << 9);
+    x ^= (uint16_t)(x >> 8);
+    return x;
+}
+
+/* Generar antes del ensayo para mantener liviano el camino critico. */
+static uint16_t test_patterns[2][MAX_WC][MAX_WC];
+static void prepare_test_patterns(void)
+{
+    for (unsigned tr=0; tr<2u; tr++)
+        for (unsigned wc=1; wc<=MAX_WC; wc++)
+            for (unsigned i=0; i<wc; i++)
+                test_patterns[tr][wc-1u][i] = test_data_word(tr,wc,i);
+}
+
 typedef struct {uint32_t tx,wc,count,first_us,max_poll,max_read,max_fifo,pc,fifo_end;bool valid,timeout,stall;uint16_t words[MAX_WC];bool parity[MAX_WC];} diag_t;
 static diag_t active,saved[DIAG_CAPACITY];
 static uint32_t saved_count,dropped,stall_count,max_fifo,max_poll,max_read;
@@ -35,23 +53,24 @@ static void diag_end(bool valid,bool timeout){
     active.pc=pio_sm_get_pc(pio1,1u);active.fifo_end=pio_sm_get_rx_fifo_level(pio1,1u);
     if(active.stall)stall_count++;
     max_fifo=max32(max_fifo,active.max_fifo);max_poll=max32(max_poll,active.max_poll);max_read=max32(max_read,active.max_read);
-    if(active.tx<=6 || !valid){if(saved_count<DIAG_CAPACITY)saved[saved_count++]=active;else dropped++;}
+    if(active.tx<=64 || !valid){if(saved_count<DIAG_CAPACITY)saved[saved_count++]=active;else dropped++;}
 }
 static void print_diag(const diag_t *d){
     printf("\nRT RX TX local %lu | %s | DATA %lu/%lu | Timeout=%s\n",(unsigned long)d->tx,d->valid?"OK":"BAD",(unsigned long)d->count,(unsigned long)d->wc,d->timeout?"SI":"NO");
     printf("RX1=%lu us | Poll max=%lu us | Lectura max=%lu us | FIFO max=%lu/8 | RXSTALL=%s | PC=%lu | FIFO cierre=%lu\n",(unsigned long)d->first_us,(unsigned long)d->max_poll,(unsigned long)d->max_read,(unsigned long)d->max_fifo,d->stall?"SI":"NO",(unsigned long)d->pc,(unsigned long)d->fifo_end);
-    for(unsigned i=0;i<d->count && i<MAX_WC;i++)printf("DATA%02u RX=0x%04X ESP=0x%04X PAR=%s\n",i+1,(unsigned)d->words[i],(unsigned)pattern[i],d->parity[i]?"OK":"ERROR");
+    for(unsigned i=0;i<d->count && i<MAX_WC;i++)printf("DATA%02u RX=0x%04X ESP=0x%04X PAR=%s\n",i+1,(unsigned)d->words[i],(unsigned)test_patterns[0][d->wc-1u][i],d->parity[i]?"OK":"ERROR");
 }
 int main(void){
-    set_sys_clock_khz(120000,true);stdio_init_all();sleep_ms(1000);
+    set_sys_clock_khz(120000,true);stdio_init_all();prepare_test_patterns();sleep_ms(1000);
     mil1553_rx_init();mil1553_tx_init();mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
     const uint16_t status_ok=BUS_1553_STATUS_MAKE(20u,false),status_error=BUS_1553_STATUS_MAKE(20u,true);
     uint32_t started[2]={0},completed[2]={0},ok[2]={0},status_sent[2]={0};
     uint32_t cmd_received=0,cmd_parity_err=0,cmd_unexpected=0,rx_data=0,correct_data=0,data_mismatch=0,data_parity_err=0,tx_data=0,timeouts=0,sequence_errors=0,status_error_sent=0;
     uint32_t expected_rx=0,expected_tx=0,coverage[2][MAX_WC]={0},coverage_ok[2][MAX_WC]={0};
+    const uint16_t *pattern=NULL;
     unsigned position=0,wc=0;bool receiving=false,valid=true,test_started=false,report_done=false;
     uint64_t last_word=time_us_64(),last_activity=last_word;
-    printf("\nRT - TEST BIDIRECCIONAL WC 1..32\nTransacciones: %u\nRT=20 SA=18 WC=1..32\n",TEST_TRANSACTIONS);
+    printf("\nRT - TEST BIDIRECCIONAL WC 1..32 / DATA PRNG\nTransacciones: %u\nRT=20 SA=18 WC=1..32\n",TEST_TRANSACTIONS);
     while(true){
         uint64_t now=time_us_64();
         if(receiving)diag_poll(now);
@@ -68,6 +87,7 @@ int main(void){
                 unsigned tr=BUS_1553_CMD_TR(w);
                 wc=BUS_1553_CMD_WC(w);
                 if(wc==0u)wc=MAX_WC;
+                pattern=test_patterns[tr][wc-1u];
                 coverage[tr][wc-1u]++;
                 if(tr==BUS_1553_TR_RT_TO_BC){
                     expected_tx+=wc;
@@ -110,7 +130,7 @@ int main(void){
         }
         if(test_started && !report_done && !receiving && now>=last_activity && now-last_activity>=TEST_END_SILENCE_US){
             report_done=true;
-            printf("\nRT - RESULTADO BIDIRECCIONAL WC 1..32\n");
+            printf("\nRT - RESULTADO BIDIRECCIONAL WC 1..32 / DATA PRNG\n");
             for(unsigned tr=0;tr<2;tr++)printf("\n%s\nIniciadas: %lu\nCompletas: %lu\nOK: %lu\nBAD: %lu\nSTATUS enviados: %lu\n",tr?"RT -> BC":"BC -> RT",(unsigned long)started[tr],(unsigned long)completed[tr],(unsigned long)ok[tr],(unsigned long)(started[tr]-ok[tr]),(unsigned long)status_sent[tr]);
             printf("\nCMD recibidos: %lu\nCMD correctos: %lu\nCMD paridad error: %lu\nCMD inesperados: %lu\nDATA esperados RX: %lu\nDATA recibidos: %lu\nDATA correctos: %lu\nDATA mismatch: %lu\nDATA paridad error: %lu\nDATA enviados: %lu\nTimeout DATA: %lu\nErrores secuencia: %lu\nSTATUS MSG_ERROR: %lu\n",(unsigned long)cmd_received,(unsigned long)(started[0]+started[1]),(unsigned long)cmd_parity_err,(unsigned long)cmd_unexpected,(unsigned long)expected_rx,(unsigned long)rx_data,(unsigned long)correct_data,(unsigned long)data_mismatch,(unsigned long)data_parity_err,(unsigned long)tx_data,(unsigned long)timeouts,(unsigned long)sequence_errors,(unsigned long)status_error_sent);
             printf("DATA esperados TX (COMMAND aceptados): %lu\n",(unsigned long)expected_tx);
