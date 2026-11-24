@@ -1,53 +1,32 @@
 .program mil1553_rx
 
 ; ============================================================================
-; MIL-STD-1553 RX
+; MIL-STD-1553 RX - GATE DATA BC -> RT
+; ============================================================================
 ;
 ; PIO clock = 8 MHz
 ;
-; SM0 -> P -> CMD / STATUS
-; SM1 -> N -> DATA
+; SM0 -> GP2 / P
+;        COMMAND / STATUS
 ;
-; NUEVA ESTRATEGIA:
+; SM1 -> GP3 / N
+;        DATA BC -> RT
+;        GATE POR IRQ 0
 ;
-; SM0:
-;   trabaja normalmente desde cmd_entry.
-;
-; SM1:
-;   arranca en data_entry y espera IRQ 0.
-;
-; Cuando SM0 termina una palabra CMD/STATUS:
-;
-;       PUSH
-;       IRQ 0
-;
-; Para RT -> BC:
-;
-; Cortex rearma SM1 despues de leer el COMMAND.
-; De esta forma SM1 queda esperando la IRQ generada
-; al terminar STATUS.
-;
-; Cuando llega esa IRQ, DATA1 ya esta comenzando.
-; Como el Sync DATA observado desde N empieza HIGH,
-; SM1 entra directamente en la validacion de HIGH,
-; sin exigir LOW -> HIGH nuevamente.
+; SM2 -> GP3 / N
+;        DATA RT -> BC
+;        DESHABILITADA EN ESTA PRUEBA
 ;
 ; ============================================================================
-
 
 .wrap_target
 
 
 ; ============================================================================
-; ENTRADA SM0
+; ENTRY SM0
 ; ============================================================================
 
 public cmd_entry:
-
-
-; ============================================================================
-; ACQUISITION NORMAL
-; ============================================================================
 
 acquisition:
 
@@ -60,7 +39,7 @@ tracking:
 
 
 ; ============================================================================
-; VALIDACION PRIMERA MITAD HIGH DEL SYNC
+; VALIDACION PRIMERA MITAD DEL SYNC
 ; ============================================================================
 
 sync_high_begin:
@@ -88,22 +67,16 @@ sync_high_still:
 
 
 ; ============================================================================
-; SEGUNDA MITAD LOW DEL SYNC
-;
-; MISMA TEMPORIZACION DEL PIO ORIGINAL.
+; SEGUNDA MITAD DEL SYNC
 ; ============================================================================
 
     set x, 16 [3]
 
-
     jmp pin acquisition
-
 
     nop [2]
 
-
     jmp pin acquisition
-
 
     nop [2]
 
@@ -127,16 +100,8 @@ first_low:
 
     nop [1]
 
-
-    ; LOW -> HIGH
-    ;
-    ; Manchester valido.
     jmp pin bit_ok
 
-
-    ; LOW -> LOW
-    ;
-    ; Manchester invalido.
     jmp acquisition
 
 
@@ -150,12 +115,6 @@ first_high:
 
     nop [1]
 
-
-    ; HIGH -> HIGH
-    ;
-    ; Manchester invalido.
-    ;
-    ; Si esta LOW cae en bit_ok.
     jmp pin acquisition
 
 
@@ -176,52 +135,27 @@ bit_ok:
 
 
 ; ============================================================================
-; AVISO A SM1
-;
-; IRQ 0 se utiliza como evento interno PIO.
-;
-; En SM0:
-;   indica que termino un CMD / STATUS.
-;
-; Como este bloque es compartido, SM1 tambien puede
-; establecer IRQ 0 despues de un DATA. Esa IRQ residual
-; se limpia explicitamente cuando Cortex rearma SM1.
+; IRQ INTERNA
 ; ============================================================================
 
     irq 0
-
 
     jmp acquisition
 
 
 ; ============================================================================
-; ENTRADA ESPECIAL SM1 / DATA
+; ENTRY DATA CON GATE
 ; ============================================================================
 ;
-; SM1 queda bloqueada aqui hasta que SM0 termina
-; la palabra que debe preceder al bloque DATA.
+; SM1 espera que SM0 termine el COMMAND.
 ;
-; WAIT 1 IRQ 0:
-;
-;   - espera IRQ 0,
-;   - al detectarla la limpia automaticamente.
-;
-; Luego NO hacemos:
-;
-;       wait 0
-;       wait 1
-;
-; porque al terminar STATUS, DATA Sync puede haber
-; comenzado inmediatamente.
-;
-; DATA Sync observado desde N comienza HIGH.
-;
-; Por eso simplemente esperamos/confirmamos HIGH
-; y entramos a la validacion original del Sync.
+; SM2 conserva su entry para compatibilidad con el driver,
+; pero permanece deshabilitada durante este ensayo.
 ;
 ; ============================================================================
 
-public data_entry:
+public data_bc_to_rt_entry:
+public data_rt_to_bc_entry:
 
     wait 1 irq 0
 

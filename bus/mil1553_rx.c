@@ -7,6 +7,7 @@
 
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
+#include "hardware/pio_instructions.h"
 
 #include "bus.h"
 #include "mil1553_rx.pio.h"
@@ -21,24 +22,45 @@ static PIO rx_pio =
     pio1;
 
 
-/*
+/* ============================================================
+ * STATE MACHINES
+ * ============================================================
+ *
  * SM0:
  *
- *      P
- *      CMD / STATUS
+ *      GP2 / P
+ *      COMMAND / STATUS
  *
  * SM1:
  *
- *      N
- *      DATA
+ *      GP3 / N
+ *      DATA BC -> RT
+ *      adquisicion directa
+ *
+ * SM2:
+ *
+ *      GP3 / N
+ *      DATA RT -> BC
+ *      gate por IRQ
+ * ============================================================
  */
+
 static const uint rx_sm_cmd =
     0u;
 
 
-static const uint rx_sm_data =
+static const uint rx_sm_data_bc_to_rt =
     1u;
 
+
+static const uint rx_sm_data_rt_to_bc =
+    2u;
+
+
+/* ============================================================
+ * ESTADO
+ * ============================================================
+ */
 
 static uint rx_offset =
     0u;
@@ -49,7 +71,7 @@ static bool rx_initialized =
 
 
 /* ============================================================
- * CLOCK RX
+ * CLOCK
  * ============================================================
  */
 
@@ -57,16 +79,7 @@ static bool rx_initialized =
 
 
 /* ============================================================
- * IRQ INTERNA PIO
- * ============================================================
- *
- * IRQ 0:
- *
- * SM0 la genera despues de terminar
- * una palabra CMD / STATUS.
- *
- * SM1 puede esperar esta bandera
- * directamente dentro del PIO.
+ * IRQ INTERNA
  * ============================================================
  */
 
@@ -74,30 +87,36 @@ static bool rx_initialized =
 
 
 /* ============================================================
- * DIRECCIONES DE ENTRADA
+ * ENTRY PCs
  * ============================================================
  */
 
 static inline uint cmd_entry_pc(void)
 {
     return
-
         rx_offset +
         mil1553_rx_offset_cmd_entry;
 }
 
 
-static inline uint data_entry_pc(void)
+static inline uint data_bc_to_rt_entry_pc(void)
 {
     return
-
         rx_offset +
-        mil1553_rx_offset_data_entry;
+        mil1553_rx_offset_data_bc_to_rt_entry;
+}
+
+
+static inline uint data_rt_to_bc_entry_pc(void)
+{
+    return
+        rx_offset +
+        mil1553_rx_offset_data_rt_to_bc_entry;
 }
 
 
 /* ============================================================
- * CONFIGURAR STATE MACHINE
+ * CONFIGURAR SM
  * ============================================================
  */
 
@@ -148,7 +167,7 @@ static void configure_rx_sm(
     /* --------------------------------------------------------
      * ISR
      *
-     * Shift hacia izquierda.
+     * Shift izquierda.
      * PUSH manual.
      * --------------------------------------------------------
      */
@@ -162,7 +181,7 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * Clock = 8 MHz
+     * CLOCK = 8 MHz
      * --------------------------------------------------------
      */
 
@@ -181,7 +200,7 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * Inicializar SM en PC seleccionado.
+     * INIT
      * --------------------------------------------------------
      */
 
@@ -249,9 +268,9 @@ void mil1553_rx_init(void)
 
 
     /*
-     * Receptor:
+     * Todas las SM son receptores.
      *
-     * P y N siempre entrada.
+     * Nunca conducen P ni N.
      */
 
     pio_sm_set_consecutive_pindirs(
@@ -265,12 +284,26 @@ void mil1553_rx_init(void)
 
     pio_sm_set_consecutive_pindirs(
         rx_pio,
-        rx_sm_data,
+        rx_sm_data_bc_to_rt,
         BUS_PIN_P,
         2u,
         false
     );
 
+
+    pio_sm_set_consecutive_pindirs(
+        rx_pio,
+        rx_sm_data_rt_to_bc,
+        BUS_PIN_P,
+        2u,
+        false
+    );
+
+
+    /* --------------------------------------------------------
+     * BUS IDLE
+     * --------------------------------------------------------
+     */
 
     gpio_pull_down(
         BUS_PIN_P
@@ -283,7 +316,7 @@ void mil1553_rx_init(void)
 
 
     /* --------------------------------------------------------
-     * Limpiar IRQ interna.
+     * Limpiar IRQ
      * --------------------------------------------------------
      */
 
@@ -296,9 +329,8 @@ void mil1553_rx_init(void)
     /* --------------------------------------------------------
      * SM0
      *
-     * Entrada normal:
-     *
-     *      cmd_entry
+     * CMD / STATUS
+     * P
      * --------------------------------------------------------
      */
 
@@ -312,30 +344,65 @@ void mil1553_rx_init(void)
     /* --------------------------------------------------------
      * SM1
      *
-     * Entrada especial:
+     * DATA BC -> RT
+     * N
      *
-     *      data_entry
+     * IMPORTANTE:
      *
-     * Queda esperando IRQ 0.
+     * ADQUISICION DIRECTA.
+     *
+     * NO espera IRQ del COMMAND.
      * --------------------------------------------------------
      */
 
     configure_rx_sm(
-        rx_sm_data,
+        rx_sm_data_bc_to_rt,
         BUS_PIN_N,
-        data_entry_pc()
+        data_bc_to_rt_entry_pc()
     );
 
 
     /* --------------------------------------------------------
-     * Arrancar ambas sincronizadas.
+     * SM2
+     *
+     * DATA RT -> BC
+     * N
+     *
+     * Conserva gate por IRQ.
      * --------------------------------------------------------
      */
 
-    pio_enable_sm_mask_in_sync(
-        rx_pio,
+    configure_rx_sm(
+        rx_sm_data_rt_to_bc,
+        BUS_PIN_N,
+        data_rt_to_bc_entry_pc()
+    );
+
+
+    /* --------------------------------------------------------
+     * Arranque sincronizado
+     * --------------------------------------------------------
+     */
+
+    const uint32_t sm_mask =
         (1u << rx_sm_cmd) |
-        (1u << rx_sm_data)
+        (1u << rx_sm_data_bc_to_rt) |
+        (1u << rx_sm_data_rt_to_bc);
+
+
+    pio_enable_sm_mask_in_sync(
+    rx_pio,
+    (1u << rx_sm_cmd) |
+    (1u << rx_sm_data_bc_to_rt)
+    );
+
+
+    /*
+     * Sincronizacion explicita de divisores.
+     */
+    pio_clkdiv_restart_sm_mask(
+        rx_pio,
+        sm_mask
     );
 
 
@@ -345,7 +412,7 @@ void mil1553_rx_init(void)
 
 
 /* ============================================================
- * HAY ALGUNA PALABRA
+ * AVAILABLE GENERICO
  * ============================================================
  */
 
@@ -358,17 +425,19 @@ bool mil1553_rx_available(void)
 
 
     return
-
         !pio_sm_is_rx_fifo_empty(
             rx_pio,
             rx_sm_cmd
         )
-
         ||
-
         !pio_sm_is_rx_fifo_empty(
             rx_pio,
-            rx_sm_data
+            rx_sm_data_bc_to_rt
+        )
+        ||
+        !pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_rt_to_bc
         );
 }
 
@@ -386,64 +455,45 @@ uint32_t mil1553_rx_get(void)
     }
 
 
-    /* ========================================================
+    /* --------------------------------------------------------
      * CMD / STATUS
-     * ========================================================
+     * --------------------------------------------------------
      */
 
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
             rx_sm_cmd))
     {
-        uint32_t raw =
-            pio_sm_get(
-                rx_pio,
-                rx_sm_cmd
-            );
-
-
-        uint32_t payload =
-            raw &
-            MIL1553_RX_PAYLOAD_MASK;
-
-
         return
-
-            MIL1553_RX_TYPE_CMD_STATUS |
-            payload;
+            mil1553_rx_get_cmd_status();
     }
 
 
-    /* ========================================================
-     * DATA
-     * ========================================================
+    /* --------------------------------------------------------
+     * DATA BC -> RT
+     * --------------------------------------------------------
      */
 
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
-            rx_sm_data))
+            rx_sm_data_bc_to_rt))
     {
-        uint32_t raw =
-            pio_sm_get(
-                rx_pio,
-                rx_sm_data
-            );
-
-
-        /*
-         * SM1 observa N.
-         *
-         * DATA se encuentra complementado.
-         */
-        uint32_t payload =
-            (~raw) &
-            MIL1553_RX_PAYLOAD_MASK;
-
-
         return
+            mil1553_rx_get_data_bc_to_rt();
+    }
 
-            MIL1553_RX_TYPE_DATA |
-            payload;
+
+    /* --------------------------------------------------------
+     * DATA RT -> BC
+     * --------------------------------------------------------
+     */
+
+    if (!pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_rt_to_bc))
+    {
+        return
+            mil1553_rx_get_data_rt_to_bc();
     }
 
 
@@ -465,13 +515,13 @@ void mil1553_rx_clear(void)
 
 
     const uint32_t sm_mask =
-
         (1u << rx_sm_cmd) |
-        (1u << rx_sm_data);
+        (1u << rx_sm_data_bc_to_rt) |
+        (1u << rx_sm_data_rt_to_bc);
 
 
     /* --------------------------------------------------------
-     * Detener ambas SM.
+     * Detener las tres SM
      * --------------------------------------------------------
      */
 
@@ -483,10 +533,7 @@ void mil1553_rx_clear(void)
 
 
     /* --------------------------------------------------------
-     * Muy importante:
-     *
-     * eliminar cualquier IRQ residual generada
-     * por CMD / STATUS / DATA anterior.
+     * Limpiar IRQ residual
      * --------------------------------------------------------
      */
 
@@ -497,7 +544,7 @@ void mil1553_rx_clear(void)
 
 
     /* --------------------------------------------------------
-     * SM0 vuelve al receptor normal.
+     * SM0
      * --------------------------------------------------------
      */
 
@@ -509,23 +556,49 @@ void mil1553_rx_clear(void)
 
 
     /* --------------------------------------------------------
-     * SM1 vuelve a esperar IRQ.
+     * SM1
+     *
+     * vuelve a adquisicion directa.
      * --------------------------------------------------------
      */
 
     configure_rx_sm(
-        rx_sm_data,
+        rx_sm_data_bc_to_rt,
         BUS_PIN_N,
-        data_entry_pc()
+        data_bc_to_rt_entry_pc()
     );
 
 
     /* --------------------------------------------------------
-     * Arranque sincronizado.
+     * SM2
+     *
+     * vuelve a esperar IRQ.
+     * --------------------------------------------------------
+     */
+
+    configure_rx_sm(
+        rx_sm_data_rt_to_bc,
+        BUS_PIN_N,
+        data_rt_to_bc_entry_pc()
+    );
+
+
+    /* --------------------------------------------------------
+     * Arranque sincronizado
      * --------------------------------------------------------
      */
 
     pio_enable_sm_mask_in_sync(
+    rx_pio,
+    (1u << rx_sm_cmd) |
+    (1u << rx_sm_data_bc_to_rt)
+    );
+
+
+    /*
+     * Mantener sincronizacion de divisores.
+     */
+    pio_clkdiv_restart_sm_mask(
         rx_pio,
         sm_mask
     );
@@ -533,7 +606,7 @@ void mil1553_rx_clear(void)
 
 
 /* ============================================================
- * CMD / STATUS DISPONIBLE
+ * CMD / STATUS AVAILABLE
  * ============================================================
  */
 
@@ -546,7 +619,6 @@ bool mil1553_rx_cmd_status_available(void)
 
 
     return
-
         !pio_sm_is_rx_fifo_empty(
             rx_pio,
             rx_sm_cmd
@@ -555,29 +627,7 @@ bool mil1553_rx_cmd_status_available(void)
 
 
 /* ============================================================
- * DATA DISPONIBLE
- * ============================================================
- */
-
-bool mil1553_rx_data_available(void)
-{
-    if (!rx_initialized)
-    {
-        return false;
-    }
-
-
-    return
-
-        !pio_sm_is_rx_fifo_empty(
-            rx_pio,
-            rx_sm_data
-        );
-}
-
-
-/* ============================================================
- * GET CMD / STATUS
+ * CMD / STATUS GET
  * ============================================================
  */
 
@@ -610,14 +660,158 @@ uint32_t mil1553_rx_get_cmd_status(void)
 
 
     return
-
         MIL1553_RX_TYPE_CMD_STATUS |
         payload;
 }
 
 
 /* ============================================================
- * GET DATA
+ * DATA BC -> RT AVAILABLE
+ * ============================================================
+ */
+
+bool mil1553_rx_data_bc_to_rt_available(void)
+{
+    if (!rx_initialized)
+    {
+        return false;
+    }
+
+
+    return
+        !pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_bc_to_rt
+        );
+}
+
+
+/* ============================================================
+ * DATA BC -> RT GET
+ * ============================================================
+ */
+
+uint32_t mil1553_rx_get_data_bc_to_rt(void)
+{
+    if (!rx_initialized)
+    {
+        return 0u;
+    }
+
+
+    if (pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_bc_to_rt))
+    {
+        return 0u;
+    }
+
+
+    uint32_t raw =
+        pio_sm_get(
+            rx_pio,
+            rx_sm_data_bc_to_rt
+        );
+
+
+    /*
+     * DATA se observa desde N.
+     *
+     * Por eso invertimos los 17 bits utiles.
+     */
+    uint32_t payload =
+        (~raw) &
+        MIL1553_RX_PAYLOAD_MASK;
+
+
+    return
+        MIL1553_RX_TYPE_DATA |
+        payload;
+}
+
+
+/* ============================================================
+ * DATA RT -> BC AVAILABLE
+ * ============================================================
+ */
+
+bool mil1553_rx_data_rt_to_bc_available(void)
+{
+    if (!rx_initialized)
+    {
+        return false;
+    }
+
+
+    return
+        !pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_rt_to_bc
+        );
+}
+
+
+/* ============================================================
+ * DATA RT -> BC GET
+ * ============================================================
+ */
+
+uint32_t mil1553_rx_get_data_rt_to_bc(void)
+{
+    if (!rx_initialized)
+    {
+        return 0u;
+    }
+
+
+    if (pio_sm_is_rx_fifo_empty(
+            rx_pio,
+            rx_sm_data_rt_to_bc))
+    {
+        return 0u;
+    }
+
+
+    uint32_t raw =
+        pio_sm_get(
+            rx_pio,
+            rx_sm_data_rt_to_bc
+        );
+
+
+    uint32_t payload =
+        (~raw) &
+        MIL1553_RX_PAYLOAD_MASK;
+
+
+    return
+        MIL1553_RX_TYPE_DATA |
+        payload;
+}
+
+
+/* ============================================================
+ * DATA GENERICO AVAILABLE
+ * ============================================================
+ */
+
+bool mil1553_rx_data_available(void)
+{
+    if (!rx_initialized)
+    {
+        return false;
+    }
+
+
+    return
+        mil1553_rx_data_bc_to_rt_available()
+        ||
+        mil1553_rx_data_rt_to_bc_available();
+}
+
+
+/* ============================================================
+ * DATA GENERICO GET
  * ============================================================
  */
 
@@ -629,46 +823,40 @@ uint32_t mil1553_rx_get_data(void)
     }
 
 
-    if (pio_sm_is_rx_fifo_empty(
-            rx_pio,
-            rx_sm_data))
+    /*
+     * Para compatibilidad con mains anteriores,
+     * damos prioridad al camino BC -> RT.
+     */
+    if (mil1553_rx_data_bc_to_rt_available())
     {
-        return 0u;
+        return
+            mil1553_rx_get_data_bc_to_rt();
     }
 
 
-    uint32_t raw =
-        pio_sm_get(
-            rx_pio,
-            rx_sm_data
-        );
+    if (mil1553_rx_data_rt_to_bc_available())
+    {
+        return
+            mil1553_rx_get_data_rt_to_bc();
+    }
 
 
-    uint32_t payload =
-        (~raw) &
-        MIL1553_RX_PAYLOAD_MASK;
-
-
-    return
-
-        MIL1553_RX_TYPE_DATA |
-        payload;
+    return 0u;
 }
 
 
 /* ============================================================
- * REARMAR SM1
+ * REARME DATA
  * ============================================================
  *
- * SM1 vuelve a:
+ * SM1:
  *
- *      data_entry
+ *      vuelve a adquisicion directa.
  *
- * donde queda esperando:
+ * SM2:
  *
- *      WAIT 1 IRQ 0
- *
- * Tambien eliminamos cualquier IRQ residual.
+ *      vuelve a data_rt_to_bc_entry
+ *      esperando IRQ.
  * ============================================================
  */
 
@@ -680,20 +868,25 @@ void mil1553_rx_data_rearm(void)
     }
 
 
+    const uint32_t data_mask =
+        (1u << rx_sm_data_bc_to_rt) |
+        (1u << rx_sm_data_rt_to_bc);
+
+
     /* --------------------------------------------------------
-     * Detener solamente DATA.
+     * Detener DATA
      * --------------------------------------------------------
      */
 
-    pio_sm_set_enabled(
+    pio_set_sm_mask_enabled(
         rx_pio,
-        rx_sm_data,
+        data_mask,
         false
     );
 
 
     /* --------------------------------------------------------
-     * Eliminar IRQ residual.
+     * Limpiar IRQ residual
      * --------------------------------------------------------
      */
 
@@ -704,43 +897,106 @@ void mil1553_rx_data_rearm(void)
 
 
     /* --------------------------------------------------------
-     * Reiniciar SM1 directamente en data_entry.
+     * SM1 BC -> RT
+     *
+     * ADQUISICION DIRECTA
      * --------------------------------------------------------
      */
 
     configure_rx_sm(
-        rx_sm_data,
+        rx_sm_data_bc_to_rt,
         BUS_PIN_N,
-        data_entry_pc()
+        data_bc_to_rt_entry_pc()
     );
 
 
     /* --------------------------------------------------------
-     * Volver a habilitar SM1.
+     * SM2 RT -> BC
+     *
+     * GATE IRQ
      * --------------------------------------------------------
      */
 
-    pio_sm_set_enabled(
-        rx_pio,
-        rx_sm_data,
-        true
+    configure_rx_sm(
+        rx_sm_data_rt_to_bc,
+        BUS_PIN_N,
+        data_rt_to_bc_entry_pc()
     );
 
 
+    /* --------------------------------------------------------
+     * Habilitar ambas
+     * --------------------------------------------------------
+     */
+
+    pio_enable_sm_mask_in_sync(
+    rx_pio,
+    (1u << rx_sm_data_bc_to_rt)
+    );
+
     /*
-     * Conservamos la resincronizacion de divisores
-     * que veniamos probando.
+     * Mantener la resincronizacion de divisores
+     * que ya habia dado buenos resultados.
      */
     pio_clkdiv_restart_sm_mask(
         rx_pio,
         (1u << rx_sm_cmd) |
-        (1u << rx_sm_data)
+        data_mask
     );
 }
 
 
 /* ============================================================
- * DESHABILITAR SM1
+ * REARME RAPIDO CMD / STATUS
+ * ============================================================
+ */
+
+void mil1553_rx_cmd_status_rearm(void)
+{
+    if (!rx_initialized)
+    {
+        return;
+    }
+
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_cmd,
+        false
+    );
+
+
+    pio_sm_clear_fifos(
+        rx_pio,
+        rx_sm_cmd
+    );
+
+
+    pio_sm_restart(
+        rx_pio,
+        rx_sm_cmd
+    );
+
+
+    pio_sm_exec(
+        rx_pio,
+        rx_sm_cmd,
+        pio_encode_jmp(
+            cmd_entry_pc()
+        )
+    );
+
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_cmd,
+        true
+    );
+}
+
+
+/* ============================================================
+ * DESHABILITAR DATA
  * ============================================================
  */
 
@@ -754,7 +1010,14 @@ void mil1553_rx_data_disable(void)
 
     pio_sm_set_enabled(
         rx_pio,
-        rx_sm_data,
+        rx_sm_data_bc_to_rt,
+        false
+    );
+
+
+    pio_sm_set_enabled(
+        rx_pio,
+        rx_sm_data_rt_to_bc,
         false
     );
 }

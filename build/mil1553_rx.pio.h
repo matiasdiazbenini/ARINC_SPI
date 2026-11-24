@@ -17,7 +17,8 @@
 #define mil1553_rx_pio_version 1
 
 #define mil1553_rx_offset_cmd_entry 0u
-#define mil1553_rx_offset_data_entry 24u
+#define mil1553_rx_offset_data_bc_to_rt_entry 24u
+#define mil1553_rx_offset_data_rt_to_bc_entry 24u
 
 static const uint16_t mil1553_rx_program_instructions[] = {
             //     .wrap_target

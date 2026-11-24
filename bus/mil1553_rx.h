@@ -5,21 +5,9 @@
 #include <stdbool.h>
 
 
-/*
- * Evento entregado al Cortex:
- *
- * bits 19..18:
- *
- *      01 -> CMD / STATUS
- *      10 -> DATA
- *
- * bits 16..1:
- *
- *      palabra de 16 bits
- *
- * bit 0:
- *
- *      paridad recibida
+/* ============================================================
+ * FORMATO DE EVENTO
+ * ============================================================
  */
 
 #define MIL1553_RX_TYPE_MASK          0x000C0000u
@@ -35,48 +23,101 @@
 #define MIL1553_RX_PARITY_MASK        0x00000001u
 
 
+/* ============================================================
+ * INICIALIZACION
+ * ============================================================
+ */
+
 void mil1553_rx_init(void);
+
+
+/* ============================================================
+ * ACCESO GENERICO
+ * ============================================================
+ */
 
 bool mil1553_rx_available(void);
 
 uint32_t mil1553_rx_get(void);
 
 
-/*
- * Reinicia completamente SM0 y SM1.
- *
- * SM0 queda en cmd_entry.
- * SM1 queda en data_entry esperando IRQ 0.
+/* ============================================================
+ * CLEAR COMPLETO
+ * ============================================================
  */
+
 void mil1553_rx_clear(void);
 
 
-/*
- * Acceso independiente a FIFO.
+/* ============================================================
+ * CMD / STATUS
+ * ============================================================
  */
+
 bool mil1553_rx_cmd_status_available(void);
 
-bool mil1553_rx_data_available(void);
-
-
 uint32_t mil1553_rx_get_cmd_status(void);
+
+
+/* ============================================================
+ * DATA GENERICO
+ * ============================================================
+ */
+
+bool mil1553_rx_data_available(void);
 
 uint32_t mil1553_rx_get_data(void);
 
 
-/*
- * Rearma solamente SM1.
+/* ============================================================
+ * DATA BC -> RT
  *
- * Limpia IRQ 0 y coloca SM1 nuevamente
- * en data_entry esperando el siguiente
- * CMD / STATUS completado por SM0.
+ * SM1
+ * GP3 / N
+ * ADQUISICION DIRECTA
+ * ============================================================
  */
+
+bool mil1553_rx_data_bc_to_rt_available(void);
+
+uint32_t mil1553_rx_get_data_bc_to_rt(void);
+
+
+/* ============================================================
+ * DATA RT -> BC
+ *
+ * SM2
+ * GP3 / N
+ * GATE POR IRQ
+ * ============================================================
+ */
+
+bool mil1553_rx_data_rt_to_bc_available(void);
+
+uint32_t mil1553_rx_get_data_rt_to_bc(void);
+
+
+/* ============================================================
+ * REARME DATA
+ * ============================================================
+ */
+
 void mil1553_rx_data_rearm(void);
 
 
-/*
- * Diagnostico / pruebas.
+/* ============================================================
+ * REARME RAPIDO CMD / STATUS
+ * ============================================================
  */
+
+void mil1553_rx_cmd_status_rearm(void);
+
+
+/* ============================================================
+ * DIAGNOSTICO
+ * ============================================================
+ */
+
 void mil1553_rx_data_disable(void);
 
 
