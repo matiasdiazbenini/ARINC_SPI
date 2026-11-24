@@ -393,7 +393,7 @@ void mil1553_rx_init(void)
     pio_enable_sm_mask_in_sync(
     rx_pio,
     (1u << rx_sm_cmd) |
-    (1u << rx_sm_data_rt_to_bc)
+    (1u << rx_sm_data_bc_to_rt)
     );
 
 
@@ -591,7 +591,7 @@ void mil1553_rx_clear(void)
     pio_enable_sm_mask_in_sync(
     rx_pio,
     (1u << rx_sm_cmd) |
-    (1u << rx_sm_data_rt_to_bc)
+    (1u << rx_sm_data_bc_to_rt)
     );
 
 
@@ -931,7 +931,7 @@ void mil1553_rx_data_rearm(void)
 
     pio_enable_sm_mask_in_sync(
     rx_pio,
-    (1u << rx_sm_data_rt_to_bc)
+    (1u << rx_sm_data_bc_to_rt)
     );
 
     /*
@@ -1020,4 +1020,23 @@ void mil1553_rx_data_disable(void)
         rx_sm_data_rt_to_bc,
         false
     );
+}
+
+/* Seleccionar RT -> BC tras validar el COMMAND.
+ * SM0 sigue recibiendo STATUS sin interrupcion.
+ * SM2 espera una sola IRQ (la del STATUS); el COMMAND ya se recibio.
+ */
+void mil1553_rx_select_rt_to_bc(void)
+{
+    if (!rx_initialized) return;
+    const uint32_t data_mask = (1u << rx_sm_data_bc_to_rt) |
+                               (1u << rx_sm_data_rt_to_bc);
+    pio_set_sm_mask_enabled(rx_pio, data_mask, false);
+    pio_sm_clear_fifos(rx_pio, rx_sm_data_bc_to_rt);
+    pio_sm_clear_fifos(rx_pio, rx_sm_data_rt_to_bc);
+    pio_sm_restart(rx_pio, rx_sm_data_rt_to_bc);
+    pio_sm_exec(rx_pio, rx_sm_data_rt_to_bc,
+                pio_encode_jmp(data_bc_to_rt_entry_pc()));
+    pio_interrupt_clear(rx_pio, MIL1553_RX_DATA_GATE_IRQ);
+    pio_sm_set_enabled(rx_pio, rx_sm_data_rt_to_bc, true);
 }

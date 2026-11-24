@@ -103,6 +103,7 @@ uint32_t mil1553_rx_get_data_rt_to_bc(void);
  */
 
 void mil1553_rx_data_rearm(void);
+void mil1553_rx_select_rt_to_bc(void);
 
 
 /* ============================================================

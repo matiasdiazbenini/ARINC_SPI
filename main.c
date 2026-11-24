@@ -18,7 +18,7 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           1000u
+#define TEST_TRANSACTIONS           10000u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    6u
@@ -1448,7 +1448,7 @@ int main(void)
         "========================================\n"
         "BM - TEST DIAGNOSTICO DATA / WC = 32\n"
         "========================================\n"
-        "Test                 : RT -> BC\n"
+        "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
         "WC                   : 32\n"
         "DATA32               : 0x8000\n"
@@ -1611,6 +1611,15 @@ int main(void)
                     continue;
                 }
 
+
+                /* Seleccionar DATA antes de preparar el diagnostico.
+                 * BC -> RT: SM1 ya esta activa, no tocarla.
+                 * RT -> BC: SM2 espera IRQ de STATUS.
+                 */
+                if (tr == BUS_1553_TR_RT_TO_BC)
+                {
+                    mil1553_rx_select_rt_to_bc();
+                }
 
                 /* Iniciar transaccion. */
 
