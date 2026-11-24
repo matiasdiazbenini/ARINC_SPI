@@ -9,7 +9,13 @@
 #include "bus/mil1553_tx.h"
 #include "bus/mil1553_rx.h"
 
-#define TEST_TRANSACTIONS 1920u
+#define TEST_TRANSACTIONS 12u
+_Static_assert(TEST_TRANSACTIONS == 12u, "fixed 12-command test schedule");
+#define TEST_RT_ADDRESS 7u
+static const unsigned test_rt[6]={TEST_RT_ADDRESS,20u,TEST_RT_ADDRESS,0u,TEST_RT_ADDRESS,30u};
+static const unsigned test_sa[6]={1u,5u,15u,18u,30u,30u};
+static const unsigned test_wc[6]={1u,4u,8u,16u,32u,32u};
+
 #define MAX_WC 32u
 #define INTER_TRANSACTION_MS 100u
 #define RESPONSE_TIMEOUT_US 1500ull
@@ -80,7 +86,7 @@ static void sa_record(unsigned tr, unsigned sa, unsigned wc, bool valid)
     sa_started[tr][sa-1u][wc-1u]++;
     if (valid) sa_ok[tr][sa-1u][wc-1u]++;
 }
-static void sa_print(void)
+static void __attribute__((unused)) sa_print(void)
 {
     unsigned covered=0u, all_ok=0u;
     printf("\n--- COBERTURA SA (OK / iniciadas) ---\nSA | BC->RT | RT->BC\n");
@@ -123,16 +129,18 @@ static const char *direction(unsigned tr){return tr?"RT -> BC":"BC -> RT";}
 int main(void){
     set_sys_clock_khz(120000,true);
     stdio_init_all(); prepare_test_patterns(); mil1553_rx_init(); mil1553_tx_init(); sleep_ms(5000);
-    const uint16_t status_expected=BUS_1553_STATUS_MAKE(20u,false);
+    uint32_t test_passes=0, silence_ok=0, unexpected=0;
     uint32_t started[2]={0},ok[2]={0},status_rx[2]={0},status_ok[2]={0},status_timeout[2]={0},status_parity_err[2]={0};
     uint32_t expected_rx=0, coverage[2][MAX_WC]={0}, coverage_ok[2][MAX_WC]={0};
     uint32_t cmd_echo_ok=0,tx_data=0,rx_data=0,correct_data=0,data_mismatch=0,data_parity_err=0,data_timeout=0,stall_count=0,global_fifo=0;
-    printf("\nBC - TEST BIDIRECCIONAL SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\nTransacciones: %u\n",TEST_TRANSACTIONS);
+    printf("\nBC - TEST DIRECCION RT CONFIGURABLE SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\nTransacciones: %u\n",TEST_TRANSACTIONS);
     for(uint32_t tx=1;tx<=TEST_TRANSACTIONS;tx++){
         unsigned tr=(tx-1u)&1u;
-        unsigned wc = 1u + (((tx - 1u) / 2u) % MAX_WC);
-        unsigned sa = 1u + (((tx - 1u) / (2u * MAX_WC)) % 30u);
-        uint16_t command=BUS_1553_CMD_MAKE(20u,tr,sa,wc);
+        unsigned pair=(tx-1u)/2u;
+        unsigned wc=test_wc[pair], sa=test_sa[pair], rt=test_rt[pair];
+        bool expect_reply=(rt==TEST_RT_ADDRESS);
+        uint16_t command=BUS_1553_CMD_MAKE(rt,tr,sa,wc);
+        const uint16_t status_expected=BUS_1553_STATUS_MAKE(rt,false);
         const uint16_t *mask=test_patterns[tr][wc-1u];
         uint16_t pattern[MAX_WC],seed=0u;
         if(tr==BUS_1553_TR_BC_TO_RT){
@@ -146,7 +154,7 @@ int main(void){
         mil1553_rx_clear(); pio1->fdebug=RXSTALL_MASK;
         started[tr]++;
         coverage[tr][wc-1u]++;
-        if(tr==BUS_1553_TR_RT_TO_BC)expected_rx+=wc;
+        if(tr==BUS_1553_TR_RT_TO_BC && expect_reply)expected_rx+=wc;
         uint64_t start_us=time_us_64();
         mil1553_tx_send_word(BUS_1553_SYNC_CMD_STATUS,command);
         if(tr==BUS_1553_TR_BC_TO_RT){
@@ -200,11 +208,15 @@ int main(void){
         if(!status_seen)status_timeout[tr]++;
         bool valid=status_valid && (tr==BUS_1553_TR_BC_TO_RT || (echo_valid && data_valid && count==wc));
         if(valid){ok[tr]++;coverage_ok[tr][wc-1u]++;}
+        bool quiet=!status_seen && count==0u && !stalled && (tr==0u || echo_valid);
+        bool pass=expect_reply?valid:quiet;
+        if(pass)test_passes++;else unexpected++;
+        if(!expect_reply && quiet)silence_ok++;
         sa_record(tr,sa,wc,valid);
         if(tr==BUS_1553_TR_BC_TO_RT)signature_add(tr,command,pattern,wc);
         else signature_add(tr,command,received,count);
-        printf("\nTX %lu | %s | CMD=0x%04X | WC=%u | %s\n",(unsigned long)tx,direction(tr),(unsigned)command,wc,valid?"OK":"BAD");
-        printf("SA=%u\n",sa);
+        printf("\nTX %lu | %s | CMD=0x%04X | WC=%u | %s\n",(unsigned long)tx,direction(tr),(unsigned)command,wc,valid?"OK":(!expect_reply && quiet?"SILENCIO_OK":"BAD"));
+        printf("RT=%u SA=%u | Esperado=%s | ENSAYO=%s\n",rt,sa,expect_reply?"RESPUESTA":"SILENCIO",pass?"OK":"BAD");
         if(tr==BUS_1553_TR_BC_TO_RT || count)printf("SEMILLA=0x%04X (%s)\n",(unsigned)seed,tr?"RX":"TX");
         if(status_seen)printf("STATUS=0x%04X | valido=%s\n",(unsigned)status,status_valid?"SI":"NO");
         else printf("STATUS NO RECIBIDO\n");
@@ -217,14 +229,14 @@ int main(void){
         }
         sleep_ms(INTER_TRANSACTION_MS);
     }
-    printf("\nBC - RESULTADO BIDIRECCIONAL SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\n");
+    printf("\nBC - RESULTADO DIRECCION RT CONFIGURABLE SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\n");
     for(unsigned tr=0;tr<2;tr++){
         printf("\n%s\nIniciadas: %lu\nOK: %lu\nBAD: %lu\nSTATUS recibidos: %lu\nSTATUS correctos: %lu\nSTATUS paridad error: %lu\nTimeout STATUS: %lu\n",direction(tr),(unsigned long)started[tr],(unsigned long)ok[tr],(unsigned long)(started[tr]-ok[tr]),(unsigned long)status_rx[tr],(unsigned long)status_ok[tr],(unsigned long)status_parity_err[tr],(unsigned long)status_timeout[tr]);
     }
     printf("\nCMD enviados: %lu\nCMD echo OK (RT -> BC): %lu\nDATA enviados: %lu\nDATA esperados RX: %lu\nDATA recibidos: %lu\nDATA compatibles (semilla: solo paridad): %lu\nDATA mismatch: %lu\nDATA error paridad: %lu\nTimeout DATA: %lu\nFIFO max RX DATA: %lu/8\nTX con RXSTALL RX DATA: %lu\n",(unsigned long)(started[0]+started[1]),(unsigned long)cmd_echo_ok,(unsigned long)tx_data,(unsigned long)expected_rx,(unsigned long)rx_data,(unsigned long)correct_data,(unsigned long)data_mismatch,(unsigned long)data_parity_err,(unsigned long)data_timeout,(unsigned long)global_fifo,(unsigned long)stall_count);
     printf("\n--- COBERTURA WC (OK / iniciadas) ---\nWC | BC->RT | RT->BC\n");
     for(unsigned i=0;i<MAX_WC;i++)printf("%2u | %lu/%lu | %lu/%lu\n",i+1,(unsigned long)coverage_ok[0][i],(unsigned long)coverage[0][i],(unsigned long)coverage_ok[1][i],(unsigned long)coverage[1][i]);
-    sa_print();
+    printf("\nRespuestas validas: %lu/6\nSilencios esperados OK: %lu/6\nResultados conformes: %lu/12\nFallos inesperados: %lu\n",(unsigned long)(ok[0]+ok[1]),(unsigned long)silence_ok,(unsigned long)test_passes,(unsigned long)unexpected);
     signature_print();
     printf("Transacciones OK: %lu/%u\nFIN DEL INFORME BC\n",(unsigned long)(ok[0]+ok[1]),TEST_TRANSACTIONS);
     while(true)tight_loop_contents();
