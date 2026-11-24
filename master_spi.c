@@ -14,12 +14,30 @@
 #define INTER_TRANSACTION_MS 100u
 #define RESPONSE_TIMEOUT_US 1500ull
 #define RXSTALL_MASK (1u << (PIO_FDEBUG_RXSTALL_LSB + 1u))
-static const uint16_t pattern[MAX_WC]={
-    0x4444,0x2222,0x3333,0x1111,0xAAAA,0x5555,0xFFFF,0x0000,
-    0x1234,0x5678,0xABCD,0xDCBA,0x0F0F,0xF0F0,0x8001,0x7FFE,
-    0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,
-    0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x4000,0x8000
-};
+/* Patron de ensayo reproducible por direccion, WC y posicion (base 0).
+ * Indices 0..1055 sin colisiones: multiplicador impar y xorshift de 16 bits.
+ * No usa el contador de transacciones ni el reloj.
+ */
+static inline uint16_t test_data_word(unsigned tr, unsigned wc, unsigned pos)
+{
+    uint32_t index = tr * 528u + (wc * (wc - 1u)) / 2u + pos;
+    uint16_t x = (uint16_t)(index * 40503u + 0xBEEFu);
+    x ^= (uint16_t)(x >> 7);
+    x ^= (uint16_t)(x << 9);
+    x ^= (uint16_t)(x >> 8);
+    return x;
+}
+
+/* Generar antes del ensayo para mantener liviano el camino critico. */
+static uint16_t test_patterns[2][MAX_WC][MAX_WC];
+static void prepare_test_patterns(void)
+{
+    for (unsigned tr=0; tr<2u; tr++)
+        for (unsigned wc=1; wc<=MAX_WC; wc++)
+            for (unsigned i=0; i<wc; i++)
+                test_patterns[tr][wc-1u][i] = test_data_word(tr,wc,i);
+}
+
 static void decode(uint32_t e,uint16_t *w,bool *p){
     uint32_t a=e&MIL1553_RX_PAYLOAD_MASK;
     *w=(uint16_t)((a>>MIL1553_RX_WORD_SHIFT)&MIL1553_RX_WORD_MASK);
@@ -28,16 +46,17 @@ static void decode(uint32_t e,uint16_t *w,bool *p){
 static const char *direction(unsigned tr){return tr?"RT -> BC":"BC -> RT";}
 int main(void){
     set_sys_clock_khz(120000,true);
-    stdio_init_all(); mil1553_rx_init(); mil1553_tx_init(); sleep_ms(5000);
+    stdio_init_all(); prepare_test_patterns(); mil1553_rx_init(); mil1553_tx_init(); sleep_ms(5000);
     const uint16_t status_expected=BUS_1553_STATUS_MAKE(20u,false);
     uint32_t started[2]={0},ok[2]={0},status_rx[2]={0},status_ok[2]={0},status_timeout[2]={0},status_parity_err[2]={0};
     uint32_t expected_rx=0, coverage[2][MAX_WC]={0}, coverage_ok[2][MAX_WC]={0};
     uint32_t cmd_echo_ok=0,tx_data=0,rx_data=0,correct_data=0,data_mismatch=0,data_parity_err=0,data_timeout=0,stall_count=0,global_fifo=0;
-    printf("\nBC - TEST BIDIRECCIONAL WC 1..32\nTransacciones: %u\n",TEST_TRANSACTIONS);
+    printf("\nBC - TEST BIDIRECCIONAL WC 1..32 / DATA PRNG\nTransacciones: %u\n",TEST_TRANSACTIONS);
     for(uint32_t tx=1;tx<=TEST_TRANSACTIONS;tx++){
         unsigned tr=(tx-1u)&1u;
         unsigned wc=1u+(((tx-1u)/2u)%MAX_WC);
         uint16_t command=BUS_1553_CMD_MAKE(20u,tr,18u,wc);
+        const uint16_t *pattern=test_patterns[tr][wc-1u];
         bool echo_seen=false,echo_valid=false,status_seen=false,status_valid=false,data_valid=true;
         uint16_t status=0,received[MAX_WC]={0}; bool parity[MAX_WC]={0};
         uint32_t count=0,fifo_max=0;
@@ -103,13 +122,13 @@ int main(void){
         if(tr==BUS_1553_TR_RT_TO_BC){
             printf("CMD echo=%s | DATA=%lu/%u | FIFO max=%lu/8 | RXSTALL=%s | PC=%lu\n",echo_valid?"OK":"ERROR",(unsigned long)count,wc,(unsigned long)fifo_max,stalled?"SI":"NO",(unsigned long)pc);
             if(status_seen && count && first_data_us>=status_us)printf("STATUS a RX1: %llu us\n",(unsigned long long)(first_data_us-status_us));
-            if(tx<=4 || !valid){
+            if(tx<=64 || !valid){
                 for(unsigned i=0;i<count;i++)printf("DATA%02u RX=0x%04X ESP=0x%04X PAR=%s\n",i+1,(unsigned)received[i],(unsigned)pattern[i],parity[i]?"OK":"ERROR");
             }
         }
         sleep_ms(INTER_TRANSACTION_MS);
     }
-    printf("\nBC - RESULTADO BIDIRECCIONAL WC 1..32\n");
+    printf("\nBC - RESULTADO BIDIRECCIONAL WC 1..32 / DATA PRNG\n");
     for(unsigned tr=0;tr<2;tr++){
         printf("\n%s\nIniciadas: %lu\nOK: %lu\nBAD: %lu\nSTATUS recibidos: %lu\nSTATUS correctos: %lu\nSTATUS paridad error: %lu\nTimeout STATUS: %lu\n",direction(tr),(unsigned long)started[tr],(unsigned long)ok[tr],(unsigned long)(started[tr]-ok[tr]),(unsigned long)status_rx[tr],(unsigned long)status_ok[tr],(unsigned long)status_parity_err[tr],(unsigned long)status_timeout[tr]);
     }
