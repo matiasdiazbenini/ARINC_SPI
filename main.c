@@ -18,7 +18,12 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           1920u
+#define TEST_TRANSACTIONS           12u
+#define TEST_RT_ADDRESS 7u
+static const unsigned test_rt[6]={TEST_RT_ADDRESS,20u,TEST_RT_ADDRESS,0u,TEST_RT_ADDRESS,30u};
+static const unsigned test_sa[6]={1u,5u,15u,18u,30u,30u};
+static const unsigned test_wc[6]={1u,4u,8u,16u,32u,32u};
+
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    128u
@@ -602,7 +607,7 @@ static void sa_print(void)
 
 static bool is_test_command(const mil1553_transaction_t *t)
 {
-    return t->rt_address == 20u && t->subaddress >= 1u && t->subaddress <= 30u &&
+    return t->rt_address <= 30u && t->subaddress >= 1u && t->subaddress <= 30u &&
            t->tr <= 1u && t->word_count >= 1u && t->word_count <= 32u;
 }
 
@@ -1169,6 +1174,9 @@ static void print_rate(
  * ============================================================
  */
 
+static unsigned test_passes, test_silence_ok, test_reply_ok;
+static bool test_verdict[TEST_TRANSACTIONS];
+
 static void finish_transaction(
     mil1553_transaction_t *t,
     bm_stats_t *stats,
@@ -1183,7 +1191,7 @@ static void finish_transaction(
         unsigned tr = t->tr;
         unsigned wc = t->word_count;
         test_wc_started[tr][wc - 1u]++;
-        test_expected_words += wc;
+        test_expected_words += (tr==0u || t->rt_address==TEST_RT_ADDRESS) ? wc : 0u;
         signature_add(tr,t->command,t->data,t->data_count);
         for (unsigned i = 0; i < t->data_count && i < wc; i++)
         {
@@ -1195,12 +1203,26 @@ static void finish_transaction(
             else if (t->data_parity_ok[i])
                 test_correct_words++;
         }
-        if (t->status_seen && t->status != BUS_1553_STATUS_MAKE(20u, false))
+        if (t->status_seen && t->status != BUS_1553_STATUS_MAKE(t->rt_address, false))
             t->valid = false;
         bool test_valid = complete && t->valid && t->data_count == wc && t->status_seen;
         if (test_valid)
             test_wc_ok[tr][wc - 1u]++;
         sa_record(tr,t->subaddress,wc,test_valid);
+        bool expected_reply = t->rt_address == TEST_RT_ADDRESS;
+        bool quiet = !complete && t->valid && !t->status_seen &&
+                     t->data_count == (tr==0u ? wc : 0u);
+        bool scheduled = false;
+        if (t->index >= 1u && t->index <= TEST_TRANSACTIONS) {
+            unsigned pair=(t->index-1u)/2u;
+            scheduled=t->rt_address==test_rt[pair] && t->subaddress==test_sa[pair] &&
+                      wc==test_wc[pair] && tr==((t->index-1u)&1u);
+            test_verdict[t->index-1u]=scheduled && (expected_reply?test_valid:quiet);
+            if(test_verdict[t->index-1u]) {
+                test_passes++;
+                if(expected_reply)test_reply_ok++;else test_silence_ok++;
+            }
+        }
     }
 
     if (!complete)
@@ -1531,6 +1553,7 @@ int main(void)
         "========================================\n"
         "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
+        "RT activo esperado   : 7 (otros destinos: silencio)\n"
         "SA                   : 1..30\n"
         "WC                   : 1..32\n"
         "Patron DATA          : Semilla DATA1 + mascara por direccion, WC y posicion\n"
@@ -2137,13 +2160,8 @@ int main(void)
 
             stats.sequence_errors++;
 
-            transaction.valid =
-                false;
-
-            transaction.sequence_ok =
-                false;
-
-
+            /* finish_transaction clasifica el silencio esperado antes de marcar
+             * el timeout como transaccion incompleta. Mantener contadores brutos. */
             /* Guardar transaccion invalida en RAM. */
 
             finish_transaction(
@@ -2419,7 +2437,9 @@ int main(void)
                 printf("DATA esperados (COMMAND capturados): %lu\n", (unsigned long)test_expected_words);
                 printf("DATA compatibles (semilla: solo paridad): %lu\n", (unsigned long)test_correct_words);
                 printf("DATA mismatch de patron: %lu\n\n", (unsigned long)test_pattern_errors);
-                sa_print();
+                printf("\n--- RESULTADO ENSAYO RT ---\nRespuestas validas: %u/6\nSilencios esperados OK: %u/6\nResultados conformes: %u/12\n",test_reply_ok,test_silence_ok,test_passes);
+                for(unsigned i=0;i<TEST_TRANSACTIONS;i++)
+                    printf("ENSAYO TX %u: %s\n",i+1u,test_verdict[i]?"OK":"BAD");
                 signature_print();
 
                 printf(
