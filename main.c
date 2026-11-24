@@ -1,240 +1,118 @@
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
-
+#include "hardware/pio.h"
+#include "hardware/regs/pio.h"
 #include "bus/bus.h"
 #include "bus/mil1553_rx.h"
 #include "bus/mil1553_tx.h"
-
-#define MY_RT_ADDR          20u
-#define EXPECTED_SUBADDR    18u
-#define WORD_COUNT          32u
-#define TEST_TRANSACTIONS   1000u
-
-#define RESPONSE_DELAY_US   8u
+#define TEST_TRANSACTIONS 10000u
+#define WC 32u
+#define RESPONSE_DELAY_US 8u
+#define RX_TIMEOUT_US 1000ull
 #define TEST_END_SILENCE_US 1500000ull
-
-static const uint16_t test_data[WORD_COUNT] = {
-    0x4444, 0x2222, 0x3333, 0x1111,
-    0xAAAA, 0x5555, 0xFFFF, 0x0000,
-    0x1234, 0x5678, 0xABCD, 0xDCBA,
-    0x0F0F, 0xF0F0, 0x8001, 0x7FFE,
-    0x0001, 0x0002, 0x0004, 0x0008,
-    0x0010, 0x0020, 0x0040, 0x0080,
-    0x0100, 0x0200, 0x0400, 0x0800,
-    0x1000, 0x2000, 0x4000, 0x8000
+#define DIAG_CAPACITY 128u
+#define RXSTALL_MASK (1u << (PIO_FDEBUG_RXSTALL_LSB+1u))
+static const uint16_t pattern[WC]={
+    0x4444,0x2222,0x3333,0x1111,0xAAAA,0x5555,0xFFFF,0x0000,
+    0x1234,0x5678,0xABCD,0xDCBA,0x0F0F,0xF0F0,0x8001,0x7FFE,
+    0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,
+    0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x4000,0x8000
 };
-
-static void decode_event(
-    uint32_t event,
-    uint16_t *word,
-    bool *parity_ok)
-{
-    uint32_t payload =
-        event & MIL1553_RX_PAYLOAD_MASK;
-
-    *word = (uint16_t)(
-        (payload >> MIL1553_RX_WORD_SHIFT)
-        & MIL1553_RX_WORD_MASK
-    );
-
-    *parity_ok =
-        (payload & MIL1553_RX_PARITY_MASK)
-        == bus_compute_odd_parity(*word);
+typedef struct {uint32_t tx,count,first_us,max_poll,max_read,max_fifo,pc,fifo_end;bool valid,timeout,stall;uint16_t words[WC];bool parity[WC];} diag_t;
+static diag_t active,saved[DIAG_CAPACITY];
+static uint32_t saved_count,dropped,stall_count,max_fifo,max_poll,max_read;
+static uint64_t cmd_us,last_poll,last_read;
+static uint32_t max32(uint32_t a,uint32_t b){return a>b?a:b;}
+static void decode(uint32_t e,uint16_t *w,bool *p){uint32_t a=e&MIL1553_RX_PAYLOAD_MASK;*w=(uint16_t)((a>>MIL1553_RX_WORD_SHIFT)&MIL1553_RX_WORD_MASK);*p=(a&MIL1553_RX_PARITY_MASK)==bus_compute_odd_parity(*w);}
+static void diag_start(uint32_t tx,uint64_t now){active.tx=tx;active.count=active.first_us=active.max_poll=active.max_read=active.max_fifo=0;cmd_us=last_poll=now;last_read=0;}
+static void diag_poll(uint64_t now){active.max_poll=max32(active.max_poll,(uint32_t)(now-last_poll));last_poll=now;active.max_fifo=max32(active.max_fifo,pio_sm_get_rx_fifo_level(pio1,1u));}
+static void diag_word(uint16_t w,bool p,uint64_t now){unsigned i=active.count;if(!i)active.first_us=(uint32_t)(now-cmd_us);else active.max_read=max32(active.max_read,(uint32_t)(now-last_read));last_read=now;if(i<WC){active.words[i]=w;active.parity[i]=p;}active.count++;}
+static void diag_end(bool valid,bool timeout){
+    active.valid=valid;active.timeout=timeout;active.stall=(pio1->fdebug&RXSTALL_MASK)!=0;
+    active.pc=pio_sm_get_pc(pio1,1u);active.fifo_end=pio_sm_get_rx_fifo_level(pio1,1u);
+    if(active.stall)stall_count++;
+    max_fifo=max32(max_fifo,active.max_fifo);max_poll=max32(max_poll,active.max_poll);max_read=max32(max_read,active.max_read);
+    if(active.tx<=6 || !valid){if(saved_count<DIAG_CAPACITY)saved[saved_count++]=active;else dropped++;}
 }
-
-int main(void)
-{
-    set_sys_clock_khz(120000, true);
-
-    stdio_init_all();
-
-    sleep_ms(1000);
-
-    mil1553_rx_init();
-    mil1553_tx_init();
-
-    mil1553_rx_clear();
-
-    const uint16_t expected_command =
-        BUS_1553_CMD_MAKE(
-            MY_RT_ADDR,
-            BUS_1553_TR_RT_TO_BC,
-            EXPECTED_SUBADDR,
-            WORD_COUNT
-        );
-
-    const uint16_t status_ok =
-        BUS_1553_STATUS_MAKE(
-            MY_RT_ADDR,
-            false
-        );
-
-    uint32_t cmd_received = 0;
-    uint32_t cmd_correct = 0;
-    uint32_t cmd_unexpected = 0;
-    uint32_t cmd_parity_errors = 0;
-
-    uint32_t status_sent = 0;
-    uint32_t data_sent = 0;
-    uint32_t transactions_completed = 0;
-
-    bool test_started = false;
-    bool report_done = false;
-
-    uint64_t last_activity_us = time_us_64();
-
-    printf("\n========================================\n");
-    printf("RT - TEST RT -> BC / WC = 32\n");
-    printf("========================================\n");
-    printf("Transacciones    : %u\n", TEST_TRANSACTIONS);
-    printf("RT               : %u\n", MY_RT_ADDR);
-    printf("Subaddress       : %u\n", EXPECTED_SUBADDR);
-    printf("Word Count       : %u\n", WORD_COUNT);
-    printf("COMMAND esperado : 0x%04X\n", expected_command);
-    printf("STATUS           : 0x%04X\n", status_ok);
-    printf("Delay configurado: %u us\n", RESPONSE_DELAY_US);
-    printf("========================================\n\n");
-
-    while (true)
-    {
-        if (mil1553_rx_available())
-        {
-            uint32_t event =
-                mil1553_rx_get();
-
-            uint32_t type =
-                event & MIL1553_RX_TYPE_MASK;
-
-            if (type != MIL1553_RX_TYPE_CMD_STATUS)
-                continue;
-
-            uint16_t word;
-            bool parity_ok;
-
-            decode_event(
-                event,
-                &word,
-                &parity_ok
-            );
-
-            test_started = true;
-            last_activity_us = time_us_64();
-
-            cmd_received++;
-
-            if (!parity_ok)
-            {
-                cmd_parity_errors++;
-                mil1553_rx_clear();
+static void print_diag(const diag_t *d){
+    printf("\nRT RX TX local %lu | %s | DATA %lu/32 | Timeout=%s\n",(unsigned long)d->tx,d->valid?"OK":"BAD",(unsigned long)d->count,d->timeout?"SI":"NO");
+    printf("RX1=%lu us | Poll max=%lu us | Lectura max=%lu us | FIFO max=%lu/8 | RXSTALL=%s | PC=%lu | FIFO cierre=%lu\n",(unsigned long)d->first_us,(unsigned long)d->max_poll,(unsigned long)d->max_read,(unsigned long)d->max_fifo,d->stall?"SI":"NO",(unsigned long)d->pc,(unsigned long)d->fifo_end);
+    for(unsigned i=0;i<d->count && i<WC;i++)printf("DATA%02u RX=0x%04X ESP=0x%04X PAR=%s\n",i+1,(unsigned)d->words[i],(unsigned)pattern[i],d->parity[i]?"OK":"ERROR");
+}
+int main(void){
+    set_sys_clock_khz(120000,true);stdio_init_all();sleep_ms(1000);
+    mil1553_rx_init();mil1553_tx_init();mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
+    const uint16_t cmd_rx=BUS_1553_CMD_MAKE(20u,BUS_1553_TR_BC_TO_RT,18u,WC);
+    const uint16_t cmd_tx=BUS_1553_CMD_MAKE(20u,BUS_1553_TR_RT_TO_BC,18u,WC);
+    const uint16_t status_ok=BUS_1553_STATUS_MAKE(20u,false),status_error=BUS_1553_STATUS_MAKE(20u,true);
+    uint32_t started[2]={0},completed[2]={0},ok[2]={0},status_sent[2]={0};
+    uint32_t cmd_received=0,cmd_parity_err=0,cmd_unexpected=0,rx_data=0,correct_data=0,data_mismatch=0,data_parity_err=0,tx_data=0,timeouts=0,sequence_errors=0,status_error_sent=0;
+    unsigned position=0;bool receiving=false,valid=true,test_started=false,report_done=false;
+    uint64_t last_word=time_us_64(),last_activity=last_word;
+    printf("\nRT - TEST BIDIRECCIONAL WC32\nTransacciones: %u\nCMD RX=0x%04X CMD TX=0x%04X\n",TEST_TRANSACTIONS,(unsigned)cmd_rx,(unsigned)cmd_tx);
+    while(true){
+        uint64_t now=time_us_64();
+        if(receiving)diag_poll(now);
+        if(mil1553_rx_available()){
+            uint32_t e=mil1553_rx_get(),type=e&MIL1553_RX_TYPE_MASK;uint16_t w;bool p;decode(e,&w,&p);
+            test_started=true;last_activity=now;
+            if(!receiving){
+                if(type!=MIL1553_RX_TYPE_CMD_STATUS)continue;
+                cmd_received++;
+                if(!p || (w!=cmd_rx && w!=cmd_tx)){
+                    if(!p)cmd_parity_err++;else cmd_unexpected++;
+                    mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;continue;
+                }
+                if(w==cmd_tx){
+                    started[1]++;
+                    // Secuencia RT -> BC validada: STATUS y DATA continuos.
+                    busy_wait_us_32(RESPONSE_DELAY_US);
+                    mil1553_tx_send_word(BUS_1553_SYNC_CMD_STATUS,status_ok);
+                    for(unsigned i=0;i<WC;i++)mil1553_tx_send_word(BUS_1553_SYNC_DATA,pattern[i]);
+                    mil1553_tx_wait_idle();
+                    status_sent[1]++;tx_data+=WC;completed[1]++;ok[1]++;
+                    mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
+                    last_word=last_activity=time_us_64();
+                }else{
+                    started[0]++;position=0;valid=true;receiving=true;last_word=now;
+                    // No rearmar: SM1 ya recibe a partir de IRQ0 del COMMAND.
+                    diag_start(started[0]+started[1],now);
+                }
                 continue;
             }
-
-            if (word != expected_command)
-            {
-                cmd_unexpected++;
-                mil1553_rx_clear();
-                continue;
+            if(type!=MIL1553_RX_TYPE_DATA){sequence_errors++;valid=false;continue;}
+            rx_data++;
+            if(!p){data_parity_err++;valid=false;}
+            if(w!=pattern[position]){data_mismatch++;valid=false;}
+            if(p && w==pattern[position])correct_data++;
+            diag_word(w,p,now);position++;last_word=now;
+            if(position==WC){
+                busy_wait_us_32(RESPONSE_DELAY_US);
+                mil1553_tx_send_word(BUS_1553_SYNC_CMD_STATUS,valid?status_ok:status_error);
+                mil1553_tx_wait_idle();status_sent[0]++;completed[0]++;
+                if(valid)ok[0]++;else status_error_sent++;
+                diag_end(valid,false);
+                mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
+                receiving=false;position=0;last_word=last_activity=time_us_64();
             }
-
-            cmd_correct++;
-
-            /*
-             * Mantener los 8 us configurados.
-             *
-             * Respuesta continua:
-             *
-             * STATUS + DATA1 ... DATA32
-             */
-
-            busy_wait_us_32(RESPONSE_DELAY_US);
-
-            mil1553_tx_send_word(
-                BUS_1553_SYNC_CMD_STATUS,
-                status_ok
-            );
-
-            for (uint32_t i = 0; i < WORD_COUNT; i++)
-            {
-                mil1553_tx_send_word(
-                    BUS_1553_SYNC_DATA,
-                    test_data[i]
-                );
-            }
-
-            // Esperar la finalizacion del bloque completo.
-            mil1553_tx_wait_idle();
-
-            status_sent++;
-            data_sent += WORD_COUNT;
-            transactions_completed++;
-
-            // Eliminar la recepcion propia.
-            mil1553_rx_clear();
-
-            last_activity_us = time_us_64();
         }
-
-        uint64_t now_us = time_us_64();
-
-        if (test_started &&
-            !report_done &&
-            now_us - last_activity_us >=
-                TEST_END_SILENCE_US)
-        {
-            report_done = true;
-
-            printf("\n========================================\n");
-            printf("RT - RESULTADO RT -> BC / WC = 32\n");
-            printf("========================================\n");
-
-            printf("TRANSACCIONES ESPERADAS : %u\n",
-                   TEST_TRANSACTIONS);
-
-            printf("Respuestas completas    : %lu\n",
-                   (unsigned long)transactions_completed);
-
-            printf("\n--- COMMAND ---\n");
-            printf("CMD recibidos           : %lu\n",
-                   (unsigned long)cmd_received);
-
-            printf("CMD correctos           : %lu\n",
-                   (unsigned long)cmd_correct);
-
-            printf("CMD inesperados         : %lu\n",
-                   (unsigned long)cmd_unexpected);
-
-            printf("CMD error paridad       : %lu\n",
-                   (unsigned long)cmd_parity_errors);
-
-            printf("\n--- TRANSMISION ---\n");
-            printf("STATUS enviados         : %lu\n",
-                   (unsigned long)status_sent);
-
-            printf("DATA esperados          : %u\n",
-                   TEST_TRANSACTIONS * WORD_COUNT);
-
-            printf("DATA enviados           : %lu\n",
-                   (unsigned long)data_sent);
-
-            printf("\n--- TASAS ---\n");
-
-            printf("COMMAND correctos: %.3f %%\n",
-                100.0 * cmd_correct / TEST_TRANSACTIONS);
-
-            printf("Respuestas completas: %.3f %%\n",
-                100.0 * transactions_completed /
-                TEST_TRANSACTIONS);
-
-            printf("\n========================================\n");
-            printf("FIN DEL INFORME RT\n");
-            printf("========================================\n");
+        now=time_us_64();
+        if(receiving && now-last_word>=RX_TIMEOUT_US){
+            timeouts++;diag_end(false,true);mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
+            receiving=false;position=0;last_word=last_activity=time_us_64();
         }
-
+        if(test_started && !report_done && !receiving && now>=last_activity && now-last_activity>=TEST_END_SILENCE_US){
+            report_done=true;
+            printf("\nRT - RESULTADO BIDIRECCIONAL WC32\n");
+            for(unsigned tr=0;tr<2;tr++)printf("\n%s\nIniciadas: %lu\nCompletas: %lu\nOK: %lu\nBAD: %lu\nSTATUS enviados: %lu\n",tr?"RT -> BC":"BC -> RT",(unsigned long)started[tr],(unsigned long)completed[tr],(unsigned long)ok[tr],(unsigned long)(started[tr]-ok[tr]),(unsigned long)status_sent[tr]);
+            printf("\nCMD recibidos: %lu\nCMD correctos: %lu\nCMD paridad error: %lu\nCMD inesperados: %lu\nDATA esperados RX: %lu\nDATA recibidos: %lu\nDATA correctos: %lu\nDATA mismatch: %lu\nDATA paridad error: %lu\nDATA enviados: %lu\nTimeout DATA: %lu\nErrores secuencia: %lu\nSTATUS MSG_ERROR: %lu\n",(unsigned long)cmd_received,(unsigned long)(started[0]+started[1]),(unsigned long)cmd_parity_err,(unsigned long)cmd_unexpected,(unsigned long)(started[0]*WC),(unsigned long)rx_data,(unsigned long)correct_data,(unsigned long)data_mismatch,(unsigned long)data_parity_err,(unsigned long)tx_data,(unsigned long)timeouts,(unsigned long)sequence_errors,(unsigned long)status_error_sent);
+            printf("FIFO max: %lu/8 | RXSTALL TX: %lu | Max polling: %lu us | Max lectura: %lu us | Omitidos: %lu\n",(unsigned long)max_fifo,(unsigned long)stall_count,(unsigned long)max_poll,(unsigned long)max_read,(unsigned long)dropped);
+            for(unsigned i=0;i<saved_count;i++)print_diag(&saved[i]);
+            printf("Transacciones OK locales: %lu/%u\nFIN DEL INFORME RT\n",(unsigned long)(ok[0]+ok[1]),TEST_TRANSACTIONS);
+        }
         tight_loop_contents();
     }
 }
