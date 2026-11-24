@@ -54,7 +54,7 @@ int main(void){
     printf("\nBC - TEST BIDIRECCIONAL WC 1..32 / DATA PRNG\nTransacciones: %u\n",TEST_TRANSACTIONS);
     for(uint32_t tx=1;tx<=TEST_TRANSACTIONS;tx++){
         unsigned tr=(tx-1u)&1u;
-        unsigned wc=1u+(((tx-1u)/2u)%MAX_WC);
+        unsigned wc = 1u + (((tx - 1u) / 2u) % MAX_WC);
         uint16_t command=BUS_1553_CMD_MAKE(20u,tr,18u,wc);
         const uint16_t *pattern=test_patterns[tr][wc-1u];
         bool echo_seen=false,echo_valid=false,status_seen=false,status_valid=false,data_valid=true;
