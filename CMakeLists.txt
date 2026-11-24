@@ -72,15 +72,7 @@ pico_generate_pio_header(
 # PROGRAMAS PIO ANTERIORES
 # ============================================================
 
-pico_generate_pio_header(
-    slave_spi
-    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_tx.pio
-)
 
-pico_generate_pio_header(
-    slave_spi
-    ${CMAKE_CURRENT_LIST_DIR}/bus/manchester_rx.pio
-)
 
 
 # ============================================================
