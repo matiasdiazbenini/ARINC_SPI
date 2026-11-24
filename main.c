@@ -21,11 +21,11 @@
 #define TEST_TRANSACTIONS           1024u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
-#define PRINT_FIRST_TRANSACTIONS    6u
+#define PRINT_FIRST_TRANSACTIONS    64u
 #define BM_MAX_DATA_WORDS           32u
 #define EDGE_MONITOR_WINDOW_US      200ull
 #define SM0_WARMUP_COUNT            5u
-#define BM_DIAG_MAX_SAVED           64u
+#define BM_DIAG_MAX_SAVED           128u
 
 
 /* ============================================================
@@ -239,48 +239,20 @@ static uint8_t diag_max_fifo = 0u;
  * ============================================================
  */
 
-static const uint16_t diag_expected_data[32] =
+/* Patron de ensayo reproducible por direccion, WC y posicion (base 0).
+ * Indices 0..1055 sin colisiones: multiplicador impar y xorshift de 16 bits.
+ * No usa el contador de transacciones ni el reloj.
+ */
+static inline uint16_t test_data_word(unsigned tr, unsigned wc, unsigned pos)
 {
-    0x4444u,
-    0x2222u,
-    0x3333u,
-    0x1111u,
+    uint32_t index = tr * 528u + (wc * (wc - 1u)) / 2u + pos;
+    uint16_t x = (uint16_t)(index * 40503u + 0xBEEFu);
+    x ^= (uint16_t)(x >> 7);
+    x ^= (uint16_t)(x << 9);
+    x ^= (uint16_t)(x >> 8);
+    return x;
+}
 
-    0xAAAAu,
-    0x5555u,
-    0xFFFFu,
-    0x0000u,
-
-    0x1234u,
-    0x5678u,
-    0xABCDu,
-    0xDCBAu,
-
-    0x0F0Fu,
-    0xF0F0u,
-    0x8001u,
-    0x7FFEu,
-
-    0x0001u,
-    0x0002u,
-    0x0004u,
-    0x0008u,
-
-    0x0010u,
-    0x0020u,
-    0x0040u,
-    0x0080u,
-
-    0x0100u,
-    0x0200u,
-    0x0400u,
-    0x0800u,
-
-    0x1000u,
-    0x2000u,
-    0x4000u,
-    0x8000u
-};
 
 
 /* ============================================================
@@ -586,7 +558,7 @@ static void print_missing_data(
         for (int j = 0; j < (int)t->word_count; j++)
         {
             if (t->data[i] ==
-                diag_expected_data[j])
+                test_data_word(t->tr,t->word_count,(unsigned)j))
             {
                 found = j;
 
@@ -641,7 +613,7 @@ static void print_missing_data(
             printf(
                 "  DATA%u = 0x%04X\n",
                 i + 1u,
-                diag_expected_data[i]
+                test_data_word(t->tr,t->word_count,i)
             );
         }
     }
@@ -1136,7 +1108,7 @@ static void finish_transaction(
         test_expected_words += wc;
         for (unsigned i = 0; i < t->data_count && i < wc; i++)
         {
-            if (t->data[i] != diag_expected_data[i])
+            if (t->data[i] != test_data_word(t->tr,t->word_count,i))
             {
                 test_pattern_errors++;
                 t->valid = false;
@@ -1482,12 +1454,12 @@ int main(void)
     printf(
         "\n"
         "========================================\n"
-        "BM - TEST DIAGNOSTICO DATA / WC 1..32\n"
+        "BM - TEST DIAGNOSTICO DATA PRNG / WC 1..32\n"
         "========================================\n"
         "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
         "WC                   : 1..32\n"
-        "Patron DATA          : prefijo de longitud WC\n"
+        "Patron DATA          : PRNG por direccion, WC y posicion\n"
         "Delay RT STATUS      : 8 us\n"
         "Ventana GPIO P       : %llu us\n"
         "Warm-up SM0          : %u rearme(s)\n"
@@ -2143,7 +2115,7 @@ int main(void)
                 printf(
                     "\n\n"
                     "========================================\n"
-                    "BM - RESULTADO DIAGNOSTICO DATA / WC 1..32\n"
+                    "BM - RESULTADO DIAGNOSTICO DATA PRNG / WC 1..32\n"
                     "========================================\n\n"
                 );
 
