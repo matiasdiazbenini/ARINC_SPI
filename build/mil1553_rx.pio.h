@@ -13,12 +13,12 @@
 // ---------- //
 
 #define mil1553_rx_wrap_target 0
-#define mil1553_rx_wrap 26
+#define mil1553_rx_wrap 27
 #define mil1553_rx_pio_version 1
 
 #define mil1553_rx_offset_cmd_entry 0u
-#define mil1553_rx_offset_data_bc_to_rt_entry 24u
 #define mil1553_rx_offset_data_rt_to_bc_entry 24u
+#define mil1553_rx_offset_data_bc_to_rt_entry 25u
 
 static const uint16_t mil1553_rx_program_instructions[] = {
             //     .wrap_target
@@ -47,15 +47,16 @@ static const uint16_t mil1553_rx_program_instructions[] = {
     0xc000, // 22: irq    nowait 0
     0x0000, // 23: jmp    0
     0x20c0, // 24: wait   1 irq, 0
-    0x20a0, // 25: wait   1 pin, 0
-    0x0002, // 26: jmp    2
+    0x20c0, // 25: wait   1 irq, 0
+    0x20a0, // 26: wait   1 pin, 0
+    0x0002, // 27: jmp    2
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program mil1553_rx_program = {
     .instructions = mil1553_rx_program_instructions,
-    .length = 27,
+    .length = 28,
     .origin = -1,
     .pio_version = mil1553_rx_pio_version,
 #if PICO_PIO_VERSION > 0

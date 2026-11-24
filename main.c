@@ -18,7 +18,7 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           10000u
+#define TEST_TRANSACTIONS           1000u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    6u
@@ -1448,7 +1448,7 @@ int main(void)
         "========================================\n"
         "BM - TEST DIAGNOSTICO DATA / WC = 32\n"
         "========================================\n"
-        "Test                 : BC -> RT\n"
+        "Test                 : RT -> BC\n"
         "Transacciones        : %lu\n"
         "WC                   : 32\n"
         "DATA32               : 0x8000\n"
@@ -1976,7 +1976,7 @@ int main(void)
                         true
                     );
 
-                    mil1553_rx_data_rearm();
+                    mil1553_rx_clear();
 
                     data_diag_clear_flags();
 

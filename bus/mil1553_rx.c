@@ -393,7 +393,7 @@ void mil1553_rx_init(void)
     pio_enable_sm_mask_in_sync(
     rx_pio,
     (1u << rx_sm_cmd) |
-    (1u << rx_sm_data_bc_to_rt)
+    (1u << rx_sm_data_rt_to_bc)
     );
 
 
@@ -591,7 +591,7 @@ void mil1553_rx_clear(void)
     pio_enable_sm_mask_in_sync(
     rx_pio,
     (1u << rx_sm_cmd) |
-    (1u << rx_sm_data_bc_to_rt)
+    (1u << rx_sm_data_rt_to_bc)
     );
 
 
@@ -931,7 +931,7 @@ void mil1553_rx_data_rearm(void)
 
     pio_enable_sm_mask_in_sync(
     rx_pio,
-    (1u << rx_sm_data_bc_to_rt)
+    (1u << rx_sm_data_rt_to_bc)
     );
 
     /*
