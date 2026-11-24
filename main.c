@@ -18,7 +18,7 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           10000u
+#define TEST_TRANSACTIONS           1024u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    6u
@@ -547,11 +547,21 @@ static const char *diag_state_name(bm_state_t state)
  * ============================================================
  */
 
+/* Contadores de la prueba, independientes de la adquisicion PIO. */
+static uint32_t test_wc_started[2][32];
+static uint32_t test_wc_ok[2][32];
+static uint32_t test_expected_words, test_correct_words, test_pattern_errors;
+
+static bool is_test_command(const mil1553_transaction_t *t)
+{
+    return t->rt_address == 20u && t->subaddress == 18u &&
+           t->tr <= 1u && t->word_count >= 1u && t->word_count <= 32u;
+}
+
 static void print_missing_data(
     const mil1553_transaction_t *t)
 {
-    if (t->command != 0xA240u ||
-        t->word_count != 32u)
+    if (!is_test_command(t))
     {
         printf(
             "Comparacion de patron : NO APLICA\n"
@@ -573,7 +583,7 @@ static void print_missing_data(
     {
         int found = -1;
 
-        for (int j = 0; j < 32; j++)
+        for (int j = 0; j < (int)t->word_count; j++)
         {
             if (t->data[i] ==
                 diag_expected_data[j])
@@ -619,12 +629,12 @@ static void print_missing_data(
         "DATA del patron no observados:\n"
     );
 
-    if (seen == UINT32_MAX)
+    if (seen == (UINT32_MAX >> (32u - t->word_count)))
     {
         printf("  Ninguno\n");
     }
 
-    for (uint8_t i = 0u; i < 32u; i++)
+    for (uint8_t i = 0u; i < t->word_count; i++)
     {
         if (!(seen & (1u << i)))
         {
@@ -1114,6 +1124,32 @@ static void finish_transaction(
     bm_stats_t *stats,
     bool complete)
 {
+    /* Comparar el patron al CIERRE, no durante la recepcion DATA.
+     * Solo para el ensayo RT20/SA18; otros mensajes mantienen
+     * la semantica de validez de protocolo existente.
+     */
+    if (is_test_command(t))
+    {
+        unsigned tr = t->tr;
+        unsigned wc = t->word_count;
+        test_wc_started[tr][wc - 1u]++;
+        test_expected_words += wc;
+        for (unsigned i = 0; i < t->data_count && i < wc; i++)
+        {
+            if (t->data[i] != diag_expected_data[i])
+            {
+                test_pattern_errors++;
+                t->valid = false;
+            }
+            else if (t->data_parity_ok[i])
+                test_correct_words++;
+        }
+        if (t->status_seen && t->status != BUS_1553_STATUS_MAKE(20u, false))
+            t->valid = false;
+        if (complete && t->valid && t->data_count == wc && t->status_seen)
+            test_wc_ok[tr][wc - 1u]++;
+    }
+
     if (!complete)
     {
         t->valid = false;
@@ -1292,7 +1328,7 @@ static void process_data(
 
 
 /* ============================================================
- * MONITOREAR P DESPUES DE DATA32
+ * MONITOREAR P DESPUES DEL ULTIMO DATA
  * ============================================================
  *
  * Conservamos la estrategia que funciona actualmente.
@@ -1301,7 +1337,7 @@ static void process_data(
  * ============================================================
  */
 
-static edge_diag_t monitor_p_after_data32(
+static edge_diag_t monitor_p_after_last_data(
     uint8_t pc_before_rearm)
 {
     edge_diag_t d = {0};
@@ -1446,16 +1482,16 @@ int main(void)
     printf(
         "\n"
         "========================================\n"
-        "BM - TEST DIAGNOSTICO DATA / WC = 32\n"
+        "BM - TEST DIAGNOSTICO DATA / WC 1..32\n"
         "========================================\n"
         "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
-        "WC                   : 32\n"
-        "DATA32               : 0x8000\n"
+        "WC                   : 1..32\n"
+        "Patron DATA          : prefijo de longitud WC\n"
         "Delay RT STATUS      : 8 us\n"
         "Ventana GPIO P       : %llu us\n"
         "Warm-up SM0          : %u rearme(s)\n"
-        "Rearme SM0 DATA32    : HABILITADO\n"
+        "Rearme SM0 ultimo DATA: HABILITADO\n"
         "Fix timeout          : HABILITADO\n"
         "CLKDIV sync          : HABILITADO\n"
         "Diagnostico DATA     : FIFO / RXSTALL / TIMING\n"
@@ -1757,7 +1793,7 @@ int main(void)
                     /* Diagnostico fisico existente. */
 
                     edge_diag_t d =
-                        monitor_p_after_data32(
+                        monitor_p_after_last_data(
                             pc_before
                         );
 
@@ -2107,7 +2143,7 @@ int main(void)
                 printf(
                     "\n\n"
                     "========================================\n"
-                    "BM - RESULTADO DIAGNOSTICO DATA / WC = 32\n"
+                    "BM - RESULTADO DIAGNOSTICO DATA / WC 1..32\n"
                     "========================================\n\n"
                 );
 
@@ -2311,6 +2347,15 @@ int main(void)
                  * DETALLE FISICO POR TRANSACCION
                  * ============================================
                  */
+
+                printf("\n--- COBERTURA WC (OK / iniciadas) ---\nWC | BC->RT | RT->BC\n");
+                for (unsigned i=0; i<32u; i++)
+                    printf("%2u | %lu/%lu | %lu/%lu\n", i+1,
+                        (unsigned long)test_wc_ok[0][i], (unsigned long)test_wc_started[0][i],
+                        (unsigned long)test_wc_ok[1][i], (unsigned long)test_wc_started[1][i]);
+                printf("DATA esperados (COMMAND capturados): %lu\n", (unsigned long)test_expected_words);
+                printf("DATA correctos de patron y paridad: %lu\n", (unsigned long)test_correct_words);
+                printf("DATA mismatch de patron: %lu\n\n", (unsigned long)test_pattern_errors);
 
                 printf(
                     "--- DETALLE POR TRANSACCION ---\n"

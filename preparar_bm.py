@@ -1,98 +1,119 @@
-"""Aplicar cambios al BM de la rama FLASK-MIL validada RT->BC.
-Uso: python preparar_bm.py RUTA_RAIZ_PROYECTO_BM
-No modifica PIO, CMake ni archivos de otros nodos.
+"""BM WC 1..32: actualiza solo main.c desde FLASK-MIL validado WC32.
+Uso desde la raiz BM: python preparar_bm_wc.py --check
+                       python preparar_bm_wc.py
+Alternativa: python preparar_bm_wc.py C:\\ruta\\BM
 """
 import argparse
 import hashlib
 from pathlib import Path
-import re
 import shutil
 
-EXPECTED = {
-    'main.c': 'bbeca433367a5b14d340481c5b5c6d705c21320f',
-    'bus/mil1553_rx.c': '10a217969692f74392603c9a40cbd036890c10b3',
-    'bus/mil1553_rx.h': 'e76fd032afbb558697a66da2f900d7d161be7917',
-    'bus/mil1553_rx.pio': 'cb2483a147232d127a85acfd93fd9981a7ee8dcf',
-}
+EXPECTED = 'd9314c7684bf400a40f5bd94ef9271fb08e4191c'
 
 def blob_sha(data):
     return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
 
 def once(s, old, new):
-    if s.count(old) != 1:
-        raise ValueError(f'No se encontro exactamente una ocurrencia de {old!r}')
+    n=s.count(old)
+    if n != 1:
+        raise ValueError(f'Esperaba 1 coincidencia, encontre {n}: {old[:80]!r}')
     return s.replace(old,new,1)
 
-def sub_exact(s, pattern, replacement, count):
-    s,n=re.subn(pattern,replacement,s)
-    if n!=count:
-        raise ValueError(f'Esperaba {count} coincidencias, encontre {n}: {pattern}')
+
+def transform(s):
+    s=once(s,'#define TEST_TRANSACTIONS           10000u','#define TEST_TRANSACTIONS           64u')
+    s=s.replace('BM - TEST DIAGNOSTICO DATA / WC = 32','BM - TEST DIAGNOSTICO DATA / WC 1..32')
+    s=s.replace('BM - RESULTADO DIAGNOSTICO DATA / WC = 32','BM - RESULTADO DIAGNOSTICO DATA / WC 1..32')
+    s=once(s,'"WC                   : 32\\n"','"WC                   : 1..32\\n"')
+    s=once(s,'"DATA32               : 0x8000\\n"','"Patron DATA          : prefijo de longitud WC\\n"')
+    s=once(s,'"Rearme SM0 DATA32    : HABILITADO\\n"','"Rearme SM0 ultimo DATA: HABILITADO\\n"')
+    # Solo renombrar la funcion: se sigue ejecutando al ultimo DATA real.
+    if s.count('monitor_p_after_data32')!=2:
+        raise ValueError('No coincide el monitor de STATUS.')
+    s=s.replace('monitor_p_after_data32','monitor_p_after_last_data')
+    s=s.replace('MONITOREAR P DESPUES DE DATA32','MONITOREAR P DESPUES DEL ULTIMO DATA')
+    s=once(s,'static void print_missing_data(\n', '''/* Contadores de la prueba, independientes de la adquisicion PIO. */
+static uint32_t test_wc_started[2][32];
+static uint32_t test_wc_ok[2][32];
+static uint32_t test_expected_words, test_correct_words, test_pattern_errors;
+
+static bool is_test_command(const mil1553_transaction_t *t)
+{
+    return t->rt_address == 20u && t->subaddress == 18u &&
+           t->tr <= 1u && t->word_count >= 1u && t->word_count <= 32u;
+}
+
+static void print_missing_data(
+''')
+    s=once(s,'if (t->command != 0xA240u ||\n        t->word_count != 32u)','if (!is_test_command(t))')
+    s=once(s,'for (int j = 0; j < 32; j++)','for (int j = 0; j < (int)t->word_count; j++)')
+    s=once(s,'if (seen == UINT32_MAX)','if (seen == (UINT32_MAX >> (32u - t->word_count)))')
+    s=once(s,'for (uint8_t i = 0u; i < 32u; i++)','for (uint8_t i = 0u; i < t->word_count; i++)')
+    s=once(s,'    if (!complete)\n    {\n        t->valid = false;', '''    /* Comparar el patron al CIERRE, no durante la recepcion DATA.
+     * Solo para el ensayo RT20/SA18; otros mensajes mantienen
+     * la semantica de validez de protocolo existente.
+     */
+    if (is_test_command(t))
+    {
+        unsigned tr = t->tr;
+        unsigned wc = t->word_count;
+        test_wc_started[tr][wc - 1u]++;
+        test_expected_words += wc;
+        for (unsigned i = 0; i < t->data_count && i < wc; i++)
+        {
+            if (t->data[i] != diag_expected_data[i])
+            {
+                test_pattern_errors++;
+                t->valid = false;
+            }
+            else if (t->data_parity_ok[i])
+                test_correct_words++;
+        }
+        if (t->status_seen && t->status != BUS_1553_STATUS_MAKE(20u, false))
+            t->valid = false;
+        if (complete && t->valid && t->data_count == wc && t->status_seen)
+            test_wc_ok[tr][wc - 1u]++;
+    }
+
+    if (!complete)
+    {
+        t->valid = false;''')
+    s=once(s,'                printf(\n                    "--- DETALLE POR TRANSACCION ---\\n"\n                );', '''                printf("\\n--- COBERTURA WC (OK / iniciadas) ---\\nWC | BC->RT | RT->BC\\n");
+                for (unsigned i=0; i<32u; i++)
+                    printf("%2u | %lu/%lu | %lu/%lu\\n", i+1,
+                        (unsigned long)test_wc_ok[0][i], (unsigned long)test_wc_started[0][i],
+                        (unsigned long)test_wc_ok[1][i], (unsigned long)test_wc_started[1][i]);
+                printf("DATA esperados (COMMAND capturados): %lu\\n", (unsigned long)test_expected_words);
+                printf("DATA correctos de patron y paridad: %lu\\n", (unsigned long)test_correct_words);
+                printf("DATA mismatch de patron: %lu\\n\\n", (unsigned long)test_pattern_errors);
+
+                printf(
+                    "--- DETALLE POR TRANSACCION ---\\n"
+                );''')
     return s
 
-HELPER = r'''
-
-/* Seleccionar RT -> BC tras validar el COMMAND.
- * SM0 sigue recibiendo STATUS sin interrupcion.
- * SM2 espera una sola IRQ (la del STATUS); el COMMAND ya se recibio.
- */
-void mil1553_rx_select_rt_to_bc(void)
-{
-    if (!rx_initialized) return;
-    const uint32_t data_mask = (1u << rx_sm_data_bc_to_rt) |
-                               (1u << rx_sm_data_rt_to_bc);
-    pio_set_sm_mask_enabled(rx_pio, data_mask, false);
-    pio_sm_clear_fifos(rx_pio, rx_sm_data_bc_to_rt);
-    pio_sm_clear_fifos(rx_pio, rx_sm_data_rt_to_bc);
-    pio_sm_restart(rx_pio, rx_sm_data_rt_to_bc);
-    pio_sm_exec(rx_pio, rx_sm_data_rt_to_bc,
-                pio_encode_jmp(data_bc_to_rt_entry_pc()));
-    pio_interrupt_clear(rx_pio, MIL1553_RX_DATA_GATE_IRQ);
-    pio_sm_set_enabled(rx_pio, rx_sm_data_rt_to_bc, true);
-}
-'''
-
-def transform(src):
-    c=src['bus/mil1553_rx.c']
-    # Solo mascaras de HABILITACION. No modificar mascaras de parada o clkdiv.
-    c=sub_exact(c,r'(pio_enable_sm_mask_in_sync\(\s*rx_pio,\s*\(1u << rx_sm_cmd\) \|\s*\(1u << )rx_sm_data_rt_to_bc(\)\s*\);)',r'\g<1>rx_sm_data_bc_to_rt\2',2)
-    c=sub_exact(c,r'(pio_enable_sm_mask_in_sync\(\s*rx_pio,\s*\(1u << )rx_sm_data_rt_to_bc(\)\s*\);)',r'\g<1>rx_sm_data_bc_to_rt\2',1)
-    c=c.rstrip()+HELPER
-    h=once(src['bus/mil1553_rx.h'],'void mil1553_rx_data_rearm(void);','void mil1553_rx_data_rearm(void);\nvoid mil1553_rx_select_rt_to_bc(void);')
-    m=sub_exact(src['main.c'],r'(#define TEST_TRANSACTIONS\s+)1000u',r'\g<1>20u',1)
-    m=once(m,'"Test                 : RT -> BC\\n"','"Test                 : BIDIRECCIONAL\\n"')
-    m=once(m,'/* Iniciar transaccion. */','''/* Seleccionar DATA antes de preparar el diagnostico.
-                 * BC -> RT: SM1 ya esta activa, no tocarla.
-                 * RT -> BC: SM2 espera IRQ de STATUS.
-                 */
-                if (tr == BUS_1553_TR_RT_TO_BC)
-                {
-                    mil1553_rx_select_rt_to_bc();
-                }
-
-                /* Iniciar transaccion. */''')
-    return {'main.c':m,'bus/mil1553_rx.c':c,'bus/mil1553_rx.h':h}
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('root',nargs='?',default='.',help='Raiz del proyecto BM (FLASK-MIL)')
-    ap.add_argument('--check',action='store_true',help='Verificar sin modificar')
-    args=ap.parse_args();root=Path(args.root).resolve();src={};original={}
-    for name,expected in EXPECTED.items():
-        data=(root/name).read_bytes();normalized=data.replace(b'\r\n',b'\n')
-        if expected not in (blob_sha(data),blob_sha(normalized)):
-            raise SystemExit(f'ABORTADO: {name} no coincide con la version GitHub revisada. No se escribio nada.')
-        src[name]=normalized.decode('utf-8');original[name]=data
-    result=transform(src)
-    if args.check:
-        print('Version y cambios verificados. No se modifico nada.');return
-    backup=root/'backup_RT_to_BC_WC32'
-    if backup.exists():raise SystemExit('ABORTADO: la carpeta de backup ya existe.')
-    for name in result:
-        target=backup/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(root/name,target)
-    for name,content in result.items():
-        data=content.encode('utf-8')
-        if b'\r\n' in original[name]:data=data.replace(b'\n',b'\r\n')
-        (root/name).write_bytes(data)
-    print('BM bidireccional preparado. Backup:',backup)
-    print('Sin cambios en bus/mil1553_rx.pio. Compilar ahora en VS Code.')
+    ap.add_argument('root',nargs='?',default='.',help='Raiz del proyecto BM')
+    ap.add_argument('--check',action='store_true',help='Verificar y simular sin modificar')
+    args=ap.parse_args(); root=Path(args.root).resolve(); p=root/'main.c'
+    try:
+        raw=p.read_bytes(); normalized=raw.replace(b'\r\n',b'\n')
+        if EXPECTED not in (blob_sha(raw),blob_sha(normalized)):
+            raise ValueError('main.c no coincide con FLASK-MIL WC32 validado (10000).')
+        result=transform(normalized.decode('utf-8'))
+        if args.check:
+            print('OK: version y cambios verificados. No se escribio nada.');return
+        backup=root/'main_WC32_validado.c.bak'
+        if backup.exists():raise ValueError(f'Ya existe el backup: {backup}')
+        shutil.copy2(p,backup)
+        data=result.encode('utf-8')
+        if b'\r\n' in raw:data=data.replace(b'\n',b'\r\n')
+        tmp=root/'main_WC_dinamico.c.tmp';tmp.write_bytes(data);tmp.replace(p)
+        print('BM WC dinamico preparado. Backup:',backup)
+        print('No se modificaron drivers, PIO ni bus.h.')
+    except (OSError,ValueError) as e:
+        raise SystemExit(f'ABORTADO: {e}')
+
 if __name__=='__main__':main()
