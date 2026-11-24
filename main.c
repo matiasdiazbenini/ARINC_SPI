@@ -18,7 +18,7 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           10240u
+#define TEST_TRANSACTIONS           1920u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    128u
@@ -565,9 +565,44 @@ static uint32_t test_wc_started[2][32];
 static uint32_t test_wc_ok[2][32];
 static uint32_t test_expected_words, test_correct_words, test_pattern_errors;
 
+
+/* Cobertura exacta por SA, WC y direccion. Memoria fija: 15360 bytes.
+ * Actualizar solamente al finalizar cada mensaje (incluidos timeouts). */
+static uint32_t sa_started[2][30][32];
+static uint32_t sa_ok[2][30][32];
+static void sa_record(unsigned tr, unsigned sa, unsigned wc, bool valid)
+{
+    if (tr > 1u || sa < 1u || sa > 30u || wc < 1u || wc > 32u) return;
+    sa_started[tr][sa-1u][wc-1u]++;
+    if (valid) sa_ok[tr][sa-1u][wc-1u]++;
+}
+static void sa_print(void)
+{
+    unsigned covered=0u, all_ok=0u;
+    printf("\n--- COBERTURA SA (OK / iniciadas) ---\nSA | BC->RT | RT->BC\n");
+    for (unsigned a=0; a<30u; a++) {
+        uint32_t n[2]={0}, k[2]={0};
+        for (unsigned t=0; t<2u; t++) for (unsigned w=0; w<32u; w++) {
+            uint32_t started=sa_started[t][a][w], ok=sa_ok[t][a][w];
+            n[t]+=started; k[t]+=ok;
+            if (started) covered++;
+            if (started && started==ok) all_ok++;
+        }
+        printf("%2u | %lu/%lu | %lu/%lu\n", a+1u,
+            (unsigned long)k[0],(unsigned long)n[0],(unsigned long)k[1],(unsigned long)n[1]);
+    }
+    printf("Combinaciones SA/WC/TR observadas: %u/1920\n",covered);
+    printf("Combinaciones SA/WC/TR sin fallos: %u/1920\n",all_ok);
+    printf("\n--- MATRIZ SA/WC (OK / iniciadas) ---\nSA WC | BC->RT | RT->BC\n");
+    for (unsigned a=0; a<30u; a++) for (unsigned w=0; w<32u; w++)
+        printf("%2u %2u | %lu/%lu | %lu/%lu\n",a+1u,w+1u,
+            (unsigned long)sa_ok[0][a][w],(unsigned long)sa_started[0][a][w],
+            (unsigned long)sa_ok[1][a][w],(unsigned long)sa_started[1][a][w]);
+}
+
 static bool is_test_command(const mil1553_transaction_t *t)
 {
-    return t->rt_address == 20u && t->subaddress == 18u &&
+    return t->rt_address == 20u && t->subaddress >= 1u && t->subaddress <= 30u &&
            t->tr <= 1u && t->word_count >= 1u && t->word_count <= 32u;
 }
 
@@ -1140,7 +1175,7 @@ static void finish_transaction(
     bool complete)
 {
     /* Comparar el patron al CIERRE, no durante la recepcion DATA.
-     * Solo para el ensayo RT20/SA18; otros mensajes mantienen
+     * Solo para el ensayo RT20/SA1..30; otros mensajes mantienen
      * la semantica de validez de protocolo existente.
      */
     if (is_test_command(t))
@@ -1162,8 +1197,10 @@ static void finish_transaction(
         }
         if (t->status_seen && t->status != BUS_1553_STATUS_MAKE(20u, false))
             t->valid = false;
-        if (complete && t->valid && t->data_count == wc && t->status_seen)
+        bool test_valid = complete && t->valid && t->data_count == wc && t->status_seen;
+        if (test_valid)
             test_wc_ok[tr][wc - 1u]++;
+        sa_record(tr,t->subaddress,wc,test_valid);
     }
 
     if (!complete)
@@ -1494,6 +1531,7 @@ int main(void)
         "========================================\n"
         "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
+        "SA                   : 1..30\n"
         "WC                   : 1..32\n"
         "Patron DATA          : Semilla DATA1 + mascara por direccion, WC y posicion\n"
         "Delay RT STATUS      : 8 us\n"
@@ -2381,6 +2419,7 @@ int main(void)
                 printf("DATA esperados (COMMAND capturados): %lu\n", (unsigned long)test_expected_words);
                 printf("DATA compatibles (semilla: solo paridad): %lu\n", (unsigned long)test_correct_words);
                 printf("DATA mismatch de patron: %lu\n\n", (unsigned long)test_pattern_errors);
+                sa_print();
                 signature_print();
 
                 printf(
