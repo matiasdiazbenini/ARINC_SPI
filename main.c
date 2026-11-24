@@ -8,7 +8,10 @@
 #include "bus/bus.h"
 #include "bus/mil1553_rx.h"
 #include "bus/mil1553_tx.h"
-#define TEST_TRANSACTIONS 1920u
+#define TEST_TRANSACTIONS 12u
+#define RT_ADDRESS 7u
+#define FOREIGN_GUARD_US 2000u
+_Static_assert(RT_ADDRESS <= 30u, "RT individual 0..30");
 #define MAX_WC 32u
 #define RESPONSE_DELAY_US 8u
 #define RX_TIMEOUT_US 1000ull
@@ -81,7 +84,7 @@ static void sa_record(unsigned tr, unsigned sa, unsigned wc, bool valid)
     sa_started[tr][sa-1u][wc-1u]++;
     if (valid) sa_ok[tr][sa-1u][wc-1u]++;
 }
-static void sa_print(void)
+static void __attribute__((unused)) sa_print(void)
 {
     unsigned covered=0u, all_ok=0u;
     printf("\n--- COBERTURA SA (OK / iniciadas) ---\nSA | BC->RT | RT->BC\n");
@@ -145,15 +148,16 @@ static void print_diag(const diag_t *d){
 int main(void){
     set_sys_clock_khz(120000,true);stdio_init_all();prepare_test_patterns();sleep_ms(1000);
     mil1553_rx_init();mil1553_tx_init();mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
-    const uint16_t status_ok=BUS_1553_STATUS_MAKE(20u,false),status_error=BUS_1553_STATUS_MAKE(20u,true);
+    const uint16_t status_ok=BUS_1553_STATUS_MAKE(RT_ADDRESS,false),status_error=BUS_1553_STATUS_MAKE(RT_ADDRESS,true);
     uint32_t started[2]={0},completed[2]={0},ok[2]={0},status_sent[2]={0};
     uint32_t cmd_received=0,cmd_parity_err=0,cmd_unexpected=0,rx_data=0,correct_data=0,data_mismatch=0,data_parity_err=0,tx_data=0,timeouts=0,sequence_errors=0,status_error_sent=0;
     uint32_t expected_rx=0,expected_tx=0,coverage[2][MAX_WC]={0},coverage_ok[2][MAX_WC]={0};
+    uint32_t foreign_ignored=0;
     const uint16_t *pattern=NULL;
     uint16_t seed=0u,rx_command=0u;
     unsigned position=0,wc=0;bool receiving=false,valid=true,test_started=false,report_done=false;
     uint64_t last_word=time_us_64(),last_activity=last_word;
-    printf("\nRT - TEST BIDIRECCIONAL SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\nTransacciones: %u\nRT=20 SA=1..30 WC=1..32\n",TEST_TRANSACTIONS);
+    printf("\nRT - TEST DIRECCION RT CONFIGURABLE SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\nTransacciones: %u\nRT=%u SA=1..30 WC=1..32\n",TEST_TRANSACTIONS,RT_ADDRESS);
     while(true){
         uint64_t now=time_us_64();
         if(receiving)diag_poll(now);
@@ -164,7 +168,19 @@ int main(void){
                 if(type!=MIL1553_RX_TYPE_CMD_STATUS)continue;
                 cmd_received++;
                 unsigned sa=BUS_1553_CMD_SUB(w);
-                if(!p || BUS_1553_CMD_RT(w)!=20u || sa==0u || sa==31u){
+                if(p && BUS_1553_CMD_RT(w)!=RT_ADDRESS && BUS_1553_CMD_RT(w)!=31u && sa>=1u && sa<=30u){
+                    // Solo banco de prueba: descartar toda la transferencia ajena.
+                    // 2 ms < intervalo BC 100 ms; no interpretar DATA como COMMAND.
+                    foreign_ignored++;
+                    uint64_t until=time_us_64()+FOREIGN_GUARD_US;
+                    while(time_us_64()<until){
+                        if(mil1553_rx_available())(void)mil1553_rx_get();
+                        tight_loop_contents();
+                    }
+                    mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;
+                    last_activity=time_us_64();continue;
+                }
+                if(!p || BUS_1553_CMD_RT(w)!=RT_ADDRESS || sa==0u || sa==31u){
                     if(!p)cmd_parity_err++;else cmd_unexpected++;
                     mil1553_rx_clear();pio1->fdebug=RXSTALL_MASK;continue;
                 }
@@ -224,7 +240,7 @@ int main(void){
         }
         if(test_started && !report_done && !receiving && now>=last_activity && now-last_activity>=TEST_END_SILENCE_US){
             report_done=true;
-            printf("\nRT - RESULTADO BIDIRECCIONAL SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\n");
+            printf("\nRT - RESULTADO DIRECCION RT CONFIGURABLE SA 1..30 / WC 1..32 / DATA SEMILLA VARIABLE\n");
             for(unsigned tr=0;tr<2;tr++)printf("\n%s\nIniciadas: %lu\nCompletas: %lu\nOK: %lu\nBAD: %lu\nSTATUS enviados: %lu\n",tr?"RT -> BC":"BC -> RT",(unsigned long)started[tr],(unsigned long)completed[tr],(unsigned long)ok[tr],(unsigned long)(started[tr]-ok[tr]),(unsigned long)status_sent[tr]);
             printf("\nCMD recibidos: %lu\nCMD correctos: %lu\nCMD paridad error: %lu\nCMD inesperados: %lu\nDATA esperados RX: %lu\nDATA recibidos: %lu\nDATA compatibles (semilla: solo paridad): %lu\nDATA mismatch: %lu\nDATA paridad error: %lu\nDATA enviados: %lu\nTimeout DATA: %lu\nErrores secuencia: %lu\nSTATUS MSG_ERROR: %lu\n",(unsigned long)cmd_received,(unsigned long)(started[0]+started[1]),(unsigned long)cmd_parity_err,(unsigned long)cmd_unexpected,(unsigned long)expected_rx,(unsigned long)rx_data,(unsigned long)correct_data,(unsigned long)data_mismatch,(unsigned long)data_parity_err,(unsigned long)tx_data,(unsigned long)timeouts,(unsigned long)sequence_errors,(unsigned long)status_error_sent);
             printf("DATA esperados TX (COMMAND aceptados): %lu\n",(unsigned long)expected_tx);
@@ -232,7 +248,7 @@ int main(void){
             for(unsigned i=0;i<MAX_WC;i++)printf("%2u | %lu/%lu | %lu/%lu\n",i+1,(unsigned long)coverage_ok[0][i],(unsigned long)coverage[0][i],(unsigned long)coverage_ok[1][i],(unsigned long)coverage[1][i]);
             printf("FIFO max: %lu/8 | RXSTALL TX: %lu | Max polling: %lu us | Max lectura: %lu us | Omitidos: %lu\n",(unsigned long)max_fifo,(unsigned long)stall_count,(unsigned long)max_poll,(unsigned long)max_read,(unsigned long)dropped);
             for(unsigned i=0;i<saved_count;i++)print_diag(&saved[i]);
-            sa_print();
+            printf("COMMAND ajenos ignorados: %lu/6\nCOMMAND propios OK locales: %lu/6\nResultados conformes (locales): %lu/12\n",(unsigned long)foreign_ignored,(unsigned long)(ok[0]+ok[1]),(unsigned long)(foreign_ignored+ok[0]+ok[1]));
             signature_print();
             printf("Transacciones OK locales: %lu/%u\nFIN DEL INFORME RT\n",(unsigned long)(ok[0]+ok[1]),TEST_TRANSACTIONS);
         }
