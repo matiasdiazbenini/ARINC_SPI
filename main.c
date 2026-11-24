@@ -18,7 +18,7 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           1000u
+#define TEST_TRANSACTIONS           10000u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
 #define PRINT_FIRST_TRANSACTIONS    6u
