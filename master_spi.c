@@ -3,7 +3,6 @@
 #include <stdbool.h>
 
 #include "pico/stdlib.h"
-
 #include "hardware/clocks.h"
 
 #include "bus/bus.h"
@@ -20,14 +19,10 @@
 #define SUBADDR                 18u
 #define WORD_COUNT              32u
 
-#define TEST_TRANSACTIONS       20u
+#define TEST_TRANSACTIONS       1000u
 
 #define INTER_TRANSACTION_MS    100u
 
-/*
- * Timeout amplio solamente para detectar
- * ausencia de STATUS.
- */
 #define RESPONSE_TIMEOUT_US     1500ull
 
 
@@ -76,10 +71,6 @@ static const uint16_t test_data[WORD_COUNT] =
     0x1000u,
     0x2000u,
     0x4000u,
-
-    /*
-     * Caso problematico que estamos validando.
-     */
     0x8000u
 };
 
@@ -94,9 +85,7 @@ static void print_rate(
     uint32_t correct,
     uint32_t expected)
 {
-    uint32_t scaled =
-        0u;
-
+    uint32_t scaled = 0u;
 
     if (expected != 0u)
     {
@@ -109,16 +98,11 @@ static void print_rate(
             );
     }
 
-
     printf(
         "%s: %lu.%03lu %%\n",
         name,
-        (unsigned long)(
-            scaled / 1000u
-        ),
-        (unsigned long)(
-            scaled % 1000u
-        )
+        (unsigned long)(scaled / 1000u),
+        (unsigned long)(scaled % 1000u)
     );
 }
 
@@ -135,9 +119,6 @@ int main(void)
      * ========================================================
      */
 
-    /*
-     * 120 MHz / 8 MHz = divisor PIO 15 exacto.
-     */
     set_sys_clock_khz(
         120000,
         true
@@ -148,7 +129,7 @@ int main(void)
 
 
     /* ========================================================
-     * INICIALIZAR RX Y TX
+     * RX / TX
      * ========================================================
      */
 
@@ -158,7 +139,7 @@ int main(void)
 
 
     /*
-     * Tiempo para que RT y BM ya esten iniciados.
+     * Tiempo para iniciar RT y BM.
      */
     sleep_ms(
         5000
@@ -216,10 +197,6 @@ int main(void)
         0u;
 
 
-    uint32_t own_command_removed =
-        0u;
-
-
     uint32_t status_received =
         0u;
 
@@ -248,21 +225,26 @@ int main(void)
     printf(
         "\n"
         "========================================\n"
-        "BC - TEST BC -> RT / WC = 32\n"
+        "BC - TX ESTABLE + RX STATUS / WC = 32\n"
         "========================================\n"
-        "Transacciones       : %u\n"
-        "COMMAND             : 0x%04X\n"
-        "STATUS esperado     : 0x%04X\n"
-        "WC                  : %u\n"
-        "DATA32              : 0x%04X\n"
-        "RT response         : 8 us\n"
-        "Timeout STATUS      : %llu us\n"
-        "Rearme rapido SM0   : HABILITADO\n"
+        "Transacciones        : %u\n"
+        "COMMAND              : 0x%04X\n"
+        "STATUS esperado      : 0x%04X\n"
+        "WC                   : %u\n"
+        "DATA1                : 0x%04X\n"
+        "DATA2                : 0x%04X\n"
+        "DATA32               : 0x%04X\n"
+        "CMD -> DATA          : CONTINUO\n"
+        "Rearme durante DATA  : NO\n"
+        "Rearme post DATA32   : SI\n"
+        "Timeout STATUS       : %llu us\n"
         "========================================\n\n",
         TEST_TRANSACTIONS,
         command,
         expected_status,
         WORD_COUNT,
+        test_data[0],
+        test_data[1],
         test_data[WORD_COUNT - 1u],
         (unsigned long long)
             RESPONSE_TIMEOUT_US
@@ -275,12 +257,11 @@ int main(void)
      */
 
     for (uint32_t transaction = 0u;
-         transaction <
-         TEST_TRANSACTIONS;
+         transaction < TEST_TRANSACTIONS;
          transaction++)
     {
         /* ====================================================
-         * ESTADO INICIAL LIMPIO
+         * ESTADO INICIAL
          * ====================================================
          */
 
@@ -288,10 +269,6 @@ int main(void)
 
 
         transactions_started++;
-
-
-        bool own_command_seen =
-            false;
 
 
         bool status_seen =
@@ -315,7 +292,23 @@ int main(void)
 
 
         /* ====================================================
-         * 1. ENVIAR COMMAND
+         * 1. COMMAND
+         * ====================================================
+         *
+         * IMPORTANTE:
+         *
+         * ESTE BLOQUE QUEDA CONGELADO.
+         *
+         * NO:
+         *
+         * - wait_idle aqui
+         * - polling RX aqui
+         * - retirar COMMAND propio
+         * - delays
+         * - rearme
+         *
+         * Inmediatamente despues del COMMAND se encolan
+         * DATA1 ... DATA32.
          * ====================================================
          */
 
@@ -328,78 +321,18 @@ int main(void)
         commands_sent++;
 
 
-        /*
-         * Esperar exactamente hasta que el COMMAND
-         * haya terminado fisicamente.
-         */
-        mil1553_tx_wait_idle_exact();
-
-
         /* ====================================================
-         * 2. RETIRAR COMMAND PROPIO
+         * 2. DATA1 ... DATA32
          * ====================================================
          *
-         * SM0 observa tambien la transmision del propio BC.
+         * Misma secuencia que acaba de producir:
          *
-         * Lo retiramos antes de enviar DATA.
-         * ====================================================
-         */
-
-        const uint64_t own_cmd_start =
-            time_us_64();
-
-
-        while ((time_us_64() -
-                own_cmd_start)
-               <
-               200ull)
-        {
-            if (!mil1553_rx_cmd_status_available())
-            {
-                tight_loop_contents();
-
-                continue;
-            }
-
-
-            uint32_t event =
-                mil1553_rx_get_cmd_status();
-
-
-            uint32_t payload =
-                event &
-                MIL1553_RX_PAYLOAD_MASK;
-
-
-            uint16_t word =
-                (uint16_t)(
-                    (payload >>
-                     MIL1553_RX_WORD_SHIFT)
-                    &
-                    MIL1553_RX_WORD_MASK
-                );
-
-
-            /*
-             * Debe ser exactamente nuestro COMMAND.
-             */
-            if (word ==
-                command)
-            {
-                own_command_seen =
-                    true;
-
-
-                own_command_removed++;
-
-
-                break;
-            }
-        }
-
-
-        /* ====================================================
-         * 3. ENVIAR LOS 32 DATA
+         * RT:
+         *      640/640
+         *
+         * BM:
+         *      640/640
+         *      20/20 validas
          * ====================================================
          */
 
@@ -418,35 +351,43 @@ int main(void)
 
 
         /* ====================================================
-         * 4. ESPERAR FINAL FISICO EXACTO DE DATA32
+         * 3. ESPERAR FINAL FISICO DE DATA32
          * ====================================================
          *
-         * MUY IMPORTANTE:
+         * Esta llamada SI estaba presente en el rollback
+         * exitoso.
          *
-         * NO usamos el antiguo mil1553_tx_wait_idle()
-         * porque despues de FIFO empty agregaba 21 us.
+         * FIFO vacia + margen fisico.
          *
-         * El RT responde aproximadamente 8 us despues
-         * del final del mensaje BC -> RT.
-         *
-         * Necesitamos saber el instante real en que
-         * DATA32 termino.
+         * DATA32 dura aproximadamente 20 us.
          * ====================================================
          */
 
-        mil1553_tx_wait_idle_exact();
+        mil1553_tx_wait_idle();
 
 
         /* ====================================================
-         * 5. REARME RAPIDO DE SM0
+         * 4. REARME RAPIDO SM0
          * ====================================================
          *
-         * DATA32 = 0x8000 puede dejar SM0 en PC6.
+         * ESTE ES EL UNICO CAMBIO RESPECTO AL ROLLBACK.
          *
-         * Lo llevamos inmediatamente a cmd_entry
-         * antes de que empiece el STATUS del RT.
+         * Hasta aqui la transmision fue exactamente igual
+         * a la prueba que dio:
          *
-         * Este es el cambio principal de esta prueba.
+         *      RT = 20/20
+         *      BM = 20/20
+         *
+         * Ahora:
+         *
+         * - detenemos solamente SM0
+         * - limpiamos FIFO CMD/STATUS
+         * - reiniciamos SM0
+         * - saltamos a cmd_entry
+         * - habilitamos nuevamente
+         *
+         * Esto tambien elimina de la FIFO del BC
+         * su propio COMMAND.
          * ====================================================
          */
 
@@ -454,7 +395,11 @@ int main(void)
 
 
         /* ====================================================
-         * 6. ESPERAR STATUS
+         * 5. ESPERAR STATUS
+         * ====================================================
+         *
+         * RT responde aproximadamente 8 us despues del
+         * final del mensaje BC -> RT.
          * ====================================================
          */
 
@@ -542,7 +487,7 @@ int main(void)
 
 
             /* ================================================
-             * VALOR
+             * VALOR STATUS
              * ================================================
              */
 
@@ -565,7 +510,7 @@ int main(void)
 
 
         /* ====================================================
-         * 7. EVALUAR TRANSACCION
+         * 6. TIMEOUT
          * ====================================================
          */
 
@@ -578,25 +523,37 @@ int main(void)
         }
 
 
-        bool transaction_ok =
-            own_command_seen &&
-            status_seen &&
-            status_valid;
+        /* ====================================================
+         * 7. RESULTADO TRANSACCION
+         * ====================================================
+         */
 
-
-        if (transaction_ok)
+        if (status_seen &&
+            status_valid)
         {
             transactions_ok++;
+
+
+            printf(
+                "TX %2lu/%u | "
+                "STATUS=0x%04X | "
+                "paridad=%s | OK\n",
+                (unsigned long)(
+                    transaction + 1u
+                ),
+                TEST_TRANSACTIONS,
+                received_status,
+                received_status_parity_ok
+                    ?
+                    "OK"
+                    :
+                    "ERROR"
+            );
         }
         else
         {
             transactions_bad++;
 
-
-            /* ================================================
-             * MOSTRAR BAD
-             * ================================================
-             */
 
             printf(
                 "\n"
@@ -621,12 +578,16 @@ int main(void)
 
 
             printf(
-                "CMD propio visto   : %s\n",
-                own_command_seen
-                    ?
-                    "SI"
-                    :
-                    "NO"
+                "DATA1              : 0x%04X\n",
+                test_data[0]
+            );
+
+
+            printf(
+                "DATA32             : 0x%04X\n",
+                test_data[
+                    WORD_COUNT - 1u
+                ]
             );
 
 
@@ -678,7 +639,7 @@ int main(void)
 
 
         /* ====================================================
-         * SEPARACION ENTRE TRANSACCIONES
+         * SEPARACION
          * ====================================================
          */
 
@@ -696,7 +657,7 @@ int main(void)
     printf(
         "\n\n"
         "========================================\n"
-        "BC - RESULTADO BC -> RT / WC = 32\n"
+        "BC - RESULTADO TX ESTABLE + RX STATUS\n"
         "========================================\n\n"
     );
 
@@ -730,7 +691,7 @@ int main(void)
 
 
     /* ========================================================
-     * TRANSMISION
+     * TX
      * ========================================================
      */
 
@@ -747,16 +708,9 @@ int main(void)
 
 
     printf(
-        "DATA enviados          : %lu\n",
+        "DATA enviados          : %lu\n\n",
         (unsigned long)
             data_sent
-    );
-
-
-    printf(
-        "CMD propios retirados  : %lu\n\n",
-        (unsigned long)
-            own_command_removed
     );
 
 
@@ -816,6 +770,13 @@ int main(void)
 
 
     print_rate(
+        "STATUS recibidos",
+        status_received,
+        TEST_TRANSACTIONS
+    );
+
+
+    print_rate(
         "STATUS correctos",
         status_correct,
         TEST_TRANSACTIONS
@@ -823,7 +784,7 @@ int main(void)
 
 
     print_rate(
-        "Transacciones completas",
+        "Transacciones OK",
         transactions_ok,
         TEST_TRANSACTIONS
     );
@@ -848,10 +809,26 @@ int main(void)
 
 
     printf(
-        "DATA32 utilizado       : 0x%04X\n",
+        "DATA1                  : 0x%04X\n",
+        test_data[0]
+    );
+
+
+    printf(
+        "DATA32                 : 0x%04X\n",
         test_data[
             WORD_COUNT - 1u
         ]
+    );
+
+
+    printf(
+        "CMD -> DATA continuo   : SI\n"
+    );
+
+
+    printf(
+        "Rearme post DATA32     : SI\n"
     );
 
 

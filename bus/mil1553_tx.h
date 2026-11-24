@@ -5,39 +5,48 @@
 
 #include "bus.h"
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/*
- * Inicializa el transmisor físico MIL-STD-1553.
+
+/* ============================================================
+ * INICIALIZACION
+ * ============================================================
  */
+
 void mil1553_tx_init(void);
 
-/*
- * Transmite una palabra MIL-STD-1553:
- *
- * SYNC    : 3 tiempos de bit
- * DATA    : 16 bits Manchester II
- * PARITY  : 1 bit de paridad impar
- *
- * Total: 20 tiempos de bit.
- */
-void mil1553_tx_send_word(bus_1553_sync_t sync_type,
-                          uint16_t word);
-void mil1553_tx_send_word_blocking(bus_1553_sync_t sync_type,
-                                   uint16_t word);
-void mil1553_tx_release_bus(void);
 
-/*
- * Esperar hasta que finalice físicamente
- * la última palabra entregada al PIO.
+/* ============================================================
+ * TRANSMISION
+ * ============================================================
  */
+
+void mil1553_tx_send_word(
+    bus_1553_sync_t sync_type,
+    uint16_t word
+);
+
+
+void mil1553_tx_send_word_blocking(
+    bus_1553_sync_t sync_type,
+    uint16_t word
+);
+
+
+/* ============================================================
+ * ESPERAR FINALIZACION FISICA
+ * ============================================================
+ */
+
 void mil1553_tx_wait_idle(void);
-void mil1553_tx_wait_idle_exact(void);
+
 
 #ifdef __cplusplus
 }
 #endif
+
 
 #endif /* MIL1553_TX_H */
