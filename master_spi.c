@@ -19,7 +19,7 @@
 #define SUBADDR                 18u
 #define WORD_COUNT              32u
 
-#define TEST_TRANSACTIONS       1000u
+#define TEST_TRANSACTIONS       10000u
 
 #define INTER_TRANSACTION_MS    100u
 
