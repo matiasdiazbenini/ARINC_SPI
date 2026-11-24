@@ -18,14 +18,14 @@
  * ============================================================
  */
 
-#define TEST_TRANSACTIONS           1024u
+#define TEST_TRANSACTIONS           10240u
 #define BM_WORD_TIMEOUT_US          1000ull
 #define TEST_END_SILENCE_US         1500000ull
-#define PRINT_FIRST_TRANSACTIONS    64u
+#define PRINT_FIRST_TRANSACTIONS    128u
 #define BM_MAX_DATA_WORDS           32u
 #define EDGE_MONITOR_WINDOW_US      200ull
 #define SM0_WARMUP_COUNT            5u
-#define BM_DIAG_MAX_SAVED           128u
+#define BM_DIAG_MAX_SAVED           192u
 
 
 /* ============================================================
@@ -239,10 +239,7 @@ static uint8_t diag_max_fifo = 0u;
  * ============================================================
  */
 
-/* Patron de ensayo reproducible por direccion, WC y posicion (base 0).
- * Indices 0..1055 sin colisiones: multiplicador impar y xorshift de 16 bits.
- * No usa el contador de transacciones ni el reloj.
- */
+/* Permutacion de referencia para construir mascaras de posicion. */
 static inline uint16_t test_data_word(unsigned tr, unsigned wc, unsigned pos)
 {
     uint32_t index = tr * 528u + (wc * (wc - 1u)) / 2u + pos;
@@ -251,6 +248,50 @@ static inline uint16_t test_data_word(unsigned tr, unsigned wc, unsigned pos)
     x ^= (uint16_t)(x << 9);
     x ^= (uint16_t)(x >> 8);
     return x;
+}
+
+static inline uint16_t position_mask(unsigned tr, unsigned wc, unsigned pos)
+{
+    return test_data_word(tr,wc,pos) ^ test_data_word(tr,wc,0u);
+}
+
+/* occurrence = repeticiones previas de este COMMAND en el transmisor.
+ * Semillas distintas para las 64 combinaciones durante 1024 ciclos.
+ * No se exige este contador en ningun receptor. */
+static inline uint16_t make_seed(unsigned tr, unsigned wc, uint32_t occurrence)
+{
+    uint32_t index = 64u * occurrence + 2u * (wc - 1u) + tr;
+    uint16_t x = (uint16_t)(index * 40503u + 0xBEEFu);
+    x ^= (uint16_t)(x >> 7);
+    x ^= (uint16_t)(x << 9);
+    x ^= (uint16_t)(x >> 8);
+    return x;
+}
+
+/* FNV-1a 64: COMMAND, cantidad DATA observada, DATA en orden.
+ * Cada uint16 se incorpora LSB primero. Solo fuera del camino critico. */
+static uint64_t signatures[2] = {UINT64_C(14695981039346656037), UINT64_C(14695981039346656037)};
+static uint32_t signature_messages[2], signature_words[2];
+static inline uint64_t hash_word(uint64_t h, uint16_t w)
+{
+    h = (h ^ (uint8_t)w) * UINT64_C(1099511628211);
+    return (h ^ (uint8_t)(w >> 8)) * UINT64_C(1099511628211);
+}
+static void signature_add(unsigned tr, uint16_t command, const uint16_t *data, unsigned count)
+{
+    uint64_t h = hash_word(signatures[tr],command);
+    h = hash_word(h,(uint16_t)count);
+    for (unsigned i=0; i<count; i++) h=hash_word(h,data[i]);
+    signatures[tr]=h;
+    signature_messages[tr]++;
+    signature_words[tr]+=count;
+}
+static void signature_print(void)
+{
+    for (unsigned tr=0; tr<2u; tr++)
+        printf("FIRMA %s | MSG=%lu | DATA=%lu | FNV64=%016llX\n",
+            tr?"RT->BC":"BC->RT",(unsigned long)signature_messages[tr],
+            (unsigned long)signature_words[tr],(unsigned long long)signatures[tr]);
 }
 
 
@@ -542,6 +583,8 @@ static void print_missing_data(
         return;
     }
 
+    if (!t->data_count) { printf("Sin DATA: semilla no disponible\n"); return; }
+    printf("Patron condicionado a DATA1 (semilla RX=0x%04X)\n",(unsigned)t->data[0]);
     uint32_t seen = 0u;
     uint32_t duplicate = 0u;
     uint32_t unexpected = 0u;
@@ -558,7 +601,7 @@ static void print_missing_data(
         for (int j = 0; j < (int)t->word_count; j++)
         {
             if (t->data[i] ==
-                test_data_word(t->tr,t->word_count,(unsigned)j))
+                (t->data[0] ^ position_mask(t->tr,t->word_count,(unsigned)j)))
             {
                 found = j;
 
@@ -613,7 +656,7 @@ static void print_missing_data(
             printf(
                 "  DATA%u = 0x%04X\n",
                 i + 1u,
-                test_data_word(t->tr,t->word_count,i)
+                (t->data[0] ^ position_mask(t->tr,t->word_count,i))
             );
         }
     }
@@ -1106,9 +1149,10 @@ static void finish_transaction(
         unsigned wc = t->word_count;
         test_wc_started[tr][wc - 1u]++;
         test_expected_words += wc;
+        signature_add(tr,t->command,t->data,t->data_count);
         for (unsigned i = 0; i < t->data_count && i < wc; i++)
         {
-            if (t->data[i] != test_data_word(t->tr,t->word_count,i))
+            if (t->data[i] != (t->data[0] ^ position_mask(t->tr,t->word_count,i)))
             {
                 test_pattern_errors++;
                 t->valid = false;
@@ -1446,12 +1490,12 @@ int main(void)
     printf(
         "\n"
         "========================================\n"
-        "BM - TEST DIAGNOSTICO DATA PRNG / WC 1..32\n"
+        "BM - TEST DIAGNOSTICO DATA SEMILLA VARIABLE / WC 1..32\n"
         "========================================\n"
         "Test                 : BIDIRECCIONAL\n"
         "Transacciones        : %lu\n"
         "WC                   : 1..32\n"
-        "Patron DATA          : PRNG por direccion, WC y posicion\n"
+        "Patron DATA          : Semilla DATA1 + mascara por direccion, WC y posicion\n"
         "Delay RT STATUS      : 8 us\n"
         "Ventana GPIO P       : %llu us\n"
         "Warm-up SM0          : %u rearme(s)\n"
@@ -2124,7 +2168,7 @@ int main(void)
                 printf(
                     "\n\n"
                     "========================================\n"
-                    "BM - RESULTADO DIAGNOSTICO DATA PRNG / WC 1..32\n"
+                    "BM - RESULTADO DIAGNOSTICO DATA SEMILLA VARIABLE / WC 1..32\n"
                     "========================================\n\n"
                 );
 
@@ -2335,8 +2379,9 @@ int main(void)
                         (unsigned long)test_wc_ok[0][i], (unsigned long)test_wc_started[0][i],
                         (unsigned long)test_wc_ok[1][i], (unsigned long)test_wc_started[1][i]);
                 printf("DATA esperados (COMMAND capturados): %lu\n", (unsigned long)test_expected_words);
-                printf("DATA correctos de patron y paridad: %lu\n", (unsigned long)test_correct_words);
+                printf("DATA compatibles (semilla: solo paridad): %lu\n", (unsigned long)test_correct_words);
                 printf("DATA mismatch de patron: %lu\n\n", (unsigned long)test_pattern_errors);
+                signature_print();
 
                 printf(
                     "--- DETALLE POR TRANSACCION ---\n"
