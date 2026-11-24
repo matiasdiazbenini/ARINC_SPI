@@ -1,3 +1,4 @@
+
 #include "mil1553_rx.h"
 
 #include <stdint.h>
@@ -13,7 +14,7 @@
 
 
 /* ============================================================
- * PIO utilizado por el receptor
+ * CONFIGURACION DEL RECEPTOR
  * ============================================================
  */
 
@@ -21,16 +22,15 @@ static PIO rx_pio = pio1;
 
 
 /*
- * Dos State Machines independientes:
- *
  * SM0:
- *      observa GP2 / P
- *      detecta CMD / STATUS
+ * GP2 / P
+ * COMMAND / STATUS
  *
  * SM1:
- *      observa GP3 / N
- *      detecta DATA
+ * GP3 / N
+ * DATA con gate por IRQ0
  */
+
 static const uint rx_sm_cmd  = 0u;
 static const uint rx_sm_data = 1u;
 
@@ -41,18 +41,44 @@ static bool rx_initialized = false;
 
 
 /*
- * PIO clock:
+ * Frecuencia de trabajo PIO:
  *
- *      8 MHz
+ * 8 MHz
  *
- *      1 ciclo = 125 ns
- *
- * Esto permite:
- *
- *      4 ciclos = 500 ns
- *      8 ciclos = 1 us
+ * 1 ciclo = 125 ns
  */
+
 #define MIL1553_RX_PIO_CLOCK_HZ 8000000.0f
+
+
+/*
+ * IRQ interna del PIO utilizada para sincronizar
+ * la recepcion COMMAND -> DATA.
+ */
+
+#define MIL1553_RX_DATA_GATE_IRQ 0u
+
+
+
+/* ============================================================
+ * PUNTOS DE ENTRADA DEL PROGRAMA PIO
+ * ============================================================
+ */
+
+static inline uint cmd_entry_pc(void)
+{
+    return
+        rx_offset +
+        mil1553_rx_offset_cmd_entry;
+}
+
+
+static inline uint data_entry_pc(void)
+{
+    return
+        rx_offset +
+        mil1553_rx_offset_data_entry;
+}
 
 
 
@@ -63,11 +89,13 @@ static bool rx_initialized = false;
 
 static void configure_rx_sm(
     uint sm,
-    uint input_pin)
+    uint input_pin,
+    uint initial_pc)
 {
     /*
-     * Configuración base generada por pioasm.
+     * Configuracion base generada por pioasm.
      */
+
     pio_sm_config c =
         mil1553_rx_program_get_default_config(
             rx_offset
@@ -75,9 +103,7 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * IN PINS,1
-     *
-     * Cada SM observa solamente su propia línea.
+     * IN PINS
      * --------------------------------------------------------
      */
 
@@ -89,8 +115,6 @@ static void configure_rx_sm(
 
     /* --------------------------------------------------------
      * JMP PIN
-     *
-     * También observa la misma línea que IN.
      * --------------------------------------------------------
      */
 
@@ -101,11 +125,9 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * FIFO RX dedicada.
+     * FIFO RX dedicada
      *
-     * La FIFO TX se agrega a RX:
-     *
-     *      8 posiciones RX.
+     * Capacidad: 8 palabras.
      * --------------------------------------------------------
      */
 
@@ -116,40 +138,31 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * ISR
+     * CONFIGURACION DEL ISR
      *
-     * shift_right = false
-     *
-     * Es decir:
-     *
-     *      shift hacia la izquierda
-     *
-     * No usamos autopush.
-     *
-     * El PUSH es explícito después de recibir:
-     *
-     *      16 bits + paridad
-     *
-     *      17 bits total.
+     * Shift hacia la izquierda.
+     * Sin autopush.
+     * PUSH explicito desde el PIO.
      * --------------------------------------------------------
      */
 
     sm_config_set_in_shift(
         &c,
-        false,      /* shift_right */
-        false,      /* autopush    */
+        false,
+        false,
         32u
     );
 
 
     /* --------------------------------------------------------
-     * Clock divider
+     * CLOCK DIVIDER
      * --------------------------------------------------------
      */
 
     const float clkdiv =
         (float)clock_get_hz(clk_sys)
-        / MIL1553_RX_PIO_CLOCK_HZ;
+        /
+        MIL1553_RX_PIO_CLOCK_HZ;
 
 
     sm_config_set_clkdiv(
@@ -159,20 +172,24 @@ static void configure_rx_sm(
 
 
     /* --------------------------------------------------------
-     * Inicializar State Machine
+     * INICIALIZAR STATE MACHINE
+     *
+     * SM0 comienza en cmd_entry.
+     * SM1 comienza en data_entry.
      * --------------------------------------------------------
      */
 
     pio_sm_init(
         rx_pio,
         sm,
-        rx_offset,
+        initial_pc,
         &c
     );
 
 
-    /*
-     * Vaciar cualquier dato anterior.
+    /* --------------------------------------------------------
+     * LIMPIAR FIFO
+     * --------------------------------------------------------
      */
 
     pio_sm_clear_fifos(
@@ -181,8 +198,9 @@ static void configure_rx_sm(
     );
 
 
-    /*
-     * Reiniciar lógica interna de la SM.
+    /* --------------------------------------------------------
+     * REINICIAR LOGICA INTERNA
+     * --------------------------------------------------------
      */
 
     pio_sm_restart(
@@ -194,7 +212,7 @@ static void configure_rx_sm(
 
 
 /* ============================================================
- * INICIALIZACIÓN RX
+ * INICIALIZACION RX
  * ============================================================
  */
 
@@ -207,7 +225,7 @@ void mil1553_rx_init(void)
 
 
     /* --------------------------------------------------------
-     * Cargar programa PIO
+     * CARGAR PROGRAMA PIO
      * --------------------------------------------------------
      */
 
@@ -219,7 +237,7 @@ void mil1553_rx_init(void)
 
 
     /* --------------------------------------------------------
-     * GPIO
+     * CONFIGURACION GPIO
      * --------------------------------------------------------
      */
 
@@ -235,10 +253,9 @@ void mil1553_rx_init(void)
     );
 
 
-    /*
-     * El receptor nunca conduce el bus.
-     *
-     * Ambos GPIO quedan como entrada.
+    /* --------------------------------------------------------
+     * PINES COMO ENTRADA
+     * --------------------------------------------------------
      */
 
     pio_sm_set_consecutive_pindirs(
@@ -260,12 +277,7 @@ void mil1553_rx_init(void)
 
 
     /* --------------------------------------------------------
-     * Estado de reposo del banco GPIO directo.
-     *
-     * Cuando nadie conduce:
-     *
-     *      P = 0
-     *      N = 0
+     * ESTADO DE REPOSO
      * --------------------------------------------------------
      */
 
@@ -280,61 +292,64 @@ void mil1553_rx_init(void)
 
 
     /* --------------------------------------------------------
-     * Configurar SM0
+     * LIMPIAR IRQ0
+     *
+     * Evita que SM1 arranque utilizando
+     * una bandera residual.
+     * --------------------------------------------------------
+     */
+
+    pio_interrupt_clear(
+        rx_pio,
+        MIL1553_RX_DATA_GATE_IRQ
+    );
+
+
+    /* --------------------------------------------------------
+     * CONFIGURAR SM0
      *
      * GP2 / P
      *
-     * CMD / STATUS
+     * Adquisicion directa COMMAND / STATUS.
      * --------------------------------------------------------
      */
 
     configure_rx_sm(
         rx_sm_cmd,
-        BUS_PIN_P
+        BUS_PIN_P,
+        cmd_entry_pc()
     );
 
 
     /* --------------------------------------------------------
-     * Configurar SM1
+     * CONFIGURAR SM1
      *
      * GP3 / N
      *
-     * DATA
+     * Espera inicial de IRQ0.
      * --------------------------------------------------------
      */
 
     configure_rx_sm(
         rx_sm_data,
-        BUS_PIN_N
+        BUS_PIN_N,
+        data_entry_pc()
     );
 
 
-    /*
-     * Ya NO necesitamos utilizar Y para identificar
-     * las State Machines.
-     *
-     * Antes:
-     *
-     *      Y=0 -> CMD
-     *      Y=1 -> DATA
-     *
-     * y el PIO utilizaba Y para invertir DATA.
-     *
-     * Ahora la inversión de DATA se realiza en Cortex,
-     * por lo que eliminamos completamente esa lógica
-     * del camino crítico del PIO.
-     */
-
-
     /* --------------------------------------------------------
-     * Arrancar ambas State Machines sincronizadas
+     * ARRANCAR AMBAS STATE MACHINES SINCRONIZADAS
      * --------------------------------------------------------
      */
 
+    const uint32_t sm_mask =
+        (1u << rx_sm_cmd) |
+        (1u << rx_sm_data);
+
+
     pio_enable_sm_mask_in_sync(
         rx_pio,
-        (1u << rx_sm_cmd) |
-        (1u << rx_sm_data)
+        sm_mask
     );
 
 
@@ -344,7 +359,7 @@ void mil1553_rx_init(void)
 
 
 /* ============================================================
- * ¿HAY ALGUNA PALABRA DISPONIBLE?
+ * HAY ALGUNA PALABRA DISPONIBLE?
  * ============================================================
  */
 
@@ -386,9 +401,10 @@ uint32_t mil1553_rx_get(void)
     }
 
 
-    // ========================================================
-    // CMD / STATUS
-    // ========================================================
+    /* ========================================================
+     * COMMAND / STATUS
+     * ========================================================
+     */
 
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
@@ -404,13 +420,12 @@ uint32_t mil1553_rx_get(void)
         /*
          * SM0 observa P.
          *
-         * Para CMD / STATUS,
-         * los 17 bits recibidos ya tienen
-         * la polaridad lógica correcta.
+         * No requiere inversion de polaridad.
          */
+
         uint32_t payload =
-            raw
-            & MIL1553_RX_PAYLOAD_MASK;
+            raw &
+            MIL1553_RX_PAYLOAD_MASK;
 
 
         return
@@ -421,9 +436,10 @@ uint32_t mil1553_rx_get(void)
     }
 
 
-    // ========================================================
-    // DATA
-    // ========================================================
+    /* ========================================================
+     * DATA
+     * ========================================================
+     */
 
     if (!pio_sm_is_rx_fifo_empty(
             rx_pio,
@@ -439,24 +455,15 @@ uint32_t mil1553_rx_get(void)
         /*
          * SM1 observa N.
          *
-         * Para DATA, la línea N contiene
-         * la información complementada.
+         * Invertir los 17 bits relevantes:
          *
-         * Los 17 bits relevantes son:
-         *
-         *      bits 16..1 -> DATA[15:0]
-         *      bit 0      -> paridad
-         *
-         * Por lo tanto invertimos esos bits
-         * en Cortex.
-         *
-         * Primero invertimos todo el uint32_t
-         * y posteriormente conservamos solamente
-         * los 17 bits válidos.
+         * Bits 16..1 = DATA
+         * Bit  0     = PARITY
          */
+
         uint32_t payload =
-            (~raw)
-            & MIL1553_RX_PAYLOAD_MASK;
+            (~raw) &
+            MIL1553_RX_PAYLOAD_MASK;
 
 
         return
@@ -469,27 +476,22 @@ uint32_t mil1553_rx_get(void)
 
     return 0u;
 }
-/* ============================================================
- * VACIAR FIFO RX
- * ============================================================
- */
+
+
 
 /* ============================================================
  * LIMPIAR Y REARMAR RECEPTOR
  * ============================================================
  *
- * No alcanza con vaciar las FIFO:
+ * Se ejecuta:
  *
- * una State Machine puede encontrarse todavía
- * procesando una palabra propia transmitida
- * por este mismo nodo.
+ * - Durante la inicializacion.
+ * - Despues de transmitir STATUS.
+ * - Despues de un timeout.
  *
- * Por eso:
+ * SM0 vuelve a esperar COMMAND.
  *
- * 1. detenemos ambas SM,
- * 2. las reinicializamos,
- * 3. vaciamos su estado interno/FIFO,
- * 4. las arrancamos nuevamente sincronizadas.
+ * SM1 vuelve a esperar IRQ0.
  *
  * ============================================================
  */
@@ -507,9 +509,11 @@ void mil1553_rx_clear(void)
         (1u << rx_sm_data);
 
 
-    /*
-     * Detener ambas State Machines.
+    /* --------------------------------------------------------
+     * DETENER AMBAS STATE MACHINES
+     * --------------------------------------------------------
      */
+
     pio_set_sm_mask_enabled(
         rx_pio,
         sm_mask,
@@ -517,34 +521,55 @@ void mil1553_rx_clear(void)
     );
 
 
-    /*
-     * Reinicializar SM0:
+    /* --------------------------------------------------------
+     * LIMPIAR IRQ0
      *
-     * GP2 / P
-     * CMD / STATUS
+     * Las palabras DATA anteriores pueden haber dejado
+     * IRQ0 activada.
+     *
+     * Se limpia con ambas SM detenidas.
+     * --------------------------------------------------------
      */
+
+    pio_interrupt_clear(
+        rx_pio,
+        MIL1553_RX_DATA_GATE_IRQ
+    );
+
+
+    /* --------------------------------------------------------
+     * REINICIALIZAR SM0
+     *
+     * Esperar nuevo COMMAND.
+     * --------------------------------------------------------
+     */
+
     configure_rx_sm(
         rx_sm_cmd,
-        BUS_PIN_P
+        BUS_PIN_P,
+        cmd_entry_pc()
     );
 
 
-    /*
-     * Reinicializar SM1:
+    /* --------------------------------------------------------
+     * REINICIALIZAR SM1
      *
-     * GP3 / N
-     * DATA
+     * Esperar IRQ0 del nuevo COMMAND.
+     * --------------------------------------------------------
      */
+
     configure_rx_sm(
         rx_sm_data,
-        BUS_PIN_N
+        BUS_PIN_N,
+        data_entry_pc()
     );
 
 
-    /*
-     * Arrancar nuevamente ambas
-     * State Machines sincronizadas.
+    /* --------------------------------------------------------
+     * ARRANCAR AMBAS SM SINCRONIZADAS
+     * --------------------------------------------------------
      */
+
     pio_enable_sm_mask_in_sync(
         rx_pio,
         sm_mask
